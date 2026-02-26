@@ -1,0 +1,200 @@
+You are a senior engineer improving an existing Python + SQLite + GUI chess repertoire analyzer app.
+
+CONTEXT (current behavior)
+- Loads config/settings.ini; asks for missing paths and saves back.
+- Repertoire: scans all PGNs under repertoire dir; each PGN game = separate repertoire “line”.
+  - Line ID comes from PGN [Event] tag; must be unique and non-empty.
+  - Matching is STRICT move order; transpositions are treated as different lines.
+- Games: scans all PGNs under Chess.com games dir; keeps games where White or Black matches player name.
+  - Parses moves and clock comments [%clk ...]; parses time control like 600+5; excludes daily/correspondence from time stats.
+- Matching: picks repertoire line with longest exact-prefix move match.
+  - Tracks max_matched_ply and first opponent/self deviation ply.
+  - Compliance: FULLY_COMPLIANT, OPPONENT_DEVIATED, YOU_DEVIATED, BOTH_DEVIATED.
+- Engine: Stockfish fixed depth (default 20) for first 30 plies; stores eval, best move, and centipawn loss on user moves only.
+- Time: computes time spent from clock values and increment.
+- Storage: everything stored in data/analysis.db (SQLite). GUI reads from SQLite only; analysis pipeline writes to SQLite.
+
+USER PREFERENCE
+- Keep engine depth FIXED at 20 (do NOT introduce variable depth). Performance improvements may be done via caching/incremental runs, but depth remains 20.
+
+GOAL
+Implement the features below with clean architecture:
+- Analysis pipeline remains responsible for computing and writing to SQLite.
+- GUI remains read-only from SQLite (no heavy computation in UI).
+- Provide migrations so existing users’ DB can upgrade safely.
+- Add incremental analysis so “Run Analysis” only reprocesses changed files/games/lines and reuses cached engine results.
+- Add transposition-aware matching as an OPTIONAL mode controlled by config/INI, while preserving current strict behavior.
+
+===========================================================
+FEATURE SET TO IMPLEMENT
+===========================================================
+
+1) MATCHING MODES (Strict vs Transposition-aware)
+Add config setting:
+- matching_mode = STRICT | TRANSPOSITION
+
+STRICT mode:
+- preserve current matching (longest exact-prefix SAN move match).
+
+TRANSPOSITION mode:
+- match by POSITION (tabiya) rather than move order.
+- Compute a normalized position key per ply (use FEN normalization; ideally add Zobrist hash).
+- For each repertoire line, store position keys per ply.
+- For each game, store position keys per ply.
+- Matching algorithm:
+  - Find the repertoire line that gives the deepest match by position keys (prefix of positions).
+  - Tie-breakers:
+    1) deeper matched ply
+    2) if equal, prefer line with closer move sequence similarity to game SAN prefix (or fewer mismatches earlier)
+    3) if still tied, prefer line marked as primary (see “line priority” below), else deterministic (lowest line_id).
+- Keep existing outputs: matched line_id, max_matched_ply, first self/opponent deviation ply, compliance label.
+- Add new fields that describe match method and confidence.
+
+2) BUILD A REPERTOIRE TREE (position -> allowed moves)
+Currently each PGN game is a separate line. Add a derived repertoire tree across ALL lines:
+- For each position encountered in any repertoire line, store all legal repertoire moves that appear in any line from that position, with edges to next position.
+- Mark each edge with:
+  - source_line_id (one or more)
+  - is_mainline (true if from a line marked “primary” or if it is the matched line continuation)
+  - weight/frequency (count of how many lines contain the edge)
+
+Use this tree to classify each game ply (especially deviations):
+- IN_REPERTOIRE_MAIN: move matches the matched line continuation at that position.
+- IN_REPERTOIRE_OTHER: move exists in repertoire tree from that position but not the matched line continuation.
+- OUT_OF_REPERTOIRE: move not found in repertoire tree from that position.
+
+Important: This classification must work in both STRICT and TRANSPOSITION modes.
+
+3) IMPROVED COMPLIANCE + TAGGING
+Keep the existing 4 compliance buckets for backward compatibility, but add richer derived tags:
+- who_left_first: YOU | OPPONENT | BOTH | NONE
+- deviation_ply_you, deviation_ply_opponent (already tracked; ensure stored)
+- recovered_to_repertoire: boolean (left tree then later re-entered a known position key)
+- opponent_deviation_to_known: boolean (opponent deviated but landed in position that exists somewhere in repertoire tree)
+- deviation_type (heuristic labels, not ML):
+  - TRANSPOSITION (only when mode=STRICT but position matches a known repertoire position)
+  - NOVELTY (first time a deviation move is seen at that position)
+  - BLUNDER_LIKE (if your CPL at deviation ply exceeds threshold, e.g. > 150cp)
+  - SIMPLIFICATION (large material reduction shortly after deviation)
+  - ENDGAME_TRANSITION (material key crosses into endgame heuristic)
+
+These tags should power “Review” prioritization.
+
+4) GAME VIEW: “What did repertoire expect?” vs Engine best
+Enhance per-game/per-ply detail view to show at least at deviation ply:
+- Your move (SAN + UCI)
+- Repertoire mainline move (if known)
+- Repertoire alternatives (top N moves from repertoire tree, with frequencies/source lines)
+- Engine best move at depth 20
+- Eval before/after (or eval at ply)
+- Centipawn loss vs engine best (existing)
+- Centipawn loss vs repertoire mainline move (new)
+- Classification text:
+  - “Repertoire move is still fine” (if engine eval difference between repertoire and best is small, e.g. <= 30cp)
+  - “Repertoire move is inaccurate here” (if repertoire move is significantly worse vs engine best)
+  - “You deviated into a worse line” (if your move is worse than repertoire move by threshold)
+  - “Opponent deviation made line irrelevant” (if opponent deviated first and matched line continuation no longer applies)
+
+Note: do not change engine depth; compute additional comparisons using already-cached depth 20 evaluations.
+
+5) TIME USAGE: normalized stats + panic patterns
+Keep current time spent computation. Add normalized time metrics:
+- normalize by time control (base+increment)
+- per move: time_spent_fraction_of_start = time_spent / initial_base_seconds
+- aggregate: %time in-book vs out-of-book (based on IN_REPERTOIRE_* classifications)
+- detect patterns:
+  - slow_in_book: unusually high time spent on IN_REPERTOIRE moves
+  - instant_out_of_book: extremely low time spent when OUT_OF_REPERTOIRE
+  - blunder_cluster_out_of_book: higher blunder rate shortly after leaving repertoire
+
+Add these to DB and surface in UI “Time usage” tab.
+
+6) COVERAGE MAP + OPPONENT DEVIATION HEATMAP
+Add aggregated features:
+- For each “tabiya” (position key) that occurs in games:
+  - frequency reached
+  - opponent deviation moves frequency (top N SAN/UCI)
+  - whether repertoire tree contains responses for those moves (covered/uncovered)
+  - your score (W/D/L) when opponent chooses each deviation
+- coverage metrics:
+  - positions reached in your games that exist in repertoire tree / total positions reached
+  - opponent deviations that are covered vs not covered
+- In “Review” tab, include:
+  - positions where opponent deviates often AND you have no repertoire response (high priority)
+  - positions where you deviate early AND high CPL or poor outcomes
+
+7) INCREMENTAL ANALYSIS + CACHING (engine depth stays 20)
+Add incremental pipeline:
+- Compute and store file hashes (or modified time + size) for:
+  - repertoire PGNs
+  - game PGNs
+- On Run Analysis:
+  - Only reparse PGN files that changed since last run.
+  - Only rerun engine analysis for positions/plies that changed OR not already cached.
+Engine caching:
+- Cache engine results keyed by (position_key, side_to_move, depth=20, multipv=1, engine_version optional).
+- If the same position appears in multiple games/lines, reuse cached results.
+
+8) SCHEMA CHANGES (SQLite) + MIGRATIONS
+Implement schema migrations with a schema_version table.
+Propose tables (adjust as needed but keep these concepts):
+- positions(pos_id PK, fen_norm, zobrist, material_key, side_to_move)
+- repertoire_lines(line_id PK, source_pgn, is_primary INT, metadata_json)
+- line_positions(line_id, ply, pos_id, san_move, uci_move, next_pos_id, PRIMARY KEY(line_id, ply))
+- repertoire_edges(pos_id, uci_move, next_pos_id, weight, sources_json, PRIMARY KEY(pos_id, uci_move, next_pos_id))
+- games(game_id PK, source_pgn, white, black, result, time_control, date, your_color, your_rating, opp_rating, metadata_json)
+- game_positions(game_id, ply, pos_id, san_move, uci_move, clk, time_spent, repertoire_class, PRIMARY KEY(game_id, ply))
+- matches(game_id PK, matched_line_id, matching_mode, max_matched_ply, deviation_ply_you, deviation_ply_opp, compliance, who_left_first, recovered_to_rep, opponent_dev_to_known, tags_json)
+- engine_cache(pos_id, depth, best_uci, eval_cp, wdl_json, analyzed_at, engine_id, PRIMARY KEY(pos_id, depth, engine_id))
+- analysis_ply(game_id, ply, pos_id, eval_cp, best_uci, your_cpl, PRIMARY KEY(game_id, ply))
+
+Make migrations idempotent and safe. Preserve existing tables if present; migrate data forward.
+
+9) UI UPDATES (read-only)
+Add/modify tabs without moving heavy computation to UI:
+- Games tab: add columns for matching_mode, repertoire_classification summary, who_left_first.
+- Lines tab: add coverage stats, “opponent deviates into known/unknown”, average exit eval, and “in-rep-other-branch rate”.
+- Time usage tab: add normalized time charts and panic pattern counters.
+- Rating bands tab: include in-book vs out-of-book performance/time.
+- Review tab: add new sections:
+  - Missing coverage hotspots (opponent deviations uncovered)
+  - Early self-deviation with high CPL
+  - Poor performance positions (losses > wins) weighted by frequency
+
+10) CONFIG UPDATES
+Add to settings.ini with defaults:
+- matching_mode=STRICT
+- enable_engine_cache=1
+- incremental_analysis=1
+- max_plies_engine=30 (existing)
+- review_top_n=25
+- tabiya_top_n=10
+
+===========================================================
+IMPLEMENTATION REQUIREMENTS
+===========================================================
+- Use python-chess for PGN parsing and FEN generation (if not already).
+- SAN parsing must be robust; store both SAN and UCI moves where possible.
+- FEN normalization: remove halfmove/fullmove counters; keep castling rights, en passant, side to move.
+- Daily/correspondence games remain excluded from time-based stats (same current rule).
+- Keep engine depth fixed at 20. Do NOT implement adaptive depth. You may implement caching and incremental runs for speed.
+- Avoid breaking existing GUI; add fields and new views incrementally.
+- Add unit tests for:
+  - transposition-aware matching correctness on known transposition examples
+  - repertoire tree classification (main vs other vs out)
+  - incremental analysis skipping unchanged files
+  - engine cache reuse
+
+DELIVERABLES
+1) Code changes implementing all features above.
+2) SQLite migration script/module with schema_version handling.
+3) Updated settings.ini template + code to upgrade existing INI.
+4) UI updates wired to new DB fields.
+5) Brief developer notes in README: how matching modes differ, what new review metrics mean.
+
+ACCEPTANCE CRITERIA
+- In STRICT mode, existing results match prior app results (within expected tolerance for any bug fixes).
+- In TRANSPOSITION mode, a transposed move order that reaches same position should match to the correct line deeper than STRICT would.
+- Engine depth is always 20; repeated positions across games do not trigger repeated engine calls (cache hit).
+- Running analysis twice without changing PGNs finishes faster and does not duplicate rows.
+- Review tab surfaces missing-coverage hotspots and early-deviation-with-high-CPL items based purely on DB queries.
