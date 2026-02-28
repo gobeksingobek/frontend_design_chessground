@@ -10,6 +10,7 @@ This directory introduces two deployable backend processes that keep Neon/Postgr
   - Enforces idempotency (`Idempotency-Key`) via a unique Postgres constraint.
   - Writes request records to Postgres, then enqueues jobs to Redis Streams.
   - Exposes read APIs for request status.
+  - `GET /games` and `GET /games/{game_id}` for web Phase 2 games/game-detail screens (reads from SQLite analysis DB).
 
 - `backend.worker_service`
   - Uses Redis consumer groups for horizontal scaling.
@@ -36,6 +37,7 @@ python -m backend.worker_service
 - `POSTGRES_DSN` (Neon/Postgres DSN)
 - `REDIS_URL`
 - `API_AUTH_TOKEN`
+- `SQLITE_PATH` (default `data/analysis.db`)
 - `STOCKFISH_PATH`
 
 Optional tuning:

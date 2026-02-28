@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from backend import db
 from backend.queue import enqueue_job, ensure_consumer_group, redis_client
+from backend.read_api import fetch_game_detail, fetch_games
 from backend.settings import SETTINGS
 
 
@@ -43,6 +44,47 @@ class SidelineResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+
+class GameOverviewResponse(BaseModel):
+    id: int
+    date: str | None
+    white: str | None
+    black: str | None
+    result: str | None
+    time_control: str | None
+    white_elo: int | None
+    black_elo: int | None
+    line_id: str | None
+    compliance: str | None
+    max_matched_ply: int | None
+    matching_mode: str | None
+    who_left_first: str | None
+    in_main: int | None
+    in_other: int | None
+    out_rep: int | None
+
+
+class GameMoveResponse(BaseModel):
+    ply: int
+    pos_id: int
+    san_move: str | None
+    uci_move: str | None
+    repertoire_class: str | None
+    is_self: int
+    clock_seconds: float | None
+    time_spent_seconds: float | None
+    time_spent_fraction: float | None
+    pre_eval_cp: int | None
+    post_eval_cp: int | None
+    best_uci: str | None
+    your_cpl: int | None
+    rep_cpl: int | None
+    quality_label: str | None
+
+
+class GameDetailResponse(BaseModel):
+    header: dict[str, Any]
+    moves: list[GameMoveResponse]
 
 app = FastAPI(title="ChessGround API Service")
 auth_scheme = HTTPBearer(auto_error=False)
@@ -176,3 +218,37 @@ async def list_sidelines(request: Request, limit: int = 20, _: str = Depends(req
     async with request.app.state.db_pool.acquire() as conn:
         rows = await db.list_sideline_requests(conn, bounded_limit)
     return [to_response(row) for row in rows]
+
+
+@app.get(
+    "/games",
+    response_model=list[GameOverviewResponse],
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        422: {"model": ValidationErrorResponse, "description": "Validation error"},
+    },
+)
+async def list_games(
+    limit: int = 50,
+    offset: int = 0,
+    _: str = Depends(require_auth),
+) -> list[GameOverviewResponse]:
+    bounded_limit = min(max(limit, 1), 200)
+    bounded_offset = max(offset, 0)
+    rows = await fetch_games(limit=bounded_limit, offset=bounded_offset)
+    return [GameOverviewResponse(**row) for row in rows]
+
+
+@app.get(
+    "/games/{game_id}",
+    response_model=GameDetailResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Game not found"},
+    },
+)
+async def get_game(game_id: int, _: str = Depends(require_auth)) -> GameDetailResponse:
+    data = await fetch_game_detail(game_id)
+    if data is None:
+        raise api_error(status_code=404, error_code="NOT_FOUND", detail="Game not found")
+    return GameDetailResponse(**data)

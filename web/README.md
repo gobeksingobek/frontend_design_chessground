@@ -5,6 +5,7 @@ This folder introduces a web-first shell using Next.js + TypeScript.
 ## Included in Phase 1
 
 - App shell with sidebar + topbar (`/overview`, `/games`, `/sidelines`).
+- Phase 2 Games migration: live games list and game details view from backend `/games` APIs.
 - Placeholder auth gate + login flow for future real auth.
 - Typed API client for backend sideline endpoints.
 - React Query provider + first query-driven table on Overview/Sidelines pages.

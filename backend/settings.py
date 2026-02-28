@@ -8,6 +8,7 @@ import os
 class BackendSettings:
     postgres_dsn: str = os.getenv("POSTGRES_DSN", "postgresql://postgres:postgres@localhost:5432/chessground")
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    sqlite_path: str = os.getenv("SQLITE_PATH", "data/analysis.db")
     api_auth_token: str = os.getenv("API_AUTH_TOKEN", "dev-token")
     stream_name: str = os.getenv("SIDELINE_STREAM_NAME", "sideline:jobs")
     dead_letter_stream: str = os.getenv("SIDELINE_DEAD_LETTER_STREAM", "sideline:jobs:dead")

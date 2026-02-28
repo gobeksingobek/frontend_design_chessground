@@ -37,3 +37,5 @@ input, button {
   padding: 10px;
 }
 button { cursor: pointer; }
+
+.code { white-space: pre-wrap; overflow-x: auto; font-size: 12px; background: #0a1224; border: 1px solid #243555; padding: 10px; border-radius: 8px; }
