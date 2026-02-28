@@ -32,7 +32,6 @@ def load_repertoire_lines(
         raise FileNotFoundError(f"Repertoire directory not found: {root}")
 
     lines: list[dict] = []
-    seen_ids: set[str] = set()
     pgn_files = file_paths or _iter_pgn_files(root)
     for pgn_path in pgn_files:
         with pgn_path.open("r", encoding="utf-8", errors="replace") as handle:
@@ -43,12 +42,7 @@ def load_repertoire_lines(
                     break
                 game_index += 1
                 event = (game.headers.get("Event") or "").strip()
-                if not event:
-                    raise ValueError(
-                        f"Missing [Event] tag in repertoire PGN: {pgn_path} game {game_index}"
-                    )
-                if event in seen_ids:
-                    raise ValueError(f"Duplicate repertoire line id [Event]: {event}")
+                root_key = (game.headers.get("RepertoireRoot") or "root").strip()
                 moves = []
                 board = game.board()
                 for move in game.mainline_moves():
@@ -63,12 +57,12 @@ def load_repertoire_lines(
                 side_to_play = _detect_side(game.headers, player_names or [])
                 lines.append(
                     {
-                        "line_id": event,
+                        "label": event or f"{pgn_path.stem} #{game_index}",
+                        "root_key": root_key,
                         "moves": moves,
                         "is_priority": is_priority,
                         "side_to_play": side_to_play,
                         "source_pgn": str(pgn_path),
                     }
                 )
-                seen_ids.add(event)
     return lines

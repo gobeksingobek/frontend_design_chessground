@@ -155,3 +155,38 @@ Key analysis options:
 2) Click Run Analysis on the Overview tab.
 3) Review results across Games, Lines, Time usage, Rating bands, and Review.
 4) After updating PGNs or settings, run analysis again.
+
+## Async backend services (API + Worker)
+
+For server deployments, use the new backend processes in `backend/`:
+
+- API (`backend.api_service:app`): FastAPI validation/auth + sideline request creation + queue enqueue + read APIs.
+- Worker (`backend.worker_service`): Redis Stream consumer-group worker that runs Stockfish branch analysis with retry and dead-letter behavior.
+
+Postgres remains the source of truth (request rows, statuses, results, idempotency), while Redis Streams are transient queue transport only.
+
+See `backend/README.md` for run commands and environment variables.
+
+
+## Web app (Phase 1 shell)
+
+A web-first shell now lives under `web/` (Next.js + TypeScript) with:
+
+- app shell + navigation (`/overview`, `/games`, `/sidelines`)
+- placeholder login/auth gate
+- typed sideline API client + React Query wiring
+
+Run locally:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+## PostgreSQL graph schema (optional)
+
+A normalized PostgreSQL version of the repertoire graph schema is provided at:
+
+- `storage/postgres/schema.sql`
+
+It uses global edge-level deduplication (`edges` unique on `(pos_id, uci_move, next_pos_id)`), line composition via `line_membership`, per-user mainline selection via `user_mainline`, and optional `line_path_cache` with trigger-based invalidation.

@@ -31,7 +31,7 @@ from analysis.thresholds import (
     SLOW_IN_BOOK_PCT,
 )
 from parsing import clock_parser, game_loader, repertoire_loader
-from storage import queries
+from storage import line_ids, queries
 
 PROGRESS_EMIT_SECONDS = 0.5
 PROGRESS_EMIT_POSITIONS = 250
@@ -196,6 +196,7 @@ def _clear_data(conn) -> None:
         DELETE FROM repertoire_edges;
         DELETE FROM repertoire_compact;
         DELETE FROM repertoire_lines;
+        DELETE FROM line_id_sequences;
         DELETE FROM user_mainline_overrides;
         DELETE FROM positions;
         DELETE FROM source_files;
@@ -208,23 +209,40 @@ def _insert_repertoire_lines(
     conn, position_store: PositionStore, lines: list[dict]
 ) -> None:
     for line in lines:
+        board = chess.Board()
+        moves_uci: list[str] = []
+        side_to_play = line.get("side_to_play") or "white"
+        for move in line["moves"]:
+            chess_move = chess.Move.from_uci(move["uci"])
+            board.push(chess_move)
+            moves_uci.append(move.get("uci") or "")
+
+        generated_line_id, path_hash = line_ids.allocate_line_id(
+            conn,
+            root_prefix=line.get("root_key") or "root",
+            moves_uci=moves_uci,
+            side_to_play=side_to_play,
+        )
+
         conn.execute(
             """
             INSERT OR REPLACE INTO repertoire_lines (
-                line_id, source_pgn, is_priority, side_to_play
+                line_id, canonical_path_hash, source_pgn, is_priority, side_to_play, metadata_json
             )
-            VALUES (?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
-                line["line_id"],
+                generated_line_id,
+                path_hash,
                 line.get("source_pgn"),
                 1 if line.get("is_priority") else 0,
-                line.get("side_to_play") or "white",
+                side_to_play,
+                json.dumps({"label": line.get("label") or generated_line_id}),
             ),
         )
 
         board = chess.Board()
-        moves_uci: list[str] = []
+        moves_uci = []
         san_moves: list[str] = []
         pos_ids: list[int] = []
         for move in line["moves"]:
@@ -241,7 +259,7 @@ def _insert_repertoire_lines(
             VALUES (?, ?, ?, ?, ?)
             """,
             (
-                line["line_id"],
+                generated_line_id,
                 json.dumps(moves_uci),
                 json.dumps(san_moves),
                 json.dumps(pos_ids),
@@ -341,7 +359,7 @@ def _build_line_indexes(
     pos_prefix_map: dict[tuple[int, ...], list[str]] = {}
 
     for line in line_data:
-        line_id = line["line_id"]
+        line_id = generated_line_id
         moves = line["moves_uci"]
         pos_ids = line["pos_ids"]
         line_moves_map[line_id] = moves
@@ -1752,7 +1770,7 @@ def compute_deviation_rep_cpl(
     game = contexts[0]
 
     line_data = _load_line_data(conn)
-    lines_by_id = {line["line_id"]: line["moves_uci"] for line in line_data}
+    lines_by_id = {generated_line_id: line["moves_uci"] for line in line_data}
     _attach_effective_matched_lines(
         conn,
         [game],
@@ -1971,8 +1989,8 @@ def run_analysis(
         return
 
     line_data = _load_line_data(conn)
-    lines_by_id = {line["line_id"]: line["moves_uci"] for line in line_data}
-    line_pos_by_id = {line["line_id"]: line["pos_ids"] for line in line_data}
+    lines_by_id = {generated_line_id: line["moves_uci"] for line in line_data}
+    line_pos_by_id = {generated_line_id: line["pos_ids"] for line in line_data}
     edge_map = _load_edge_map(conn)
     repertoire_positions = _load_repertoire_positions(conn)
 
@@ -2186,7 +2204,7 @@ def run_engine_analysis_only(
         return
 
     line_data = _load_line_data(conn)
-    lines_by_id = {line["line_id"]: line["moves_uci"] for line in line_data}
+    lines_by_id = {generated_line_id: line["moves_uci"] for line in line_data}
     position_store = PositionStore(conn)
 
     with chess.engine.SimpleEngine.popen_uci(config.stockfish_path) as engine:
@@ -2273,8 +2291,8 @@ def run_line_matching_reanalysis(
         return
 
     line_data = _load_line_data(conn)
-    lines_by_id = {line["line_id"]: line["moves_uci"] for line in line_data}
-    line_pos_by_id = {line["line_id"]: line["pos_ids"] for line in line_data}
+    lines_by_id = {generated_line_id: line["moves_uci"] for line in line_data}
+    line_pos_by_id = {generated_line_id: line["pos_ids"] for line in line_data}
     edge_map = _load_edge_map(conn)
     repertoire_positions = _load_repertoire_positions(conn)
     position_store = PositionStore(conn)
@@ -2443,7 +2461,7 @@ def run_game_details_reanalysis(
         return
 
     line_data = _load_line_data(conn)
-    lines_by_id = {line["line_id"]: line["moves_uci"] for line in line_data}
+    lines_by_id = {generated_line_id: line["moves_uci"] for line in line_data}
     position_store = PositionStore(conn)
 
     with chess.engine.SimpleEngine.popen_uci(config.stockfish_path) as engine:
@@ -2522,8 +2540,8 @@ def run_game_details_reanalysis(
 
 def reanalyze_game(conn, config, game_id: int) -> None:
     line_data = _load_line_data(conn)
-    lines_by_id = {line["line_id"]: line["moves_uci"] for line in line_data}
-    line_pos_by_id = {line["line_id"]: line["pos_ids"] for line in line_data}
+    lines_by_id = {generated_line_id: line["moves_uci"] for line in line_data}
+    line_pos_by_id = {generated_line_id: line["pos_ids"] for line in line_data}
     edge_map = _load_edge_map(conn)
     repertoire_positions = _load_repertoire_positions(conn)
     position_store = PositionStore(conn)
