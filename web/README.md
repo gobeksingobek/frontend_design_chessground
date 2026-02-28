@@ -27,3 +27,9 @@ Set optional env vars:
 
 - This is intentionally a thin shell to unblock feature migration in later phases.
 - Phase 2 should migrate Games and Game Details views with real backend data.
+
+
+## Phase 3 additions
+
+- Games detail page can enqueue sideline jobs directly via `POST /sidelines` using selected move FEN + branch UCI input.
+- Login now stores the actual bearer token in browser storage and API client reads it for authenticated requests.

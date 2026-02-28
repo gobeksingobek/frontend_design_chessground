@@ -75,3 +75,6 @@ Standardized API errors use:
 ```
 
 Validation failures are returned via FastAPI's `422` structure and are explicitly documented in the route responses.
+
+
+Phase 3 note: `GET /games/{game_id}` move payload now includes `fen` for each move, enabling sideline enqueue actions from the web game-detail UI.

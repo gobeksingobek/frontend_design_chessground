@@ -29,7 +29,7 @@ body {
 .table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid #1f2a44; }
 .table th, .table td { text-align: left; padding: 10px; border-bottom: 1px solid #1f2a44; }
 .login { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
-input, button {
+input, button, select {
   background: #0e172d;
   color: var(--text);
   border: 1px solid #2a3a61;
@@ -39,3 +39,5 @@ input, button {
 button { cursor: pointer; }
 
 .code { white-space: pre-wrap; overflow-x: auto; font-size: 12px; background: #0a1224; border: 1px solid #243555; padding: 10px; border-radius: 8px; }
+
+small { color: var(--muted); }

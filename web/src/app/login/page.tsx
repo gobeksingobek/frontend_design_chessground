@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { setWebAuth } from "@/components/auth-gate";
+import { setWebAuth } from "@/lib/auth";
 
 export default function LoginPage() {
   const [token, setToken] = useState("");
@@ -12,8 +12,7 @@ export default function LoginPage() {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!token.trim()) return;
-    setWebAuth(true);
-    window.localStorage.setItem("cg_web_token_hint", token.trim());
+    setWebAuth(token);
     router.push("/overview");
   }
 
@@ -21,7 +20,7 @@ export default function LoginPage() {
     <main className="login">
       <form onSubmit={onSubmit} className="card">
         <h1>ChessGround Web</h1>
-        <p>Phase 1 auth gate placeholder. Enter any token to continue.</p>
+        <p>Enter your backend API bearer token to continue.</p>
         <input
           placeholder="API token"
           value={token}

@@ -67,6 +67,7 @@ class GameOverviewResponse(BaseModel):
 class GameMoveResponse(BaseModel):
     ply: int
     pos_id: int
+    fen: str | None
     san_move: str | None
     uci_move: str | None
     repertoire_class: str | None

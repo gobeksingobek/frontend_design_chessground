@@ -43,6 +43,7 @@ export interface GameOverview {
 export interface GameMove {
   ply: number;
   pos_id: number;
+  fen: string | null;
   san_move: string | null;
   uci_move: string | null;
   repertoire_class: string | null;

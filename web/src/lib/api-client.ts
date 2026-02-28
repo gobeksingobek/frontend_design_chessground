@@ -1,11 +1,17 @@
+import { getWebToken } from "@/lib/auth";
 import type { GameDetail, GameOverview, SidelineCreateRequest, SidelineResponse } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN ?? "dev-token";
 
+function currentToken(): string {
+  const fromStorage = getWebToken();
+  return fromStorage && fromStorage.trim() ? fromStorage : API_TOKEN;
+}
+
 function headers(extra: Record<string, string> = {}): HeadersInit {
   return {
-    Authorization: `Bearer ${API_TOKEN}`,
+    Authorization: `Bearer ${currentToken()}`,
     "Content-Type": "application/json",
     ...extra,
   };
