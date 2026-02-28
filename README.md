@@ -155,3 +155,11 @@ Key analysis options:
 2) Click Run Analysis on the Overview tab.
 3) Review results across Games, Lines, Time usage, Rating bands, and Review.
 4) After updating PGNs or settings, run analysis again.
+
+## PostgreSQL graph schema (optional)
+
+A normalized PostgreSQL version of the repertoire graph schema is provided at:
+
+- `storage/postgres/schema.sql`
+
+It uses global edge-level deduplication (`edges` unique on `(pos_id, uci_move, next_pos_id)`), line composition via `line_membership`, per-user mainline selection via `user_mainline`, and optional `line_path_cache` with trigger-based invalidation.
