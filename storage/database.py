@@ -4,7 +4,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-EXPECTED_SCHEMA_VERSION = 5
+EXPECTED_SCHEMA_VERSION = 6
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -25,10 +25,16 @@ CREATE TABLE IF NOT EXISTS positions (
 
 CREATE TABLE IF NOT EXISTS repertoire_lines (
     line_id TEXT PRIMARY KEY,
+    canonical_path_hash TEXT NOT NULL UNIQUE,
     source_pgn TEXT,
     is_priority INTEGER NOT NULL DEFAULT 0,
     side_to_play TEXT NOT NULL DEFAULT 'white',
     metadata_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS line_id_sequences (
+    parent_prefix TEXT PRIMARY KEY,
+    next_sequence INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS repertoire_compact (
