@@ -4,6 +4,8 @@ import asyncio
 import sqlite3
 from typing import Any
 
+import asyncpg
+
 from backend.settings import SETTINGS
 from storage import queries
 
@@ -14,13 +16,101 @@ def _connect_sqlite() -> sqlite3.Connection:
     return conn
 
 
-def _fetch_games(limit: int, offset: int) -> list[dict[str, Any]]:
+async def _fetch_games_postgres(limit: int, offset: int) -> list[dict[str, Any]]:
+    conn = await asyncpg.connect(SETTINGS.postgres_dsn)
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT g.id, g.date, g.white, g.black, g.result, g.time_control,
+                   g.white_elo, g.black_elo,
+                   m.matched_line_id AS line_id,
+                   m.compliance,
+                   m.max_matched_ply,
+                   m.matching_mode,
+                   m.who_left_first,
+                   (
+                       SELECT SUM(CASE WHEN gp.repertoire_class = 'IN_REPERTOIRE_MAIN' THEN 1 ELSE 0 END)
+                       FROM game_positions gp
+                       WHERE gp.game_id = g.id AND gp.is_self = 1
+                   ) AS in_main,
+                   (
+                       SELECT SUM(CASE WHEN gp.repertoire_class = 'IN_REPERTOIRE_OTHER' THEN 1 ELSE 0 END)
+                       FROM game_positions gp
+                       WHERE gp.game_id = g.id AND gp.is_self = 1
+                   ) AS in_other,
+                   (
+                       SELECT SUM(CASE WHEN gp.repertoire_class = 'OUT_OF_REPERTOIRE' THEN 1 ELSE 0 END)
+                       FROM game_positions gp
+                       WHERE gp.game_id = g.id AND gp.is_self = 1
+                   ) AS out_rep
+            FROM games g
+            LEFT JOIN matches m ON g.id = m.game_id
+            ORDER BY g.date DESC, g.id DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit,
+            offset,
+        )
+        return [dict(row) for row in rows]
+    finally:
+        await conn.close()
+
+
+async def _fetch_game_detail_postgres(game_id: int) -> dict[str, Any] | None:
+    conn = await asyncpg.connect(SETTINGS.postgres_dsn)
+    try:
+        header = await conn.fetchrow(
+            """
+            SELECT g.id, g.date, g.white, g.black, g.result, g.player_color,
+                   g.white_elo, g.black_elo, g.time_control,
+                   m.matched_line_id AS line_id,
+                   m.max_matched_ply,
+                   m.deviation_ply_you,
+                   m.deviation_ply_opp,
+                   m.matching_mode,
+                   m.compliance,
+                   m.who_left_first,
+                   m.tie_lines_json,
+                   m.tags_json
+            FROM games g
+            LEFT JOIN matches m ON g.id = m.game_id
+            WHERE g.id = $1
+            """,
+            game_id,
+        )
+        if header is None:
+            return None
+
+        header_data = dict(header)
+        header_data["tie_lines"] = header_data.get("tie_lines_json") or []
+        header_data["tags"] = header_data.get("tags_json") or []
+
+        moves = await conn.fetch(
+            """
+            SELECT gp.ply, gp.pos_id, p.fen_norm AS fen, gp.san_move, gp.uci_move, gp.repertoire_class, gp.is_self,
+                   gp.clock_seconds, gp.time_spent_seconds, gp.time_spent_fraction,
+                   ap.pre_eval_cp, ap.post_eval_cp, ap.best_uci, ap.your_cpl, ap.rep_cpl,
+                   ap.quality_label
+            FROM game_positions gp
+            LEFT JOIN analysis_ply ap ON gp.game_id = ap.game_id AND gp.ply = ap.ply
+            LEFT JOIN positions p ON gp.pos_id = p.id
+            WHERE gp.game_id = $1
+            ORDER BY gp.ply
+            """,
+            game_id,
+        )
+        return {"header": header_data, "moves": [dict(row) for row in moves]}
+    finally:
+        await conn.close()
+
+
+def _fetch_games_sqlite(limit: int, offset: int) -> list[dict[str, Any]]:
     with _connect_sqlite() as conn:
         rows = queries.fetch_game_overview(conn)
     return rows[offset : offset + limit]
 
 
-def _fetch_game_detail(game_id: int) -> dict[str, Any] | None:
+def _fetch_game_detail_sqlite(game_id: int) -> dict[str, Any] | None:
     with _connect_sqlite() as conn:
         header = queries.fetch_game_header(conn, game_id)
         if header is None:
@@ -51,8 +141,12 @@ def _fetch_game_detail(game_id: int) -> dict[str, Any] | None:
 
 
 async def fetch_games(limit: int, offset: int) -> list[dict[str, Any]]:
-    return await asyncio.to_thread(_fetch_games, limit, offset)
+    if SETTINGS.data_backend == "postgres":
+        return await _fetch_games_postgres(limit, offset)
+    return await asyncio.to_thread(_fetch_games_sqlite, limit, offset)
 
 
 async def fetch_game_detail(game_id: int) -> dict[str, Any] | None:
-    return await asyncio.to_thread(_fetch_game_detail, game_id)
+    if SETTINGS.data_backend == "postgres":
+        return await _fetch_game_detail_postgres(game_id)
+    return await asyncio.to_thread(_fetch_game_detail_sqlite, game_id)

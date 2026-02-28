@@ -167,6 +167,11 @@ Postgres remains the source of truth (request rows, statuses, results, idempoten
 
 See `backend/README.md` for run commands and environment variables.
 
+Render/Neon migration path:
+- Deploy `web/` (Next.js), `backend.api_service`, and `backend.worker_service` as separate Render services.
+- Use Neon for Postgres by setting `POSTGRES_DSN`.
+- To have API game reads come from Neon instead of SQLite, set `DATA_BACKEND=postgres` and apply `storage/postgres/analysis_schema.sql`.
+
 
 ## Web app (Phase 1 shell)
 
