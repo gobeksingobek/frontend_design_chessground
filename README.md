@@ -155,3 +155,14 @@ Key analysis options:
 2) Click Run Analysis on the Overview tab.
 3) Review results across Games, Lines, Time usage, Rating bands, and Review.
 4) After updating PGNs or settings, run analysis again.
+
+## Async backend services (API + Worker)
+
+For server deployments, use the new backend processes in `backend/`:
+
+- API (`backend.api_service:app`): FastAPI validation/auth + sideline request creation + queue enqueue + read APIs.
+- Worker (`backend.worker_service`): Redis Stream consumer-group worker that runs Stockfish branch analysis with retry and dead-letter behavior.
+
+Postgres remains the source of truth (request rows, statuses, results, idempotency), while Redis Streams are transient queue transport only.
+
+See `backend/README.md` for run commands and environment variables.
