@@ -38,6 +38,7 @@ python -m backend.worker_service
 - `REDIS_URL`
 - `API_AUTH_TOKEN`
 - `SQLITE_PATH` (default `data/analysis.db`)
+- `DATA_BACKEND` (`sqlite` default, or `postgres` for Neon-backed game reads)
 - `STOCKFISH_PATH`
 
 Optional tuning:
@@ -78,3 +79,24 @@ Validation failures are returned via FastAPI's `422` structure and are explicitl
 
 
 Phase 3 note: `GET /games/{game_id}` move payload now includes `fen` for each move, enabling sideline enqueue actions from the web game-detail UI.
+
+
+## Render + Neon migration notes
+
+You can run a full web deployment on Render by splitting into services:
+
+- Web service: Next.js app from `web/` (`npm run build && npm run start`)
+- API service: `uvicorn backend.api_service:app --host 0.0.0.0 --port $PORT`
+- Worker service: `python -m backend.worker_service`
+- Redis: Render Key Value/Redis instance
+- Postgres: Neon database
+
+For Neon-only data reads in API `GET /games*`, set:
+
+- `DATA_BACKEND=postgres`
+- `POSTGRES_DSN=<neon connection string>`
+
+Apply `storage/postgres/analysis_schema.sql` in Neon before switching `DATA_BACKEND`.
+The API will then read games/moves/positions from Postgres instead of SQLite.
+
+If `DATA_BACKEND` is omitted (or set to `sqlite`), existing SQLite behavior is unchanged.

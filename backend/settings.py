@@ -6,6 +6,7 @@ import os
 
 @dataclass(frozen=True)
 class BackendSettings:
+    data_backend: str = os.getenv("DATA_BACKEND", "sqlite").strip().lower()
     postgres_dsn: str = os.getenv("POSTGRES_DSN", "postgresql://postgres:postgres@localhost:5432/chessground")
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     sqlite_path: str = os.getenv("SQLITE_PATH", "data/analysis.db")
