@@ -166,3 +166,20 @@ For server deployments, use the new backend processes in `backend/`:
 Postgres remains the source of truth (request rows, statuses, results, idempotency), while Redis Streams are transient queue transport only.
 
 See `backend/README.md` for run commands and environment variables.
+
+
+## Web app (Phase 1 shell)
+
+A web-first shell now lives under `web/` (Next.js + TypeScript) with:
+
+- app shell + navigation (`/overview`, `/games`, `/sidelines`)
+- placeholder login/auth gate
+- typed sideline API client + React Query wiring
+
+Run locally:
+
+```bash
+cd web
+npm install
+npm run dev
+```
