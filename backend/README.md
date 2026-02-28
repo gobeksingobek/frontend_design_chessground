@@ -44,3 +44,32 @@ Optional tuning:
 - `SIDELINE_STREAM_BLOCK_MS`
 - `SIDELINE_CONSUMER_NAME`
 - `STOCKFISH_DEPTH`
+
+## API contract (Phase 0)
+
+The API now documents request/response and error envelopes in OpenAPI:
+
+- `POST /sidelines`
+  - Headers:
+    - `Authorization: Bearer <API_AUTH_TOKEN>`
+    - `Idempotency-Key: <client-generated-key>`
+  - On duplicate idempotency key, returns the existing `SidelineResponse` row.
+
+- `GET /sidelines/{request_id}`
+  - Returns `404` with an error envelope when the request does not exist.
+
+- `GET /sidelines?limit=20`
+  - `limit` is bounded to `[1, 100]` server-side.
+
+Standardized API errors use:
+
+```json
+{
+  "detail": {
+    "error_code": "NOT_FOUND",
+    "detail": "Sideline request not found"
+  }
+}
+```
+
+Validation failures are returned via FastAPI's `422` structure and are explicitly documented in the route responses.
