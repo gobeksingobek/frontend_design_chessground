@@ -13,7 +13,16 @@ from pydantic import BaseModel, Field
 
 from backend import db
 from backend.queue import enqueue_job, ensure_consumer_group, redis_client
-from backend.read_api import fetch_game_detail, fetch_games
+from backend.read_api import (
+    fetch_game_detail,
+    fetch_games,
+    fetch_insights,
+    fetch_lines_stats,
+    fetch_overview_summary,
+    fetch_rating_band_stats,
+    fetch_review_items,
+    fetch_time_usage_stats,
+)
 from backend.settings import SETTINGS
 
 
@@ -306,3 +315,34 @@ async def get_game(game_id: int, _: str = Depends(require_auth)) -> GameDetailRe
     if data is None:
         raise api_error(status_code=404, error_code="NOT_FOUND", detail="Game not found")
     return GameDetailResponse(**data)
+
+
+@app.get("/overview/summary", response_model=dict[str, Any])
+async def get_overview_summary(_: str = Depends(require_auth)) -> dict[str, Any]:
+    return await fetch_overview_summary()
+
+
+@app.get("/lines/stats", response_model=list[dict[str, Any]])
+async def get_lines_stats(_: str = Depends(require_auth)) -> list[dict[str, Any]]:
+    return await fetch_lines_stats()
+
+
+@app.get("/time-usage/stats", response_model=list[dict[str, Any]])
+async def get_time_usage_stats(_: str = Depends(require_auth)) -> list[dict[str, Any]]:
+    return await fetch_time_usage_stats()
+
+
+@app.get("/rating-bands/stats", response_model=list[dict[str, Any]])
+async def get_rating_band_stats(band_size: int = 100, _: str = Depends(require_auth)) -> list[dict[str, Any]]:
+    bounded_band_size = min(max(band_size, 50), 400)
+    return await fetch_rating_band_stats(bounded_band_size)
+
+
+@app.get("/insights", response_model=list[dict[str, Any]])
+async def list_insights(_: str = Depends(require_auth)) -> list[dict[str, Any]]:
+    return await fetch_insights()
+
+
+@app.get("/review/items", response_model=list[dict[str, Any]])
+async def list_review_items(_: str = Depends(require_auth)) -> list[dict[str, Any]]:
+    return await fetch_review_items()
