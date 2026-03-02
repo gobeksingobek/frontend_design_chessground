@@ -77,3 +77,14 @@ export interface GameDetail {
   header: Record<string, unknown>;
   moves: GameMove[];
 }
+
+export interface OverviewSummary {
+  lines: number;
+  manual_priority: number;
+  auto_priority: number;
+  games: number;
+  matched: number;
+  fully_compliant: number;
+}
+
+export type StatsRow = Record<string, string | number | boolean | null>;

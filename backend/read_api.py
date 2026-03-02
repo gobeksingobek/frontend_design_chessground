@@ -6,6 +6,7 @@ from typing import Any
 import asyncpg
 
 from backend.settings import SETTINGS
+from analysis import statistics
 from storage import queries
 
 
@@ -165,3 +166,114 @@ async def fetch_game_detail(game_id: int) -> dict[str, Any] | None:
     if SETTINGS.data_backend == "postgres":
         return await _fetch_game_detail_postgres(game_id)
     return await asyncio.to_thread(_fetch_game_detail_sqlite, game_id)
+
+
+def _fetch_overview_summary_sqlite() -> dict[str, Any]:
+    if not _sqlite_backend_allowed():
+        _raise_sqlite_disabled()
+
+    import sqlite3
+
+    with sqlite3.connect(SETTINGS.sqlite_path) as conn:
+        lines = conn.execute("SELECT COUNT(*) FROM repertoire_lines").fetchone()[0]
+        games = conn.execute("SELECT COUNT(*) FROM games").fetchone()[0]
+        matches = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
+        compliant = conn.execute("SELECT COUNT(*) FROM matches WHERE compliance = 'FULLY_COMPLIANT'").fetchone()[0]
+        manual_priority = conn.execute("SELECT COUNT(*) FROM repertoire_lines WHERE is_priority = 1").fetchone()[0]
+        auto_priority = conn.execute("SELECT COUNT(*) FROM trainer_line_state WHERE auto_priority_score > 0").fetchone()[0]
+    return {
+        "lines": int(lines),
+        "manual_priority": int(manual_priority),
+        "auto_priority": int(auto_priority),
+        "games": int(games),
+        "matched": int(matches),
+        "fully_compliant": int(compliant),
+    }
+
+
+def _stats_not_supported_for_postgres() -> None:
+    raise RuntimeError(
+        "Stats endpoints are currently implemented for SQLite data backend. "
+        "Use DATA_BACKEND=sqlite locally until Postgres parity endpoints are added."
+    )
+
+
+def _fetch_lines_stats_sqlite() -> list[dict[str, Any]]:
+    if not _sqlite_backend_allowed():
+        _raise_sqlite_disabled()
+    import sqlite3
+    with sqlite3.connect(SETTINGS.sqlite_path) as conn:
+        conn.row_factory = sqlite3.Row
+        return statistics.aggregate_by_line(conn)
+
+
+def _fetch_time_usage_stats_sqlite() -> list[dict[str, Any]]:
+    if not _sqlite_backend_allowed():
+        _raise_sqlite_disabled()
+    import sqlite3
+    with sqlite3.connect(SETTINGS.sqlite_path) as conn:
+        conn.row_factory = sqlite3.Row
+        return statistics.aggregate_by_month(conn)
+
+
+def _fetch_rating_band_stats_sqlite(band_size: int) -> list[dict[str, Any]]:
+    if not _sqlite_backend_allowed():
+        _raise_sqlite_disabled()
+    import sqlite3
+    with sqlite3.connect(SETTINGS.sqlite_path) as conn:
+        conn.row_factory = sqlite3.Row
+        return statistics.aggregate_by_rating_band(conn, band_size)
+
+
+def _fetch_insights_sqlite() -> list[dict[str, Any]]:
+    if not _sqlite_backend_allowed():
+        _raise_sqlite_disabled()
+    import sqlite3
+    with sqlite3.connect(SETTINGS.sqlite_path) as conn:
+        conn.row_factory = sqlite3.Row
+        return queries.fetch_insights(conn)
+
+
+def _fetch_review_items_sqlite() -> list[dict[str, Any]]:
+    if not _sqlite_backend_allowed():
+        _raise_sqlite_disabled()
+    import sqlite3
+    with sqlite3.connect(SETTINGS.sqlite_path) as conn:
+        conn.row_factory = sqlite3.Row
+        return queries.fetch_review_items(conn)
+
+
+async def fetch_overview_summary() -> dict[str, Any]:
+    if SETTINGS.data_backend == "postgres":
+        _stats_not_supported_for_postgres()
+    return await asyncio.to_thread(_fetch_overview_summary_sqlite)
+
+
+async def fetch_lines_stats() -> list[dict[str, Any]]:
+    if SETTINGS.data_backend == "postgres":
+        _stats_not_supported_for_postgres()
+    return await asyncio.to_thread(_fetch_lines_stats_sqlite)
+
+
+async def fetch_time_usage_stats() -> list[dict[str, Any]]:
+    if SETTINGS.data_backend == "postgres":
+        _stats_not_supported_for_postgres()
+    return await asyncio.to_thread(_fetch_time_usage_stats_sqlite)
+
+
+async def fetch_rating_band_stats(band_size: int) -> list[dict[str, Any]]:
+    if SETTINGS.data_backend == "postgres":
+        _stats_not_supported_for_postgres()
+    return await asyncio.to_thread(_fetch_rating_band_stats_sqlite, band_size)
+
+
+async def fetch_insights() -> list[dict[str, Any]]:
+    if SETTINGS.data_backend == "postgres":
+        _stats_not_supported_for_postgres()
+    return await asyncio.to_thread(_fetch_insights_sqlite)
+
+
+async def fetch_review_items() -> list[dict[str, Any]]:
+    if SETTINGS.data_backend == "postgres":
+        _stats_not_supported_for_postgres()
+    return await asyncio.to_thread(_fetch_review_items_sqlite)
