@@ -145,6 +145,10 @@ async def on_startup() -> None:
     if SETTINGS.data_backend == "postgres":
         missing = await db.ensure_analysis_schema_exists(app.state.db_pool)
         if missing:
+            async with app.state.db_pool.acquire() as conn:
+                await db.apply_analysis_schema(conn)
+            missing = await db.ensure_analysis_schema_exists(app.state.db_pool)
+        if missing:
             missing_csv = ", ".join(missing)
             raise RuntimeError(
                 "Postgres analysis schema is incomplete. "

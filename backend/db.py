@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import asyncpg
@@ -60,6 +61,17 @@ async def missing_tables(conn: asyncpg.Connection, table_names: tuple[str, ...])
 async def ensure_analysis_schema_exists(pool: asyncpg.Pool) -> list[str]:
     async with pool.acquire() as conn:
         return await missing_tables(conn, REQUIRED_ANALYSIS_TABLES)
+
+
+def _analysis_schema_sql_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "storage" / "postgres" / "analysis_schema.sql"
+
+
+async def apply_analysis_schema(conn: asyncpg.Connection) -> None:
+    sql_path = _analysis_schema_sql_path()
+    if not sql_path.exists():
+        raise RuntimeError(f"Schema file not found: {sql_path}")
+    await conn.execute(sql_path.read_text(encoding="utf-8"))
 
 
 async def insert_sideline_request(
