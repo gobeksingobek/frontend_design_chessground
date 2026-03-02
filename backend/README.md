@@ -112,6 +112,17 @@ Validation failures are returned via FastAPI's `422` structure and are explicitl
 Phase 3 note: `GET /games/{game_id}` move payload now includes `fen` for each move, enabling sideline enqueue actions from the web game-detail UI.
 
 
+
+## Production promotion checklist
+
+Use the following checklist when promoting staging configuration to production:
+
+1. Run a parity pass in staging and promote to production only after parity succeeds.
+2. Keep `DATA_BACKEND=postgres` permanently in Render for API and worker services.
+3. Do not allow production paths to read from or write to SQLite directly.
+4. Tag the release immediately after promotion, then monitor API and worker logs for the first 24 hours.
+5. Keep a rollback plan with both the previous service revision and a known-good environment snapshot.
+
 ## Render + Neon migration notes
 
 ### Current sideline processing mode (development): **bypass**

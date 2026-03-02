@@ -128,6 +128,12 @@ async def require_auth(credentials: HTTPAuthorizationCredentials | None = Depend
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    if SETTINGS.is_production_environment and SETTINGS.data_backend != "postgres":
+        raise RuntimeError(
+            "DATA_BACKEND must be 'postgres' in production environments. "
+            "Set DATA_BACKEND=postgres."
+        )
+
     if (
         SETTINGS.is_render_environment
         and SETTINGS.enforce_postgres_on_render
