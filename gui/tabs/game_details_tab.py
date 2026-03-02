@@ -595,7 +595,23 @@ class GameDetailsTab(QtWidgets.QWidget):
         self.set_current_ply(len(self.moves), orientation)
 
     def _create_sideline_at_deviation(self) -> None:
-        self.status_label.setText("Create sideline at deviation is not implemented yet.")
+        if self.current_game_id is None:
+            self.status_label.setText("No game selected.")
+            return
+        success, message, item = self.controller.request_sideline_for_game_deviation(
+            int(self.current_game_id)
+        )
+        if not success:
+            self.status_label.setText(message)
+            return
+        request_count = int((item or {}).get("request_count") or 1)
+        status = str((item or {}).get("status") or "PENDING")
+        queue_key = str((item or {}).get("queue_key") or "")
+        extra = f" [{status}]" if status else ""
+        key_preview = f" ({queue_key[:10]})" if queue_key else ""
+        self.status_label.setText(
+            f"{message} Requests: {request_count}.{extra}{key_preview}"
+        )
 
     def _reanalyze_game(self) -> None:
         if self.current_game_id is None:

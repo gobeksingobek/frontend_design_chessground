@@ -221,6 +221,23 @@ CREATE TABLE IF NOT EXISTS branch_queue (
     FOREIGN KEY(proposition_id) REFERENCES review_propositions(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS sideline_queue (
+    queue_key TEXT PRIMARY KEY,
+    pos_id INTEGER NOT NULL,
+    move_uci TEXT NOT NULL,
+    target_context TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING'
+        CHECK(status IN ('PENDING', 'EVAL_OK', 'EVAL_WARN', 'APPROVED', 'FAILED')),
+    requested_by_user_id TEXT,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    request_count INTEGER NOT NULL DEFAULT 1,
+    warning_reason TEXT,
+    eval_cp_delta INTEGER,
+    cpl_estimate REAL,
+    FOREIGN KEY(pos_id) REFERENCES positions(id)
+);
+
 CREATE TABLE IF NOT EXISTS insights (
     id INTEGER PRIMARY KEY,
     category TEXT,
@@ -240,6 +257,8 @@ CREATE INDEX IF NOT EXISTS idx_trainer_state_needs_review ON trainer_line_state(
 CREATE INDEX IF NOT EXISTS idx_review_prop_type_status ON review_propositions(proposition_type, status);
 CREATE INDEX IF NOT EXISTS idx_review_prop_status_count ON review_propositions(status, evidence_count);
 CREATE INDEX IF NOT EXISTS idx_review_prop_pos_move ON review_propositions(pos_id, uci_move);
+CREATE INDEX IF NOT EXISTS idx_sideline_queue_pos_status ON sideline_queue(pos_id, status);
+CREATE INDEX IF NOT EXISTS idx_sideline_queue_status ON sideline_queue(status, last_seen_at);
 """.format(version=EXPECTED_SCHEMA_VERSION)
 
 
@@ -271,9 +290,28 @@ CREATE TABLE IF NOT EXISTS branch_queue (
     FOREIGN KEY(proposition_id) REFERENCES review_propositions(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS sideline_queue (
+    queue_key TEXT PRIMARY KEY,
+    pos_id INTEGER NOT NULL,
+    move_uci TEXT NOT NULL,
+    target_context TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING'
+        CHECK(status IN ('PENDING', 'EVAL_OK', 'EVAL_WARN', 'APPROVED', 'FAILED')),
+    requested_by_user_id TEXT,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    request_count INTEGER NOT NULL DEFAULT 1,
+    warning_reason TEXT,
+    eval_cp_delta INTEGER,
+    cpl_estimate REAL,
+    FOREIGN KEY(pos_id) REFERENCES positions(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_review_prop_type_status ON review_propositions(proposition_type, status);
 CREATE INDEX IF NOT EXISTS idx_review_prop_status_count ON review_propositions(status, evidence_count);
 CREATE INDEX IF NOT EXISTS idx_review_prop_pos_move ON review_propositions(pos_id, uci_move);
+CREATE INDEX IF NOT EXISTS idx_sideline_queue_pos_status ON sideline_queue(pos_id, status);
+CREATE INDEX IF NOT EXISTS idx_sideline_queue_status ON sideline_queue(status, last_seen_at);
 """
 
 
