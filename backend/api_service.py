@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from typing import Any
+from typing import Literal
 
 import asyncpg
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -24,11 +25,23 @@ class ValidationErrorResponse(BaseModel):
     detail: list[dict[str, Any]]
 
 
+class EvalMetadata(BaseModel):
+    cpl_estimate: float | None = None
+    eval_depth: int | None = Field(default=None, ge=0)
+    eval_time_ms: int | None = Field(default=None, ge=0)
+    confidence_tag: Literal["high", "medium", "low", "unavailable"]
+    candidate_move_uci: str | None = None
+    budget_depth: int = Field(ge=1)
+    budget_time_ms: int = Field(ge=1)
+    engine: Literal["stockfish_wasm"]
+
+
 class SidelineCreateRequest(BaseModel):
     game_id: str = Field(min_length=1, examples=["game-12345"])
     move_ply: int = Field(ge=1, examples=[12])
     fen: str = Field(min_length=1, examples=["rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 0 1"])
     branch_moves: list[str] = Field(min_length=1, examples=[["d7d5", "c2c4"]])
+    eval_metadata: EvalMetadata | None = None
 
 
 class SidelineResponse(BaseModel):

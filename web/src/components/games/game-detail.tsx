@@ -1,15 +1,14 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
-import { createSideline, getGame } from "@/lib/api-client";
+import { SidelineAnalysisForm } from "@/components/analysis/sideline-analysis-form";
+import { getGame } from "@/lib/api-client";
 
 export function GameDetail({ gameId }: { gameId: number }) {
-  const queryClient = useQueryClient();
   const [selectedPly, setSelectedPly] = useState<number | null>(null);
-  const [branchMovesInput, setBranchMovesInput] = useState("");
-  const [createdSideline, setCreatedSideline] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["game", gameId],
@@ -20,37 +19,6 @@ export function GameDetail({ gameId }: { gameId: number }) {
     if (!data || selectedPly === null) return null;
     return data.moves.find((move) => move.ply === selectedPly) ?? null;
   }, [data, selectedPly]);
-
-  const createSidelineMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedMove?.fen) {
-        throw new Error("Selected move does not have an available FEN");
-      }
-      const branchMoves = branchMovesInput
-        .split(/[\s,]+/)
-        .map((item) => item.trim())
-        .filter(Boolean);
-
-      if (branchMoves.length === 0) {
-        throw new Error("Enter at least one UCI move");
-      }
-
-      const idempotencyKey = `game-${gameId}-ply-${selectedMove.ply}-${Date.now()}`;
-      return createSideline(
-        {
-          game_id: String(gameId),
-          move_ply: selectedMove.ply,
-          fen: selectedMove.fen,
-          branch_moves: branchMoves,
-        },
-        idempotencyKey,
-      );
-    },
-    onSuccess: (result) => {
-      setCreatedSideline(result.id);
-      queryClient.invalidateQueries({ queryKey: ["sidelines", 20] });
-    },
-  });
 
   if (isLoading) return <p>Loading game detail...</p>;
   if (error) return <p>Failed to load game detail: {(error as Error).message}</p>;
@@ -73,28 +41,37 @@ export function GameDetail({ gameId }: { gameId: number }) {
             <option value="">Select a move...</option>
             {data?.moves.map((move) => (
               <option key={move.ply} value={move.ply}>
-                Ply {move.ply} — {move.san_move ?? move.uci_move ?? "-"}
+                Ply {move.ply} - {move.san_move ?? move.uci_move ?? "-"}
               </option>
             ))}
           </select>
         </label>
 
-        <label>
-          Branch moves (UCI, comma or whitespace separated)
-          <input
-            value={branchMovesInput}
-            onChange={(event) => setBranchMovesInput(event.target.value)}
-            placeholder="e2e4 e7e5 g1f3"
+        {selectedMove?.fen ? (
+          <p>
+            <Link
+              href={{
+                pathname: "/analysis",
+                query: { game_id: String(gameId), move_ply: String(selectedMove.ply), fen: selectedMove.fen },
+              }}
+            >
+              Open in /analysis with this position
+            </Link>
+          </p>
+        ) : null}
+
+        {selectedMove?.fen ? (
+          <SidelineAnalysisForm
+            key={`${selectedMove.ply}-${selectedMove.fen}`}
+            title="Queue sideline from this game move"
+            initialGameId={String(gameId)}
+            initialMovePly={selectedMove.ply}
+            initialFen={selectedMove.fen}
+            lockedFields={{ gameId: true, movePly: true, fen: true }}
           />
-        </label>
-
-        <button type="button" onClick={() => createSidelineMutation.mutate()} disabled={createSidelineMutation.isPending}>
-          {createSidelineMutation.isPending ? "Queueing..." : "Queue sideline"}
-        </button>
-
-        {selectedMove?.fen ? <small>Selected FEN: {selectedMove.fen}</small> : <small>Select a move to load FEN.</small>}
-        {createSidelineMutation.isError ? <p>Failed: {(createSidelineMutation.error as Error).message}</p> : null}
-        {createdSideline ? <p>Queued sideline request: {createdSideline}</p> : null}
+        ) : (
+          <small>Select a move with available FEN to run quick eval.</small>
+        )}
       </div>
 
       <div className="card">

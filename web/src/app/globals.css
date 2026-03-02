@@ -37,6 +37,9 @@ input, button, select {
   padding: 10px;
 }
 button { cursor: pointer; }
+label { display: grid; gap: 6px; }
+.ok { color: #22c55e; margin: 0; }
+.warn { color: #f59e0b; margin: 0; }
 
 .code { white-space: pre-wrap; overflow-x: auto; font-size: 12px; background: #0a1224; border: 1px solid #243555; padding: 10px; border-radius: 8px; }
 

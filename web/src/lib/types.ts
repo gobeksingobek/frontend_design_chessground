@@ -1,5 +1,18 @@
 export type SidelineStatus = "queued" | "processing" | "retry" | "failed" | "completed";
 
+export type EvalConfidenceTag = "high" | "medium" | "low" | "unavailable";
+
+export interface SidelineEvalMetadata {
+  cpl_estimate: number | null;
+  eval_depth: number | null;
+  eval_time_ms: number | null;
+  confidence_tag: EvalConfidenceTag;
+  candidate_move_uci: string | null;
+  budget_depth: number;
+  budget_time_ms: number;
+  engine: "stockfish_wasm";
+}
+
 export interface SidelineResponse {
   id: string;
   game_id: string;
@@ -19,6 +32,7 @@ export interface SidelineCreateRequest {
   move_ply: number;
   fen: string;
   branch_moves: string[];
+  eval_metadata?: SidelineEvalMetadata;
 }
 
 export interface GameOverview {

@@ -79,11 +79,14 @@ def run_stockfish_analysis(payload: dict[str, Any]) -> dict[str, Any]:
             score = info["score"].pov(board.turn).score(mate_score=100000)
             analysis.append({"move": uci, "score_cp": score})
 
-    return {
+    result: dict[str, Any] = {
         "start_fen": payload["fen"],
         "branch_analysis": analysis,
         "depth": SETTINGS.stockfish_depth,
     }
+    if payload.get("eval_metadata") is not None:
+        result["advisory_eval"] = payload["eval_metadata"]
+    return result
 
 
 async def process_message(pool: asyncpg.Pool, redis, message_id: str, values: dict[str, str]) -> None:
