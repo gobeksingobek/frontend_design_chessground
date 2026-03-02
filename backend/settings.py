@@ -14,6 +14,14 @@ def _is_render_environment() -> bool:
     return bool(os.getenv("RENDER")) or bool(os.getenv("RENDER_SERVICE_ID"))
 
 
+def _is_production_environment() -> bool:
+    for env_name in ("ENVIRONMENT", "APP_ENV", "PYTHON_ENV"):
+        value = os.getenv(env_name)
+        if value and value.strip().lower() == "production":
+            return True
+    return _is_render_environment()
+
+
 def _default_data_backend() -> str:
     return "postgres" if _is_render_environment() else "sqlite"
 
@@ -27,6 +35,7 @@ def _parse_csv(value: str | None) -> tuple[str, ...]:
 @dataclass(frozen=True)
 class BackendSettings:
     is_render_environment: bool = _is_render_environment()
+    is_production_environment: bool = _is_production_environment()
     data_backend: str = os.getenv("DATA_BACKEND", _default_data_backend()).strip().lower()
     postgres_dsn: str = os.getenv("POSTGRES_DSN", "postgresql://postgres:postgres@localhost:5432/chessground")
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
