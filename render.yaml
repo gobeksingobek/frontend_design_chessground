@@ -30,10 +30,6 @@ services:
         value: "1"
       - key: API_CORS_ORIGINS
         sync: false
-      - key: SIDELINE_MAX_RETRIES
-        value: "3"
-      - key: SIDELINE_STREAM_BLOCK_MS
-        value: "5000"
 
   - type: worker
     name: chessground-worker
@@ -47,7 +43,3 @@ services:
         sync: false
       - key: STOCKFISH_PATH
         sync: false
-      - key: SIDELINE_MAX_RETRIES
-        value: "3"
-      - key: SIDELINE_STREAM_BLOCK_MS
-        value: "5000"

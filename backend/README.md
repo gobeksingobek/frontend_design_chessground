@@ -124,9 +124,11 @@ You can run a full web deployment on Render by splitting into services:
 
 For Neon-only data reads in API `GET /games*`, set:
 
-- `DATA_BACKEND=postgres`
-- `POSTGRES_DSN=<neon connection string>`
-- `API_CORS_ORIGINS=<https://your-web-service.onrender.com>`
+- Web: `NEXT_PUBLIC_API_BASE_URL=<https://your-api-service.onrender.com>`, `NEXT_PUBLIC_API_TOKEN=<same token as API_AUTH_TOKEN>`
+- API: `DATA_BACKEND=postgres`, `ENFORCE_POSTGRES_ON_RENDER=1`, `POSTGRES_DSN=<neon connection string>`, `REDIS_URL=<render redis url>`, `API_AUTH_TOKEN=<shared token>`, `API_CORS_ORIGINS=<https://your-web-service.onrender.com>`
+- Worker: `POSTGRES_DSN=<neon connection string>`, `REDIS_URL=<render redis url>`, `STOCKFISH_PATH=<engine path>`
+
+After changing env vars, redeploy web/API/worker.
 
 Then run:
 

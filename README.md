@@ -169,8 +169,12 @@ See `backend/README.md` for run commands and environment variables.
 
 Render/Neon migration path:
 - Deploy `web/` (Next.js), `backend.api_service`, and `backend.worker_service` as separate Render services.
-- Use Neon for Postgres by setting `POSTGRES_DSN`.
-- Set `DATA_BACKEND=postgres` for API reads and configure `API_CORS_ORIGINS` to your web domain.
+- Configure Render env vars exactly as follows:
+  - Web: `NEXT_PUBLIC_API_BASE_URL` (API URL, not web URL), `NEXT_PUBLIC_API_TOKEN`
+  - API: `POSTGRES_DSN`, `REDIS_URL`, `API_AUTH_TOKEN`, `API_CORS_ORIGINS`, `DATA_BACKEND=postgres`, `ENFORCE_POSTGRES_ON_RENDER=1`
+  - Worker: `POSTGRES_DSN`, `REDIS_URL`, `STOCKFISH_PATH`
+- Verify `NEXT_PUBLIC_API_TOKEN` and `API_AUTH_TOKEN` match (unless browser login flow intentionally overrides token usage).
+- Redeploy web, API, and worker services after env var updates.
 - Bootstrap Postgres schema before API startup:
   - `python -m backend.bootstrap_postgres_schema`
 - Backfill existing SQLite analysis data:
