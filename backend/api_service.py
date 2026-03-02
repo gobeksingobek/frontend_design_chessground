@@ -7,6 +7,7 @@ from typing import Literal
 
 import asyncpg
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
@@ -103,6 +104,16 @@ class GameDetailResponse(BaseModel):
 app = FastAPI(title="ChessGround API Service")
 auth_scheme = HTTPBearer(auto_error=False)
 
+if SETTINGS.api_cors_origins:
+    allow_all_origins = len(SETTINGS.api_cors_origins) == 1 and SETTINGS.api_cors_origins[0] == "*"
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(SETTINGS.api_cors_origins),
+        allow_credentials=not allow_all_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 
 def api_error(status_code: int, error_code: str, detail: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail={"error_code": error_code, "detail": detail})
@@ -117,10 +128,29 @@ async def require_auth(credentials: HTTPAuthorizationCredentials | None = Depend
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    if (
+        SETTINGS.is_render_environment
+        and SETTINGS.enforce_postgres_on_render
+        and SETTINGS.data_backend != "postgres"
+    ):
+        raise RuntimeError(
+            "DATA_BACKEND must be 'postgres' when running on Render. "
+            "Set DATA_BACKEND=postgres."
+        )
+
     app.state.db_pool = await db.create_pool()
     await db.ensure_schema(app.state.db_pool)
     app.state.redis = redis_client()
     await ensure_consumer_group(app.state.redis)
+    if SETTINGS.data_backend == "postgres":
+        missing = await db.ensure_analysis_schema_exists(app.state.db_pool)
+        if missing:
+            missing_csv = ", ".join(missing)
+            raise RuntimeError(
+                "Postgres analysis schema is incomplete. "
+                f"Missing table(s): {missing_csv}. "
+                "Run `python -m backend.bootstrap_postgres_schema` before starting the API."
+            )
 
 
 @app.on_event("shutdown")

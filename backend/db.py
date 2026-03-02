@@ -7,6 +7,14 @@ import asyncpg
 
 from backend.settings import SETTINGS
 
+REQUIRED_ANALYSIS_TABLES = (
+    "positions",
+    "games",
+    "game_positions",
+    "matches",
+    "analysis_ply",
+)
+
 
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS sideline_requests (
@@ -33,6 +41,25 @@ async def create_pool() -> asyncpg.Pool:
 async def ensure_schema(pool: asyncpg.Pool) -> None:
     async with pool.acquire() as conn:
         await conn.execute(CREATE_TABLE_SQL)
+
+
+async def missing_tables(conn: asyncpg.Connection, table_names: tuple[str, ...]) -> list[str]:
+    rows = await conn.fetch(
+        """
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = ANY($1::text[])
+        """,
+        list(table_names),
+    )
+    existing = {str(row["table_name"]) for row in rows}
+    return [name for name in table_names if name not in existing]
+
+
+async def ensure_analysis_schema_exists(pool: asyncpg.Pool) -> list[str]:
+    async with pool.acquire() as conn:
+        return await missing_tables(conn, REQUIRED_ANALYSIS_TABLES)
 
 
 async def insert_sideline_request(

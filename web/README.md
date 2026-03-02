@@ -18,10 +18,12 @@ npm install
 npm run dev
 ```
 
-Set optional env vars:
+Set env vars:
 
 - `NEXT_PUBLIC_API_BASE_URL` (default `http://localhost:8000`)
 - `NEXT_PUBLIC_API_TOKEN` (default `dev-token`)
+
+For Render deployments, `NEXT_PUBLIC_API_BASE_URL` must point to your deployed API service URL.
 
 ## Notes
 

@@ -1,0 +1,53 @@
+services:
+  - type: web
+    name: chessground-web
+    runtime: node
+    rootDir: web
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_API_TOKEN
+        sync: false
+
+  - type: web
+    name: chessground-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: python -m backend.bootstrap_postgres_schema && python -m backend.backfill_sqlite_to_postgres --sqlite-path ${SQLITE_PATH:-data/analysis.db} --skip-if-missing
+    startCommand: uvicorn backend.api_service:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: POSTGRES_DSN
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: API_AUTH_TOKEN
+        sync: false
+      - key: DATA_BACKEND
+        value: postgres
+      - key: ENFORCE_POSTGRES_ON_RENDER
+        value: "1"
+      - key: API_CORS_ORIGINS
+        sync: false
+      - key: SIDELINE_MAX_RETRIES
+        value: "3"
+      - key: SIDELINE_STREAM_BLOCK_MS
+        value: "5000"
+
+  - type: worker
+    name: chessground-worker
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m backend.worker_service
+    envVars:
+      - key: POSTGRES_DSN
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: STOCKFISH_PATH
+        sync: false
+      - key: SIDELINE_MAX_RETRIES
+        value: "3"
+      - key: SIDELINE_STREAM_BLOCK_MS
+        value: "5000"

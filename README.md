@@ -170,7 +170,12 @@ See `backend/README.md` for run commands and environment variables.
 Render/Neon migration path:
 - Deploy `web/` (Next.js), `backend.api_service`, and `backend.worker_service` as separate Render services.
 - Use Neon for Postgres by setting `POSTGRES_DSN`.
-- To have API game reads come from Neon instead of SQLite, set `DATA_BACKEND=postgres` and apply `storage/postgres/analysis_schema.sql`.
+- Set `DATA_BACKEND=postgres` for API reads and configure `API_CORS_ORIGINS` to your web domain.
+- Bootstrap Postgres schema before API startup:
+  - `python -m backend.bootstrap_postgres_schema`
+- Backfill existing SQLite analysis data:
+  - `python -m backend.backfill_sqlite_to_postgres --sqlite-path data/analysis.db`
+- A Render blueprint is included at `render.yaml`.
 
 
 ## Web app (Phase 1 shell)

@@ -10,7 +10,10 @@ This directory introduces two deployable backend processes that keep Neon/Postgr
   - Enforces idempotency (`Idempotency-Key`) via a unique Postgres constraint.
   - Writes request records to Postgres, then enqueues jobs to Redis Streams.
   - Exposes read APIs for request status.
-  - `GET /games` and `GET /games/{game_id}` for web Phase 2 games/game-detail screens (reads from SQLite analysis DB).
+  - `GET /games` and `GET /games/{game_id}` for web games/game-detail screens.
+  - Validates analysis schema at startup when `DATA_BACKEND=postgres` (fails fast if required tables are missing).
+  - Enforces `DATA_BACKEND=postgres` on Render by default (`ENFORCE_POSTGRES_ON_RENDER=1`).
+  - Supports CORS origin allow-list via `API_CORS_ORIGINS`.
 
 - `backend.worker_service`
   - Uses Redis consumer groups for horizontal scaling.
@@ -32,17 +35,45 @@ uvicorn backend.api_service:app --host 0.0.0.0 --port 8000
 python -m backend.worker_service
 ```
 
+## Bootstrap and backfill commands
+
+Before running API in Postgres mode, bootstrap schema once:
+
+```bash
+python -m backend.bootstrap_postgres_schema
+```
+
+Validate schema only:
+
+```bash
+python -m backend.bootstrap_postgres_schema --validate-only
+```
+
+Backfill existing SQLite analysis data into Postgres:
+
+```bash
+python -m backend.backfill_sqlite_to_postgres --sqlite-path data/analysis.db
+```
+
+Safe no-op backfill (useful in deploy hooks when SQLite may not exist):
+
+```bash
+python -m backend.backfill_sqlite_to_postgres --sqlite-path data/analysis.db --skip-if-missing
+```
+
 ## Required env vars
 
 - `POSTGRES_DSN` (Neon/Postgres DSN)
 - `REDIS_URL`
 - `API_AUTH_TOKEN`
-- `SQLITE_PATH` (default `data/analysis.db`)
-- `DATA_BACKEND` (`sqlite` default, or `postgres` for Neon-backed game reads)
+- `DATA_BACKEND` (`postgres` recommended; Render defaults to postgres mode)
 - `STOCKFISH_PATH`
 
 Optional tuning:
 
+- `API_CORS_ORIGINS` (comma-separated list such as `https://your-web.onrender.com`)
+- `ENFORCE_POSTGRES_ON_RENDER` (`1` by default)
+- `SQLITE_PATH` (dev/local fallback for read APIs when `DATA_BACKEND=sqlite`)
 - `SIDELINE_MAX_RETRIES`
 - `SIDELINE_STREAM_BLOCK_MS`
 - `SIDELINE_CONSUMER_NAME`
@@ -95,8 +126,15 @@ For Neon-only data reads in API `GET /games*`, set:
 
 - `DATA_BACKEND=postgres`
 - `POSTGRES_DSN=<neon connection string>`
+- `API_CORS_ORIGINS=<https://your-web-service.onrender.com>`
 
-Apply `storage/postgres/analysis_schema.sql` in Neon before switching `DATA_BACKEND`.
-The API will then read games/moves/positions from Postgres instead of SQLite.
+Then run:
 
-If `DATA_BACKEND` is omitted (or set to `sqlite`), existing SQLite behavior is unchanged.
+```bash
+python -m backend.bootstrap_postgres_schema
+python -m backend.backfill_sqlite_to_postgres --sqlite-path data/analysis.db
+```
+
+The API will read games/moves/positions from Postgres instead of SQLite.
+
+If `DATA_BACKEND=sqlite`, existing SQLite behavior remains available for local development.
