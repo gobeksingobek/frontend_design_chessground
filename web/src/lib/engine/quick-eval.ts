@@ -36,7 +36,10 @@ export function buildUnavailableMetadata(candidateMoveUci: string | null): Sidel
 }
 
 export function isGoodCandidate(metadata: SidelineEvalMetadata | null): boolean {
-  return metadata?.cpl_estimate !== null ? metadata.cpl_estimate <= GOOD_CANDIDATE_CPL : false;
+  if (metadata?.cpl_estimate == null) {
+    return false;
+  }
+  return metadata.cpl_estimate <= GOOD_CANDIDATE_CPL;
 }
 
 export async function estimateQuickEvalMetadata({
