@@ -1,5 +1,12 @@
 import { getWebToken } from "@/lib/auth";
-import type { GameDetail, GameOverview, SidelineCreateRequest, SidelineResponse } from "@/lib/types";
+import type {
+  GameDetail,
+  GameOverview,
+  OverviewSummary,
+  SidelineCreateRequest,
+  SidelineResponse,
+  StatsRow,
+} from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN ?? "dev-token";
@@ -23,6 +30,15 @@ async function unwrap<T>(response: Response): Promise<T> {
     throw new Error(text || `Request failed with status ${response.status}`);
   }
   return (await response.json()) as T;
+}
+
+async function getStats(path: string): Promise<StatsRow[]> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<StatsRow[]>(response);
 }
 
 export async function listSidelines(limit = 20): Promise<SidelineResponse[]> {
@@ -68,4 +84,33 @@ export async function getGame(gameId: number): Promise<GameDetail> {
     cache: "no-store",
   });
   return unwrap<GameDetail>(response);
+}
+
+export async function getOverviewSummary(): Promise<OverviewSummary> {
+  const response = await fetch(`${API_BASE_URL}/overview/summary`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<OverviewSummary>(response);
+}
+
+export async function listLineStats(): Promise<StatsRow[]> {
+  return getStats("/lines/stats");
+}
+
+export async function listTimeUsageStats(): Promise<StatsRow[]> {
+  return getStats("/time-usage/stats");
+}
+
+export async function listRatingBandStats(bandSize = 100): Promise<StatsRow[]> {
+  return getStats(`/rating-bands/stats?band_size=${bandSize}`);
+}
+
+export async function listInsights(): Promise<StatsRow[]> {
+  return getStats("/insights");
+}
+
+export async function listReviewItems(): Promise<StatsRow[]> {
+  return getStats("/review/items");
 }
