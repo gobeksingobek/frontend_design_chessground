@@ -386,6 +386,34 @@ class AppController:
                 return False, "Analysis is running. Try again after completion."
         return queries.disapprove_review_proposition(self.conn, proposition_id)
 
+
+    def request_sideline_for_game_deviation(self, game_id: int) -> tuple[bool, str, dict | None]:
+        requester = self.config.player_names[0] if self.config.player_names else None
+        return queries.request_sideline_for_game_deviation(
+            self.conn,
+            int(game_id),
+            requested_by_user_id=requester,
+        )
+
+    def update_sideline_queue_status(
+        self,
+        queue_key: str,
+        status: str,
+        warning_reason: str | None = None,
+        eval_cp_delta: int | None = None,
+        cpl_estimate: float | None = None,
+        next_pos_id: int | None = None,
+    ) -> tuple[bool, str]:
+        return queries.update_sideline_queue_status(
+            self.conn,
+            queue_key,
+            status,
+            warning_reason=warning_reason,
+            eval_cp_delta=eval_cp_delta,
+            cpl_estimate=cpl_estimate,
+            next_pos_id=next_pos_id,
+        )
+
     def get_insights(self) -> list[dict]:
         return queries.fetch_insights(self.conn)
 

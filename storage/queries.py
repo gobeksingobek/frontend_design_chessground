@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 
 import sqlite3
 
+SIDELINE_PENDING_STATUSES = ("PENDING", "EVAL_OK", "EVAL_WARN")
+
 
 def compute_game_hash(tags: dict, moves_uci: list[str]) -> str:
     hasher = hashlib.sha1()
@@ -394,6 +396,183 @@ def disapprove_review_proposition(
     return True, "Proposition disapproved."
 
 
+
+def sideline_queue_key(pos_id: int, move_uci: str, target_context: str) -> str:
+    payload = f"{int(pos_id)}|{move_uci.strip()}|{target_context.strip()}"
+    return hashlib.sha1(payload.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def upsert_sideline_queue_request(
+    conn: sqlite3.Connection,
+    pos_id: int,
+    move_uci: str,
+    target_context: str,
+    requested_by_user_id: str | None = None,
+) -> dict:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    queue_key = sideline_queue_key(pos_id, move_uci, target_context)
+    conn.execute(
+        """
+        INSERT INTO sideline_queue (
+            queue_key,
+            pos_id,
+            move_uci,
+            target_context,
+            status,
+            requested_by_user_id,
+            first_seen_at,
+            last_seen_at,
+            request_count
+        )
+        VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?, 1)
+        ON CONFLICT(queue_key) DO UPDATE SET
+            last_seen_at = excluded.last_seen_at,
+            request_count = sideline_queue.request_count + 1,
+            requested_by_user_id = COALESCE(sideline_queue.requested_by_user_id, excluded.requested_by_user_id)
+        """,
+        (
+            queue_key,
+            int(pos_id),
+            move_uci,
+            target_context,
+            requested_by_user_id,
+            now_iso,
+            now_iso,
+        ),
+    )
+    conn.commit()
+    row = conn.execute(
+        """
+        SELECT queue_key, pos_id, move_uci, target_context, status, requested_by_user_id,
+               first_seen_at, last_seen_at, request_count, warning_reason, eval_cp_delta, cpl_estimate
+        FROM sideline_queue
+        WHERE queue_key = ?
+        """,
+        (queue_key,),
+    ).fetchone()
+    return dict(row) if row else {"queue_key": queue_key}
+
+
+def request_sideline_for_game_deviation(
+    conn: sqlite3.Connection,
+    game_id: int,
+    requested_by_user_id: str | None = None,
+) -> tuple[bool, str, dict | None]:
+    row = conn.execute(
+        """
+        SELECT gp.pos_id, gp.uci_move, m.deviation_ply_you, m.matched_line_id
+        FROM matches m
+        JOIN game_positions gp
+          ON gp.game_id = m.game_id
+         AND gp.ply = m.deviation_ply_you
+        WHERE m.game_id = ?
+          AND m.compliance = 'YOU_DEVIATED'
+          AND m.deviation_ply_you IS NOT NULL
+          AND gp.uci_move IS NOT NULL
+        """,
+        (int(game_id),),
+    ).fetchone()
+    if not row:
+        return False, "No self-deviation move found for this game.", None
+
+    pos_id = int(row["pos_id"])
+    move_uci = str(row["uci_move"])
+    deviation_ply = int(row["deviation_ply_you"] or 0)
+    line_id = row["matched_line_id"] or "unmatched"
+    target_context = f"game:{int(game_id)}|line:{line_id}|ply:{deviation_ply}"
+    item = upsert_sideline_queue_request(
+        conn,
+        pos_id=pos_id,
+        move_uci=move_uci,
+        target_context=target_context,
+        requested_by_user_id=requested_by_user_id,
+    )
+    return True, "Sideline request queued.", item
+
+
+def update_sideline_queue_status(
+    conn: sqlite3.Connection,
+    queue_key: str,
+    status: str,
+    warning_reason: str | None = None,
+    eval_cp_delta: int | None = None,
+    cpl_estimate: float | None = None,
+    next_pos_id: int | None = None,
+) -> tuple[bool, str]:
+    status_up = (status or "").strip().upper()
+    allowed = {"PENDING", "EVAL_OK", "EVAL_WARN", "APPROVED", "FAILED"}
+    if status_up not in allowed:
+        return False, f"Unsupported sideline status: {status}"
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    result = conn.execute(
+        """
+        UPDATE sideline_queue
+        SET status = ?,
+            warning_reason = ?,
+            eval_cp_delta = ?,
+            cpl_estimate = ?,
+            last_seen_at = ?
+        WHERE queue_key = ?
+        """,
+        (status_up, warning_reason, eval_cp_delta, cpl_estimate, now_iso, queue_key),
+    )
+    if result.rowcount <= 0:
+        conn.rollback()
+        return False, "Sideline queue item not found."
+
+    if status_up == "APPROVED" and next_pos_id is not None:
+        row = conn.execute(
+            "SELECT pos_id, move_uci FROM sideline_queue WHERE queue_key = ?",
+            (queue_key,),
+        ).fetchone()
+        if not row:
+            conn.rollback()
+            return False, "Sideline queue item not found."
+        pos_id = int(row["pos_id"])
+        move_uci = str(row["move_uci"])
+
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO repertoire_edges (
+                pos_id, uci_move, next_pos_id, weight, sources_json, is_priority_edge, is_user_mainline
+            )
+            VALUES (?, ?, ?, 1, ?, 0, 0)
+            """,
+            (
+                pos_id,
+                move_uci,
+                int(next_pos_id),
+                json.dumps(["sideline_queue", queue_key]),
+            ),
+        )
+
+        line_id = f"sideline::{queue_key[:12]}"
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO repertoire_lines (line_id, source_pgn, is_priority, side_to_play, metadata_json)
+            VALUES (?, 'sideline_queue', 0, 'white', ?)
+            """,
+            (line_id, json.dumps({"queue_key": queue_key})),
+        )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO repertoire_compact (
+                line_id, moves_json, san_moves_json, pos_ids_json, ply_count
+            )
+            VALUES (?, ?, ?, ?, 1)
+            """,
+            (
+                line_id,
+                json.dumps([move_uci]),
+                json.dumps([move_uci]),
+                json.dumps([pos_id, int(next_pos_id)]),
+            ),
+        )
+
+    conn.commit()
+    return True, "Sideline queue item updated."
+
 def fetch_insights(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
         """
@@ -435,36 +614,62 @@ def fetch_tree_repertoire_children(
     having_clause = "HAVING self_count > 0" if my_side_only else ""
     rows = conn.execute(
         f"""
-        SELECT lp.uci_move,
-               MIN(lp.san_move) AS san_move,
-               lp.next_pos_id,
-               COUNT(*) AS weight,
-               MAX(CASE WHEN rl.is_priority = 1 THEN 1 ELSE 0 END) AS is_priority_edge,
-               MAX(CASE WHEN re.is_user_mainline = 1 THEN 1 ELSE 0 END) AS is_user_mainline,
-               SUM(
-                   CASE
-                       WHEN (
-                           (rl.side_to_play = 'white' AND (lp.ply % 2) = 1)
-                           OR
-                           (rl.side_to_play = 'black' AND (lp.ply % 2) = 0)
-                       )
-                       THEN 1
-                       ELSE 0
-                   END
-               ) AS self_count
-        FROM line_positions lp
-        JOIN repertoire_lines rl
-          ON rl.line_id = lp.line_id
-        LEFT JOIN repertoire_edges re
-          ON re.pos_id = lp.pos_id
-         AND re.uci_move = lp.uci_move
-         AND re.next_pos_id = lp.next_pos_id
-        WHERE lp.pos_id = ?
-        GROUP BY lp.uci_move, lp.next_pos_id
-        {having_clause}
-        ORDER BY weight DESC, lp.uci_move
+        WITH repertoire_rows AS (
+            SELECT lp.uci_move,
+                   MIN(lp.san_move) AS san_move,
+                   lp.next_pos_id,
+                   COUNT(*) AS weight,
+                   MAX(CASE WHEN rl.is_priority = 1 THEN 1 ELSE 0 END) AS is_priority_edge,
+                   MAX(CASE WHEN re.is_user_mainline = 1 THEN 1 ELSE 0 END) AS is_user_mainline,
+                   SUM(
+                       CASE
+                           WHEN (
+                               (rl.side_to_play = 'white' AND (lp.ply % 2) = 1)
+                               OR
+                               (rl.side_to_play = 'black' AND (lp.ply % 2) = 0)
+                           )
+                           THEN 1
+                           ELSE 0
+                       END
+                   ) AS self_count,
+                   0 AS is_sideline_pending
+            FROM line_positions lp
+            JOIN repertoire_lines rl
+              ON rl.line_id = lp.line_id
+            LEFT JOIN repertoire_edges re
+              ON re.pos_id = lp.pos_id
+             AND re.uci_move = lp.uci_move
+             AND re.next_pos_id = lp.next_pos_id
+            WHERE lp.pos_id = ?
+            GROUP BY lp.uci_move, lp.next_pos_id
+            {having_clause}
+        ),
+        pending_sidelines AS (
+            SELECT sq.move_uci AS uci_move,
+                   sq.move_uci AS san_move,
+                   NULL AS next_pos_id,
+                   0 AS weight,
+                   0 AS is_priority_edge,
+                   0 AS is_user_mainline,
+                   CASE WHEN ? = 1 THEN 1 ELSE 0 END AS self_count,
+                   1 AS is_sideline_pending
+            FROM sideline_queue sq
+            WHERE sq.pos_id = ?
+              AND sq.status IN ('PENDING', 'EVAL_OK', 'EVAL_WARN')
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM repertoire_rows rr
+                  WHERE rr.uci_move = sq.move_uci
+              )
+        )
+        SELECT *
+        FROM repertoire_rows
+        UNION ALL
+        SELECT *
+        FROM pending_sidelines
+        ORDER BY is_sideline_pending DESC, weight DESC, uci_move
         """,
-        (int(pos_id),),
+        (int(pos_id), 1 if my_side_only else 0, int(pos_id)),
     ).fetchall()
     return [dict(row) for row in rows]
 
