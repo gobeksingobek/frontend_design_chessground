@@ -114,6 +114,28 @@ Phase 3 note: `GET /games/{game_id}` move payload now includes `fen` for each mo
 
 ## Render + Neon migration notes
 
+### Current sideline processing mode (development): **bypass**
+
+For development right now, keep the worker service scaled to `0` (or disabled). In this mode:
+
+- `POST /sidelines` requests are accepted and persisted.
+- Jobs are enqueued to Redis Streams.
+- Status remains `queued` because no worker is consuming.
+
+### How to enable sideline processing later
+
+1. Scale `chessground-worker` to at least one instance.
+2. Set `STOCKFISH_PATH` to a valid executable path available in the worker runtime (for example `/usr/games/stockfish`, if installed there).
+3. Verify worker startup:
+
+   ```bash
+   python -m backend.worker_service
+   ```
+
+4. Trigger a sideline request and poll `GET /sidelines/{request_id}` to confirm status transitions from `queued` to `completed` or `failed`.
+
+If a request stays `queued`, check worker scale, Redis/Postgres connectivity, and the configured `STOCKFISH_PATH`.
+
 You can run a full web deployment on Render by splitting into services:
 
 - Web service: Next.js app from `web/` (`npm run build && npm run start`)
