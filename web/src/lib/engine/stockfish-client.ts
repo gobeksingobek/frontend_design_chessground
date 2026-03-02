@@ -179,7 +179,7 @@ class StockfishClient {
 
   private async runExclusive<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.queueTail;
-    let release: (() => void) | null = null;
+    let release: () => void = () => {};
     this.queueTail = new Promise<void>((resolve) => {
       release = resolve;
     });
@@ -187,7 +187,7 @@ class StockfishClient {
     try {
       return await operation();
     } finally {
-      release?.();
+      release();
     }
   }
 
