@@ -11,6 +11,7 @@ export function AppQueryProvider({ children }: { children: ReactNode }) {
           queries: {
             refetchOnWindowFocus: false,
             retry: 1,
+            enabled: typeof window !== "undefined",
           },
         },
       }),
