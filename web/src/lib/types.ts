@@ -130,3 +130,31 @@ export interface TrainerAnswerResult {
   score_delta: number;
   message: string;
 }
+
+
+export type AnalysisRunType = "full-analysis" | "engine-only-analysis" | "fetch-games" | "smoke-test";
+export type AnalysisJobState = "idle" | "running" | "completed" | "failed";
+
+export interface AnalysisRunResponse {
+  accepted: boolean;
+  detail: string;
+  job_id: string;
+  run_type: AnalysisRunType;
+}
+
+export interface AnalysisStatusResponse {
+  state: AnalysisJobState;
+  active_job_id: string | null;
+  active_run_type: AnalysisRunType | null;
+  last_completed_job_id: string | null;
+  last_run_type: AnalysisRunType | null;
+  last_error: string | null;
+  updated_at: string;
+}
+
+export interface AnalysisProgressResponse {
+  job_id: string | null;
+  run_type: AnalysisRunType | null;
+  progress: Record<string, unknown> | null;
+  updated_at: string;
+}

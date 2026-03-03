@@ -1,5 +1,8 @@
 import { getWebToken } from "@/lib/auth";
 import type {
+  AnalysisProgressResponse,
+  AnalysisRunResponse,
+  AnalysisStatusResponse,
   GameDetail,
   GameOverview,
   OverviewSummary,
@@ -159,4 +162,55 @@ export async function submitTrainerAnswer(payload: TrainerAnswerRequest): Promis
     body: JSON.stringify(payload),
   });
   return unwrap<TrainerAnswerResult>(response);
+}
+
+
+export async function runFullAnalysis(): Promise<AnalysisRunResponse> {
+  const response = await fetch(`${API_BASE_URL}/analysis/run/full`, {
+    method: "POST",
+    headers: headers(),
+  });
+  return unwrap<AnalysisRunResponse>(response);
+}
+
+export async function runEngineOnlyAnalysis(): Promise<AnalysisRunResponse> {
+  const response = await fetch(`${API_BASE_URL}/analysis/run/engine-only`, {
+    method: "POST",
+    headers: headers(),
+  });
+  return unwrap<AnalysisRunResponse>(response);
+}
+
+export async function runFetchGames(): Promise<AnalysisRunResponse> {
+  const response = await fetch(`${API_BASE_URL}/analysis/run/fetch-games`, {
+    method: "POST",
+    headers: headers(),
+  });
+  return unwrap<AnalysisRunResponse>(response);
+}
+
+export async function runSmokeTest(): Promise<AnalysisRunResponse> {
+  const response = await fetch(`${API_BASE_URL}/analysis/run/smoke-test`, {
+    method: "POST",
+    headers: headers(),
+  });
+  return unwrap<AnalysisRunResponse>(response);
+}
+
+export async function getAnalysisStatus(): Promise<AnalysisStatusResponse> {
+  const response = await fetch(`${API_BASE_URL}/analysis/status`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<AnalysisStatusResponse>(response);
+}
+
+export async function getAnalysisProgress(): Promise<AnalysisProgressResponse> {
+  const response = await fetch(`${API_BASE_URL}/analysis/progress`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<AnalysisProgressResponse>(response);
 }
