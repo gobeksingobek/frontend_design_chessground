@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { TreeExplorer } from "@/components/tree/tree-explorer";
 
 export default function TreePage() {
   return (
@@ -6,15 +6,7 @@ export default function TreePage() {
       <h2>Tree</h2>
       <p>Build and browse your opening tree from saved lines and sideline analysis jobs.</p>
       <div className="card">
-        <h3>Coming next</h3>
-        <ul>
-          <li>Interactive move-tree explorer.</li>
-          <li>Coverage and branch depth insights.</li>
-          <li>
-            Cross-linking with analysis results. Start from the <Link href="/analysis">Analysis Board</Link> to queue
-            new sidelines.
-          </li>
-        </ul>
+        <TreeExplorer />
       </div>
     </div>
   );

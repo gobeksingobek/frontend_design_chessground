@@ -44,3 +44,14 @@ label { display: grid; gap: 6px; }
 .code { white-space: pre-wrap; overflow-x: auto; font-size: 12px; background: #0a1224; border: 1px solid #243555; padding: 10px; border-radius: 8px; }
 
 small { color: var(--muted); }
+
+.split-layout { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: start; }
+.row-selected { background: #1a2748; }
+.coverage-cell { display: flex; align-items: center; gap: 8px; }
+.coverage-cell progress { width: 110px; }
+
+.chess-board-wrap { display: grid; gap: 8px; }
+.chess-board { width: min(100%, 360px); aspect-ratio: 1 / 1; display: grid; grid-template-columns: repeat(8, 1fr); border: 1px solid #2a3a61; border-radius: 8px; overflow: hidden; }
+.square { display: grid; place-items: center; font-size: clamp(18px, 2.2vw, 30px); }
+.square.light { background: #dbe7ff; color: #1e293b; }
+.square.dark { background: #3f557e; }

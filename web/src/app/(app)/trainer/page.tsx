@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { TrainerQueue } from "@/components/trainer/trainer-queue";
 
 export default function TrainerPage() {
   return (
@@ -6,14 +6,7 @@ export default function TrainerPage() {
       <h2>Trainer</h2>
       <p>Practice repertoire lines directly in the browser and prioritize weak branches.</p>
       <div className="card">
-        <h3>Coming next</h3>
-        <ul>
-          <li>Learn mode and Review mode workflows.</li>
-          <li>Progress tracking by line and position.</li>
-          <li>
-            Priority synchronization with sideline outcomes and your <Link href="/games">Games</Link> history.
-          </li>
-        </ul>
+        <TrainerQueue />
       </div>
     </div>
   );
