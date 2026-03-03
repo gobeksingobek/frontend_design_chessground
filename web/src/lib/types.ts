@@ -88,3 +88,45 @@ export interface OverviewSummary {
 }
 
 export type StatsRow = Record<string, string | number | boolean | null>;
+
+export interface TreeNodeSummary {
+  id: string;
+  parent_id: string | null;
+  fen: string;
+  san_move: string | null;
+  uci_move: string | null;
+  depth: number;
+  branch_depth: number;
+  coverage: number;
+  child_count: number;
+}
+
+export interface TreeExplorerResponse {
+  nodes: TreeNodeSummary[];
+}
+
+export interface TrainerQueueItem {
+  id: string;
+  fen: string;
+  prompt: string;
+  expected_uci: string | null;
+  line_label: string | null;
+  difficulty: number;
+}
+
+export interface TrainerQueueResponse {
+  items: TrainerQueueItem[];
+}
+
+export interface TrainerAnswerRequest {
+  item_id: string;
+  answer_uci: string;
+}
+
+export interface TrainerAnswerResult {
+  item_id: string;
+  is_correct: boolean;
+  correct_uci: string | null;
+  score_delta: number;
+  message: string;
+}

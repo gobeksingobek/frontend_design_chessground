@@ -6,6 +6,10 @@ import type {
   SidelineCreateRequest,
   SidelineResponse,
   StatsRow,
+  TrainerAnswerRequest,
+  TrainerAnswerResult,
+  TrainerQueueResponse,
+  TreeExplorerResponse,
 } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -128,4 +132,31 @@ export async function listInsights(): Promise<StatsRow[]> {
 
 export async function listReviewItems(): Promise<StatsRow[]> {
   return getStats("/review/items");
+}
+
+export async function getTreeExplorer(): Promise<TreeExplorerResponse> {
+  const response = await fetch(`${API_BASE_URL}/tree/explorer`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<TreeExplorerResponse>(response);
+}
+
+export async function getTrainerQueue(): Promise<TrainerQueueResponse> {
+  const response = await fetch(`${API_BASE_URL}/trainer/queue`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<TrainerQueueResponse>(response);
+}
+
+export async function submitTrainerAnswer(payload: TrainerAnswerRequest): Promise<TrainerAnswerResult> {
+  const response = await fetch(`${API_BASE_URL}/trainer/answer`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(payload),
+  });
+  return unwrap<TrainerAnswerResult>(response);
 }
