@@ -1,6 +1,4 @@
-"use client";
-
-const PIECES: Record<string, string> = {
+const PIECE_SYMBOLS: Record<string, string> = {
   p: "♟",
   r: "♜",
   n: "♞",
@@ -15,44 +13,57 @@ const PIECES: Record<string, string> = {
   K: "♔",
 };
 
-function boardFromFen(fen: string): string[][] {
-  const placement = fen.trim().split(/\s+/)[0] ?? "";
-  const rows = placement.split("/");
-  if (rows.length !== 8) return Array.from({ length: 8 }, () => Array(8).fill(""));
+const DEFAULT_FEN = "rn1qkbnr/pppb1ppp/4p3/3p4/8/2N1PN2/PPPPBPPP/R1BQK2R w KQkq - 0 1";
+
+function fenToBoard(fen: string): string[][] {
+  const boardPart = fen.trim().split(/\s+/)[0] ?? "";
+  const rows = boardPart.split("/");
+
+  if (rows.length !== 8) {
+    return fenToBoard(DEFAULT_FEN);
+  }
 
   return rows.map((row) => {
     const squares: string[] = [];
+
     for (const char of row) {
-      const empty = Number(char);
-      if (Number.isInteger(empty) && empty > 0) {
-        for (let i = 0; i < empty; i += 1) squares.push("");
-      } else {
-        squares.push(PIECES[char] ?? "");
+      const emptyCount = Number(char);
+      if (Number.isInteger(emptyCount) && emptyCount > 0) {
+        for (let i = 0; i < emptyCount; i += 1) {
+          squares.push("");
+        }
+        continue;
       }
+      squares.push(char);
     }
-    return squares.slice(0, 8);
+
+    if (squares.length !== 8) {
+      return Array.from({ length: 8 }, () => "");
+    }
+
+    return squares;
   });
 }
 
-export function ChessBoard({ fen, title }: { fen: string; title?: string }) {
-  const board = boardFromFen(fen);
+export function ChessBoard({ fen, title }: { fen?: string; title?: string }) {
+  const board = fenToBoard(fen || DEFAULT_FEN);
 
   return (
-    <div className="chess-board-wrap" aria-label={title ?? "Position"}>
-      {title ? <h4>{title}</h4> : null}
-      <div className="chess-board">
-        {board.map((row, rankIndex) =>
-          row.map((piece, fileIndex) => {
-            const dark = (rankIndex + fileIndex) % 2 === 1;
+    <div className="board-wrap" aria-label={title ?? "Chess board"}>
+      {title ? <h3>{title}</h3> : null}
+      <div className="board" role="img" aria-label={`Board position: ${fen || DEFAULT_FEN}`}>
+        {board.map((rank, rankIndex) =>
+          rank.map((piece, fileIndex) => {
+            const isLight = (rankIndex + fileIndex) % 2 === 0;
             return (
-              <div key={`${rankIndex}-${fileIndex}`} className={`square ${dark ? "dark" : "light"}`}>
-                {piece}
+              <div key={`${rankIndex}-${fileIndex}`} className={`square ${isLight ? "light" : "dark"}`}>
+                <span aria-hidden="true">{piece ? PIECE_SYMBOLS[piece] ?? "" : ""}</span>
               </div>
             );
           }),
         )}
       </div>
-      <small>FEN: {fen}</small>
+      <small>FEN: {fen || DEFAULT_FEN}</small>
     </div>
   );
 }

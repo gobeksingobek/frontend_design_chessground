@@ -1,4 +1,5 @@
 import { SidelineAnalysisForm } from "@/components/analysis/sideline-analysis-form";
+import { ChessBoard } from "@/components/chess/chess-board";
 
 function firstParam(value: string | string[] | undefined): string {
   if (!value) return "";
@@ -22,6 +23,7 @@ export default function AnalysisPage({
       <h2>Analysis Board</h2>
       <p>Run a quick local WASM eval for your first custom move, then queue authoritative sideline analysis.</p>
       <div className="card">
+        <ChessBoard fen={initialFen} title="Live position" />
         <SidelineAnalysisForm
           title="Create sideline from custom position"
           initialGameId={initialGameId}

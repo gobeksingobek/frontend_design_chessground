@@ -31,7 +31,22 @@ function headers(extra: Record<string, string> = {}): HeadersInit {
 async function unwrap<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed with status ${response.status}`);
+    let parsedDetail = "";
+
+    try {
+      const parsed = JSON.parse(text) as { detail?: { detail?: string; error_code?: string } };
+      parsedDetail = parsed.detail?.detail ?? "";
+    } catch {
+      parsedDetail = "";
+    }
+
+    if (response.status === 401) {
+      throw new Error(
+        "Unauthorized: your bearer token is missing/invalid. Open /login and set a valid backend API token.",
+      );
+    }
+
+    throw new Error(parsedDetail || text || `Request failed with status ${response.status}`);
   }
   return (await response.json()) as T;
 }
