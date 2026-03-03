@@ -105,17 +105,83 @@ export interface TreeExplorerResponse {
   nodes: TreeNodeSummary[];
 }
 
+export interface TreeBrowseMove {
+  uci_move: string;
+  san_move: string | null;
+  next_pos_id: number | null;
+  weight: number;
+  is_priority_edge: number;
+  is_user_mainline: number;
+  is_sideline_pending: number;
+}
+
+export interface TreeGameMove {
+  uci_move: string;
+  san_move: string | null;
+  next_pos_id: number | null;
+  games: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  avg_opp_elo: number | null;
+  score_pct: number;
+}
+
+export interface TreeBrowseResponse {
+  pos_id: number;
+  my_side_only: boolean;
+  repertoire_children: TreeBrowseMove[];
+  game_children: TreeGameMove[];
+}
+
+export interface TreeCoverageResponse {
+  pos_id: number;
+  total_repertoire_moves: number;
+  covered_by_games: number;
+  coverage_pct: number;
+}
+
+export interface TreeBranchMetricsResponse {
+  pos_id: number;
+  top_repertoire_branches: TreeBrowseMove[];
+  top_game_branches: TreeGameMove[];
+}
+
 export interface TrainerQueueItem {
-  id: string;
-  fen: string;
-  prompt: string;
-  expected_uci: string | null;
-  line_label: string | null;
-  difficulty: number;
+  line_id: string;
+  side_to_play: string;
+  learned: number;
+  needs_review: number;
+  correct_streak: number;
+  priority_override: number;
+  auto_priority_score: number;
+  focus_max_ply: number | null;
+  is_priority: number;
 }
 
 export interface TrainerQueueResponse {
+  mode: "learn" | "review";
   items: TrainerQueueItem[];
+}
+
+export interface TrainerOutcomeRequest {
+  line_id: string;
+  is_correct: boolean;
+  mode: "learn" | "review";
+}
+
+export interface TrainerOutcomeResponse {
+  line_id: string;
+  learned: number;
+  needs_review: number;
+  correct_streak: number;
+  times_correct: number;
+  times_incorrect: number;
+}
+
+export interface TrainerPriorityOverrideRequest {
+  line_id: string;
+  value: -1 | 0 | 1;
 }
 
 export interface TrainerAnswerRequest {
@@ -131,6 +197,27 @@ export interface TrainerAnswerResult {
   message: string;
 }
 
+export interface ReviewProposition {
+  id: number;
+  proposition_type: string;
+  status: string;
+  evidence_count: number;
+  threshold_count: number;
+  pos_id: number;
+  uci_move: string;
+  line_id_hint: string | null;
+  updated_at: string;
+}
+
+export interface ReviewActionRequest {
+  proposition_id: number;
+  action: "done" | "defer" | "priority";
+}
+
+export interface ReviewActionResponse {
+  success: boolean;
+  message: string;
+}
 
 export type AnalysisRunType = "full-analysis" | "engine-only-analysis" | "fetch-games" | "smoke-test";
 export type AnalysisJobState = "idle" | "running" | "completed" | "failed";

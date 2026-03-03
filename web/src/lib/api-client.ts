@@ -11,8 +11,17 @@ import type {
   StatsRow,
   TrainerAnswerRequest,
   TrainerAnswerResult,
+  TrainerOutcomeRequest,
+  TrainerOutcomeResponse,
+  TrainerPriorityOverrideRequest,
   TrainerQueueResponse,
+  TreeBranchMetricsResponse,
+  TreeBrowseResponse,
+  TreeCoverageResponse,
   TreeExplorerResponse,
+  ReviewProposition,
+  ReviewActionRequest,
+  ReviewActionResponse,
 } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -162,6 +171,79 @@ export async function submitTrainerAnswer(payload: TrainerAnswerRequest): Promis
     body: JSON.stringify(payload),
   });
   return unwrap<TrainerAnswerResult>(response);
+}
+
+
+export async function getLineTreeBrowse(posId = 1, mySideOnly = true): Promise<TreeBrowseResponse> {
+  const response = await fetch(`${API_BASE_URL}/lines/tree/browse?pos_id=${posId}&my_side_only=${mySideOnly}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<TreeBrowseResponse>(response);
+}
+
+export async function getLineTreeCoverage(posId = 1, mySideOnly = true): Promise<TreeCoverageResponse> {
+  const response = await fetch(`${API_BASE_URL}/lines/tree/coverage?pos_id=${posId}&my_side_only=${mySideOnly}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<TreeCoverageResponse>(response);
+}
+
+export async function getLineTreeBranchMetrics(posId = 1, mySideOnly = true): Promise<TreeBranchMetricsResponse> {
+  const response = await fetch(`${API_BASE_URL}/lines/tree/branch-metrics?pos_id=${posId}&my_side_only=${mySideOnly}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<TreeBranchMetricsResponse>(response);
+}
+
+export async function getTrainerQueueV2(mode: "learn" | "review" = "review"): Promise<TrainerQueueResponse> {
+  const response = await fetch(`${API_BASE_URL}/trainer/queue?mode=${mode}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<TrainerQueueResponse>(response);
+}
+
+export async function submitTrainerOutcome(payload: TrainerOutcomeRequest): Promise<TrainerOutcomeResponse> {
+  const response = await fetch(`${API_BASE_URL}/trainer/outcomes`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(payload),
+  });
+  return unwrap<TrainerOutcomeResponse>(response);
+}
+
+export async function setTrainerPriorityOverride(payload: TrainerPriorityOverrideRequest): Promise<TrainerQueueResponse["items"][number]> {
+  const response = await fetch(`${API_BASE_URL}/trainer/priority-override`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(payload),
+  });
+  return unwrap<TrainerQueueResponse["items"][number]>(response);
+}
+
+export async function listReviewActions(status: "pending" | "approved" | "disapproved" | "all" = "pending"): Promise<ReviewProposition[]> {
+  const response = await fetch(`${API_BASE_URL}/review/actions?status=${status}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<ReviewProposition[]>(response);
+}
+
+export async function executeReviewAction(payload: ReviewActionRequest): Promise<ReviewActionResponse> {
+  const response = await fetch(`${API_BASE_URL}/review/actions`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(payload),
+  });
+  return unwrap<ReviewActionResponse>(response);
 }
 
 
