@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode } from "react";
 
+import { setWebAuth } from "@/lib/auth";
+
 const navItems = [
   { href: "/overview", label: "Overview" },
   { href: "/analysis", label: "Analysis" },
@@ -21,6 +23,10 @@ const navItems = [
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
+  function onLogout() {
+    setWebAuth(null);
+  }
+
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -36,7 +42,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className="main">
         <header className="topbar">
           <div>Web App</div>
-          <Link href="/login">Switch user</Link>
+          <Link href="/login" onClick={onLogout}>Log out / switch user</Link>
         </header>
         <section>{children}</section>
       </main>
