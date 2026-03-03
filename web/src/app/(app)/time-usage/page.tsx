@@ -1,5 +1,3 @@
-"use client";
-
 import { StatsTable } from "@/components/stats-table";
 import { listTimeUsageStats } from "@/lib/api-client";
 

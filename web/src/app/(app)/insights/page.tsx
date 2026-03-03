@@ -1,5 +1,3 @@
-"use client";
-
 import { StatsTable } from "@/components/stats-table";
 import { listInsights } from "@/lib/api-client";
 
