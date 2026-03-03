@@ -1,3 +1,4 @@
+import { ChessBoard } from "@/components/chess/chess-board";
 import Link from "next/link";
 
 export default function TrainerPage() {
@@ -6,6 +7,7 @@ export default function TrainerPage() {
       <h2>Trainer</h2>
       <p>Practice repertoire lines directly in the browser and prioritize weak branches.</p>
       <div className="card">
+        <ChessBoard title="Trainer practice board" />
         <h3>Coming next</h3>
         <ul>
           <li>Learn mode and Review mode workflows.</li>

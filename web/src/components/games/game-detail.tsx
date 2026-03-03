@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { SidelineAnalysisForm } from "@/components/analysis/sideline-analysis-form";
+import { ChessBoard } from "@/components/chess/chess-board";
 import { getGame } from "@/lib/api-client";
 
 export function GameDetail({ gameId }: { gameId: number }) {
@@ -32,6 +33,7 @@ export function GameDetail({ gameId }: { gameId: number }) {
 
       <div className="card">
         <h3>Create sideline analysis job</h3>
+        <ChessBoard fen={selectedMove?.fen ?? undefined} title="Selected game position" />
         <label>
           Move ply
           <select
