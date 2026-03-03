@@ -44,3 +44,9 @@ label { display: grid; gap: 6px; }
 .code { white-space: pre-wrap; overflow-x: auto; font-size: 12px; background: #0a1224; border: 1px solid #243555; padding: 10px; border-radius: 8px; }
 
 small { color: var(--muted); }
+
+.board-wrap { display: grid; gap: 8px; max-width: 420px; }
+.board { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); border: 1px solid #1f2a44; border-radius: 8px; overflow: hidden; aspect-ratio: 1; }
+.square { display: grid; place-items: center; font-size: clamp(20px, 3.5vw, 36px); user-select: none; }
+.square.light { background: #f0d9b5; color: #111827; }
+.square.dark { background: #b58863; color: #111827; }
