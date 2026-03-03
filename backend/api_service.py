@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import uuid
+import threading
+import configparser
 from datetime import datetime
+from datetime import timezone
+from pathlib import Path
+from dataclasses import dataclass
 from typing import Any
+from typing import Callable
 from typing import Literal
 
 import asyncpg
@@ -24,6 +30,46 @@ from backend.read_api import (
     fetch_time_usage_stats,
 )
 from backend.settings import SETTINGS
+from analysis import game_fetcher
+from analysis import pipeline as analysis_pipeline
+from analysis import smoke_test as smoke_test_module
+from storage import database, queries
+
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+SETTINGS_INI_PATH = BASE_DIR / "config" / "settings.ini"
+
+
+@dataclass
+class RuntimeConfig:
+    repertoire_dir: str
+    games_dir: str
+    database_path: str
+    stockfish_path: str
+    piece_dir: str
+    engine_depth: int
+    max_plies: int
+    player_name: str
+    player_names: list[str]
+    rating_band_size: int
+    matching_mode: str
+    enable_engine_cache: bool
+    incremental_analysis: bool
+    review_top_n: int
+    tabiya_top_n: int
+    engine_workers: int
+    engine_worker_cap: int
+    engine_threads: int
+    engine_hash_mb: int
+    engine_mode: str
+    engine_max_time_ms: int
+    engine_profile: str
+    engine_cache_prune_non_active: bool
+    missing_coverage_proposal_threshold: int
+    chesscom_usernames: list[str]
+    lichess_usernames: list[str]
+    fetch_variants: list[str]
+    fetch_days_back: int
 
 
 class ErrorResponse(BaseModel):
@@ -110,6 +156,251 @@ class GameDetailResponse(BaseModel):
     header: dict[str, Any]
     moves: list[GameMoveResponse]
 
+
+class AnalysisRunResponse(BaseModel):
+    accepted: bool
+    detail: str
+    job_id: str
+    run_type: str
+
+
+class AnalysisFetchGamesResult(BaseModel):
+    source: str
+    username: str
+    fetched_files: int
+    skipped_files: int
+    games_seen: int
+    games_written: int
+    games_skipped_in_db: int
+    message: str
+
+
+class AnalysisStatusResponse(BaseModel):
+    state: Literal["idle", "running", "completed", "failed"]
+    active_job_id: str | None
+    active_run_type: str | None
+    last_completed_job_id: str | None
+    last_run_type: str | None
+    last_error: str | None
+    updated_at: str
+
+
+class AnalysisProgressResponse(BaseModel):
+    job_id: str | None
+    run_type: str | None
+    progress: dict[str, Any] | None
+    updated_at: str
+
+
+def _safe_int(value: str | None, default: int) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def _parse_list(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _load_runtime_config() -> RuntimeConfig:
+    config = configparser.ConfigParser()
+    if SETTINGS_INI_PATH.exists():
+        config.read(SETTINGS_INI_PATH, encoding="utf-8")
+
+    for section in ["PATHS", "ANALYSIS", "PLAYER", "FETCH"]:
+        if section not in config:
+            config[section] = {}
+
+    paths = config["PATHS"]
+    analysis = config["ANALYSIS"]
+    player = config["PLAYER"]
+    fetch = config["FETCH"]
+
+    player_name = (player.get("name") or "").strip()
+    chesscom_usernames = _parse_list(fetch.get("chesscom_usernames"))
+    lichess_usernames = _parse_list(fetch.get("lichess_usernames"))
+
+    combined_names: list[str] = []
+    seen: set[str] = set()
+    for name in _parse_list(player_name) + chesscom_usernames + lichess_usernames:
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        combined_names.append(name)
+
+    return RuntimeConfig(
+        repertoire_dir=paths.get("repertoire_dir", ""),
+        games_dir=paths.get("games_dir", ""),
+        database_path=paths.get("database_path", ""),
+        stockfish_path=paths.get("stockfish_path", ""),
+        piece_dir=paths.get("piece_dir", ""),
+        engine_depth=_safe_int(analysis.get("engine_depth"), 20),
+        max_plies=_safe_int(analysis.get("max_plies"), 30),
+        player_name=player_name,
+        player_names=combined_names,
+        rating_band_size=_safe_int(player.get("rating_band_size"), 100),
+        matching_mode=(analysis.get("matching_mode") or "STRICT").strip(),
+        enable_engine_cache=_safe_int(analysis.get("enable_engine_cache"), 1) > 0,
+        incremental_analysis=_safe_int(analysis.get("incremental_analysis"), 1) > 0,
+        review_top_n=_safe_int(analysis.get("review_top_n"), 25),
+        tabiya_top_n=_safe_int(analysis.get("tabiya_top_n"), 10),
+        engine_workers=_safe_int(analysis.get("engine_workers"), 0),
+        engine_worker_cap=_safe_int(analysis.get("engine_worker_cap"), 4),
+        engine_threads=_safe_int(analysis.get("engine_threads"), 1),
+        engine_hash_mb=_safe_int(analysis.get("engine_hash_mb"), 0),
+        engine_mode=(analysis.get("engine_mode") or "adaptive").strip().lower(),
+        engine_max_time_ms=_safe_int(analysis.get("engine_max_time_ms"), 300),
+        engine_profile=(analysis.get("engine_profile") or "aggressive").strip().lower(),
+        engine_cache_prune_non_active=_safe_int(analysis.get("engine_cache_prune_non_active"), 1) > 0,
+        missing_coverage_proposal_threshold=_safe_int(analysis.get("missing_coverage_proposal_threshold"), 5),
+        chesscom_usernames=chesscom_usernames,
+        lichess_usernames=lichess_usernames,
+        fetch_variants=_parse_list(fetch.get("variants") or "blitz,rapid,daily"),
+        fetch_days_back=_safe_int(fetch.get("days_back"), 180),
+    )
+
+
+class AnalysisRuntimeManager:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._state: Literal["idle", "running", "completed", "failed"] = "idle"
+        self._active_job_id: str | None = None
+        self._active_run_type: str | None = None
+        self._last_completed_job_id: str | None = None
+        self._last_run_type: str | None = None
+        self._last_error: str | None = None
+        self._progress: dict[str, Any] | None = None
+        self._progress_updated_at = datetime.now(timezone.utc)
+        self._updated_at = datetime.now(timezone.utc)
+
+    def _touch(self) -> None:
+        self._updated_at = datetime.now(timezone.utc)
+
+    def _set_progress(self, payload: dict[str, Any]) -> None:
+        self._progress = payload
+        self._progress_updated_at = datetime.now(timezone.utc)
+        self._touch()
+
+    def start_job(self, run_type: str, action: Callable[[Callable[[dict[str, Any]], None]], None]) -> str:
+        with self._lock:
+            if self._state == "running":
+                raise RuntimeError("Analysis is already running.")
+            job_id = str(uuid.uuid4())
+            self._state = "running"
+            self._active_job_id = job_id
+            self._active_run_type = run_type
+            self._last_error = None
+            self._set_progress({"message": f"Starting {run_type}", "done": 0, "total": 0})
+
+        def worker() -> None:
+            try:
+                action(lambda payload: self._progress_callback(job_id, run_type, payload))
+            except Exception as exc:  # noqa: BLE001
+                with self._lock:
+                    self._state = "failed"
+                    self._last_error = str(exc)
+                    self._last_run_type = run_type
+                    self._last_completed_job_id = job_id
+                    self._active_job_id = None
+                    self._active_run_type = None
+                    self._set_progress({"message": f"{run_type} failed", "error": str(exc)})
+            else:
+                with self._lock:
+                    self._state = "completed"
+                    self._last_run_type = run_type
+                    self._last_completed_job_id = job_id
+                    self._active_job_id = None
+                    self._active_run_type = None
+                    self._set_progress({"message": f"{run_type} completed", "done": 1, "total": 1})
+
+        thread = threading.Thread(target=worker, daemon=True, name=f"analysis-{run_type}")
+        thread.start()
+        return job_id
+
+    def _progress_callback(self, job_id: str, run_type: str, payload: dict[str, Any]) -> None:
+        with self._lock:
+            if self._active_job_id != job_id:
+                return
+            merged = {"job_id": job_id, "run_type": run_type, **payload}
+            self._set_progress(merged)
+
+    def status(self) -> AnalysisStatusResponse:
+        with self._lock:
+            return AnalysisStatusResponse(
+                state=self._state,
+                active_job_id=self._active_job_id,
+                active_run_type=self._active_run_type,
+                last_completed_job_id=self._last_completed_job_id,
+                last_run_type=self._last_run_type,
+                last_error=self._last_error,
+                updated_at=self._updated_at.isoformat(),
+            )
+
+    def progress(self) -> AnalysisProgressResponse:
+        with self._lock:
+            return AnalysisProgressResponse(
+                job_id=self._active_job_id,
+                run_type=self._active_run_type,
+                progress=self._progress,
+                updated_at=self._progress_updated_at.isoformat(),
+            )
+
+
+def _run_full_analysis(progress_cb) -> None:
+    cfg = _load_runtime_config()
+    conn = database.ensure_db(cfg.database_path, reset_on_mismatch=True)
+    try:
+        analysis_pipeline.run_analysis(conn, cfg, reset_db=False, progress_cb=progress_cb)
+    finally:
+        conn.close()
+
+
+def _run_engine_only_analysis(progress_cb) -> None:
+    cfg = _load_runtime_config()
+    conn = database.ensure_db(cfg.database_path, reset_on_mismatch=True)
+    try:
+        analysis_pipeline.run_engine_analysis_only(conn, cfg, progress_cb=progress_cb)
+    finally:
+        conn.close()
+
+
+def _run_smoke_test(progress_cb) -> None:
+    cfg = _load_runtime_config()
+    smoke_test_module.run_smoke_test(cfg, BASE_DIR, progress_cb=progress_cb)
+
+
+def _run_fetch_games(progress_cb) -> None:
+    cfg = _load_runtime_config()
+    db_conn = database.ensure_db(cfg.database_path, reset_on_mismatch=True)
+    try:
+        existing_hashes = queries.fetch_existing_game_hashes(db_conn)
+        progress_cb({"message": "Fetching remote games", "done": 0, "total": 1})
+        summaries = game_fetcher.fetch_games(
+            games_dir=Path(cfg.games_dir),
+            chesscom_usernames=cfg.chesscom_usernames,
+            lichess_usernames=cfg.lichess_usernames,
+            variants=cfg.fetch_variants,
+            days_back=cfg.fetch_days_back,
+            state_path=Path(cfg.games_dir) / ".fetch_state.json",
+            existing_pgn_hashes=existing_hashes,
+        )
+        progress_cb(
+            {
+                "message": "Fetch complete",
+                "done": 1,
+                "total": 1,
+                "results": [summary.__dict__ for summary in summaries],
+            }
+        )
+    finally:
+        db_conn.close()
+
 app = FastAPI(title="ChessGround API Service")
 auth_scheme = HTTPBearer(auto_error=False)
 
@@ -157,6 +448,7 @@ async def on_startup() -> None:
     await db.ensure_schema(app.state.db_pool)
     app.state.redis = redis_client()
     await ensure_consumer_group(app.state.redis)
+    app.state.analysis_runtime = AnalysisRuntimeManager()
     if SETTINGS.data_backend == "postgres":
         missing = await db.ensure_analysis_schema_exists(app.state.db_pool)
         if missing:
@@ -192,6 +484,51 @@ def to_response(record: asyncpg.Record) -> SidelineResponse:
         created_at=record["created_at"],
         updated_at=record["updated_at"],
     )
+
+
+def _start_analysis_job(request: Request, run_type: str, action: Callable[[Callable[[dict[str, Any]], None]], None]) -> AnalysisRunResponse:
+    runtime: AnalysisRuntimeManager = request.app.state.analysis_runtime
+    try:
+        job_id = runtime.start_job(run_type, action)
+    except RuntimeError as exc:
+        raise api_error(
+            status_code=409,
+            error_code="ANALYSIS_ALREADY_RUNNING",
+            detail=str(exc),
+        ) from exc
+    return AnalysisRunResponse(accepted=True, detail="Job accepted", job_id=job_id, run_type=run_type)
+
+
+@app.post('/analysis/run/full', response_model=AnalysisRunResponse, responses={401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
+async def run_full_analysis(request: Request, _: str = Depends(require_auth)) -> AnalysisRunResponse:
+    return _start_analysis_job(request, "full-analysis", _run_full_analysis)
+
+
+@app.post('/analysis/run/engine-only', response_model=AnalysisRunResponse, responses={401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
+async def run_engine_only_analysis(request: Request, _: str = Depends(require_auth)) -> AnalysisRunResponse:
+    return _start_analysis_job(request, "engine-only-analysis", _run_engine_only_analysis)
+
+
+@app.post('/analysis/run/fetch-games', response_model=AnalysisRunResponse, responses={401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
+async def run_fetch_games(request: Request, _: str = Depends(require_auth)) -> AnalysisRunResponse:
+    return _start_analysis_job(request, "fetch-games", _run_fetch_games)
+
+
+@app.post('/analysis/run/smoke-test', response_model=AnalysisRunResponse, responses={401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
+async def run_smoke_test(request: Request, _: str = Depends(require_auth)) -> AnalysisRunResponse:
+    return _start_analysis_job(request, "smoke-test", _run_smoke_test)
+
+
+@app.get('/analysis/status', response_model=AnalysisStatusResponse)
+async def get_analysis_status(request: Request, _: str = Depends(require_auth)) -> AnalysisStatusResponse:
+    runtime: AnalysisRuntimeManager = request.app.state.analysis_runtime
+    return runtime.status()
+
+
+@app.get('/analysis/progress', response_model=AnalysisProgressResponse)
+async def get_analysis_progress(request: Request, _: str = Depends(require_auth)) -> AnalysisProgressResponse:
+    runtime: AnalysisRuntimeManager = request.app.state.analysis_runtime
+    return runtime.progress()
 
 
 @app.post(
