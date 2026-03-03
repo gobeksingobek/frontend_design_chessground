@@ -283,6 +283,11 @@ class ReviewActionResponse(BaseModel):
     message: str
 
 
+class AuthValidateResponse(BaseModel):
+    ok: bool
+    detail: str
+
+
 
 
 def _sqlite_runtime_conn() -> sqlite3.Connection:
@@ -641,6 +646,11 @@ async def get_analysis_status(request: Request, _: str = Depends(require_auth)) 
 async def get_analysis_progress(request: Request, _: str = Depends(require_auth)) -> AnalysisProgressResponse:
     runtime: AnalysisRuntimeManager = request.app.state.analysis_runtime
     return runtime.progress()
+
+
+@app.get('/auth/validate', response_model=AuthValidateResponse, responses={401: {"model": ErrorResponse}})
+async def auth_validate(_: str = Depends(require_auth)) -> AuthValidateResponse:
+    return AuthValidateResponse(ok=True, detail="Token is valid")
 
 
 @app.post(
