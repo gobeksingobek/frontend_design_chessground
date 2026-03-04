@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-import { setWebAuth } from "@/lib/auth";
+import { getWebToken, setWebAuth } from "@/lib/auth";
 import { getAuthDiagnostics, validateApiToken } from "@/lib/api-client";
 
 export default function LoginPage() {
@@ -11,19 +11,11 @@ export default function LoginPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [reason, setReason] = useState<string | null>(null);
-  const [diagnostics, setDiagnostics] = useState(() => ({
-    apiBaseUrl: getAuthDiagnostics().apiBaseUrl,
-    tokenSource: "loading…",
-    hasStoredToken: false,
-  }));
   const router = useRouter();
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setReason(params.get("reason"));
-    setDiagnostics(getAuthDiagnostics());
-  }, []);
+  const searchParams = useSearchParams();
+  const diagnostics = useMemo(() => getAuthDiagnostics(), []);
+  const reason = searchParams.get("reason");
+  const hasStoredToken = Boolean(getWebToken());
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,7 +64,7 @@ export default function LoginPage() {
           <h2>Current API diagnostics</h2>
           <p><strong>Base URL:</strong> <code>{diagnostics.apiBaseUrl}</code></p>
           <p><strong>Token source:</strong> {diagnostics.tokenSource}</p>
-          <p><strong>Stored token:</strong> {diagnostics.hasStoredToken ? "present" : "missing"}</p>
+          <p><strong>Stored token:</strong> {hasStoredToken ? "present" : "missing"}</p>
         </section>
       </form>
     </main>
