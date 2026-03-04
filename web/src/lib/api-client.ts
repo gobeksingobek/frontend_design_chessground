@@ -1,4 +1,4 @@
-import { getWebToken } from "@/lib/auth";
+import { getWebToken, setWebAuth } from "@/lib/auth";
 import type {
   AnalysisProgressResponse,
   AnalysisRunResponse,
@@ -26,10 +26,31 @@ import type {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN ?? "dev-token";
+const MAX_CONSECUTIVE_401S = 2;
+
+let consecutiveUnauthorizedCount = 0;
 
 function currentToken(): string {
   const fromStorage = getWebToken();
   return fromStorage && fromStorage.trim() ? fromStorage : API_TOKEN;
+}
+
+export function getAuthDiagnostics() {
+  const fromStorage = getWebToken();
+  return {
+    apiBaseUrl: API_BASE_URL,
+    tokenSource: fromStorage && fromStorage.trim() ? "localStorage (cg_web_api_token)" : "NEXT_PUBLIC_API_TOKEN env",
+    hasStoredToken: Boolean(fromStorage && fromStorage.trim()),
+  };
+}
+
+function redirectToLoginForUnauthorized() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  setWebAuth(null);
+  const reason = consecutiveUnauthorizedCount >= MAX_CONSECUTIVE_401S ? "unauthorized_repeated" : "unauthorized";
+  window.location.assign(`/login?reason=${reason}`);
 }
 
 function headers(extra: Record<string, string> = {}): HeadersInit {
@@ -53,6 +74,10 @@ async function unwrap<T>(response: Response): Promise<T> {
     }
 
     if (response.status === 401) {
+      consecutiveUnauthorizedCount += 1;
+      if (consecutiveUnauthorizedCount >= MAX_CONSECUTIVE_401S) {
+        redirectToLoginForUnauthorized();
+      }
       throw new Error(
         "Unauthorized: your bearer token is missing/invalid. Open /login and set a valid backend API token.",
       );
@@ -60,7 +85,17 @@ async function unwrap<T>(response: Response): Promise<T> {
 
     throw new Error(parsedDetail || text || `Request failed with status ${response.status}`);
   }
+  consecutiveUnauthorizedCount = 0;
   return (await response.json()) as T;
+}
+
+export async function validateApiToken(): Promise<{ ok: true; detail: string }> {
+  const response = await fetch(`${API_BASE_URL}/auth/validate`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<{ ok: true; detail: string }>(response);
 }
 
 async function getStats(path: string): Promise<StatsRow[]> {

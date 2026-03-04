@@ -1,19 +1,54 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { setWebAuth } from "@/lib/auth";
+import { getAuthDiagnostics, validateApiToken } from "@/lib/api-client";
 
 export default function LoginPage() {
   const [token, setToken] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reason, setReason] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState(() => ({
+    apiBaseUrl: getAuthDiagnostics().apiBaseUrl,
+    tokenSource: "loading…",
+    hasStoredToken: false,
+  }));
   const router = useRouter();
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setReason(params.get("reason"));
+    setDiagnostics(getAuthDiagnostics());
+  }, []);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!token.trim()) return;
+    setMessage(null);
+    setError(null);
+    setIsSubmitting(true);
     setWebAuth(token);
-    router.push("/overview");
+    try {
+      await validateApiToken();
+      setMessage("Token validated. Redirecting…");
+      router.push("/overview");
+    } catch (err) {
+      setWebAuth(null);
+      setError(err instanceof Error ? err.message : "Unable to validate token.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  function onLogout() {
+    setWebAuth(null);
+    setMessage("Stored token cleared.");
+    setError(null);
+    setToken("");
   }
 
   return (
@@ -27,7 +62,18 @@ export default function LoginPage() {
           onChange={(e) => setToken(e.target.value)}
           aria-label="API token"
         />
-        <button type="submit">Continue</button>
+        <button type="submit" disabled={isSubmitting}>{isSubmitting ? "Validating…" : "Continue"}</button>
+        <button type="button" onClick={onLogout}>Log out / clear stored token</button>
+        {reason === "unauthorized" ? <p className="warn">Session expired due to unauthorized API response.</p> : null}
+        {reason === "unauthorized_repeated" ? <p className="warn">Multiple unauthorized responses detected. Please log in again.</p> : null}
+        {message ? <p className="ok">{message}</p> : null}
+        {error ? <p className="warn">{error}</p> : null}
+        <section className="card diagnostics-panel">
+          <h2>Current API diagnostics</h2>
+          <p><strong>Base URL:</strong> <code>{diagnostics.apiBaseUrl}</code></p>
+          <p><strong>Token source:</strong> {diagnostics.tokenSource}</p>
+          <p><strong>Stored token:</strong> {diagnostics.hasStoredToken ? "present" : "missing"}</p>
+        </section>
       </form>
     </main>
   );
