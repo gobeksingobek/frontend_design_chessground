@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { getWebToken, setWebAuth } from "@/lib/auth";
@@ -12,9 +12,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
-  const searchParams = useSearchParams();
   const diagnostics = useMemo(() => getAuthDiagnostics(), []);
-  const reason = searchParams.get("reason");
   const hasStoredToken = Boolean(getWebToken());
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -56,8 +54,9 @@ export default function LoginPage() {
         />
         <button type="submit" disabled={isSubmitting}>{isSubmitting ? "Validating…" : "Continue"}</button>
         <button type="button" onClick={onLogout}>Log out / clear stored token</button>
-        {reason === "unauthorized" ? <p className="warn">Session expired due to unauthorized API response.</p> : null}
-        {reason === "unauthorized_repeated" ? <p className="warn">Multiple unauthorized responses detected. Please log in again.</p> : null}
+        <Suspense fallback={null}>
+          <LoginReasonNotice />
+        </Suspense>
         {message ? <p className="ok">{message}</p> : null}
         {error ? <p className="warn">{error}</p> : null}
         <section className="card diagnostics-panel">
@@ -69,4 +68,19 @@ export default function LoginPage() {
       </form>
     </main>
   );
+}
+
+function LoginReasonNotice() {
+  const searchParams = useSearchParams();
+  const reason = searchParams.get("reason");
+
+  if (reason === "unauthorized") {
+    return <p className="warn">Session expired due to unauthorized API response.</p>;
+  }
+
+  if (reason === "unauthorized_repeated") {
+    return <p className="warn">Multiple unauthorized responses detected. Please log in again.</p>;
+  }
+
+  return null;
 }
