@@ -182,21 +182,7 @@ Render/Neon migration path:
 - A Render blueprint is included at `render.yaml`.
 
 
-## Web app (Phase 1 shell)
 
-A web-first shell now lives under `web/` (Next.js + TypeScript) with:
-
-- app shell + navigation (`/overview`, `/games`, `/sidelines`)
-- placeholder login/auth gate
-- typed sideline API client + React Query wiring
-
-Run locally:
-
-```bash
-cd web
-npm install
-npm run dev
-```
 ## PostgreSQL graph schema (optional)
 
 A normalized PostgreSQL version of the repertoire graph schema is provided at:
