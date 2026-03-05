@@ -9,6 +9,7 @@ import { setWebAuth } from "@/lib/auth";
 const navItems = [
   { href: "/overview", label: "Overview" },
   { href: "/analysis", label: "Analysis" },
+  { href: "/settings", label: "Settings" },
   { href: "/tree", label: "Tree" },
   { href: "/trainer", label: "Trainer" },
   { href: "/games", label: "Games" },

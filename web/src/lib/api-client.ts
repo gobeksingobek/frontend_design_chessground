@@ -22,6 +22,8 @@ import type {
   ReviewProposition,
   ReviewActionRequest,
   ReviewActionResponse,
+  RuntimeSettings,
+  RuntimeSettingsUpdateRequest,
 } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -281,6 +283,25 @@ export async function executeReviewAction(payload: ReviewActionRequest): Promise
   return unwrap<ReviewActionResponse>(response);
 }
 
+
+
+export async function getRuntimeSettings(): Promise<RuntimeSettings> {
+  const response = await fetch(`${API_BASE_URL}/settings/runtime`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<RuntimeSettings>(response);
+}
+
+export async function updateRuntimeSettings(payload: RuntimeSettingsUpdateRequest): Promise<RuntimeSettings> {
+  const response = await fetch(`${API_BASE_URL}/settings/runtime`, {
+    method: "PUT",
+    headers: headers(),
+    body: JSON.stringify(payload),
+  });
+  return unwrap<RuntimeSettings>(response);
+}
 
 export async function runFullAnalysis(): Promise<AnalysisRunResponse> {
   const response = await fetch(`${API_BASE_URL}/analysis/run/full`, {
