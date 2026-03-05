@@ -1,69 +1,151 @@
-const PIECE_SYMBOLS: Record<string, string> = {
-  p: "♟",
-  r: "♜",
-  n: "♞",
-  b: "♝",
-  q: "♛",
-  k: "♚",
-  P: "♙",
-  R: "♖",
-  N: "♘",
-  B: "♗",
-  Q: "♕",
-  K: "♔",
-};
+"use client";
 
-const DEFAULT_FEN = "rn1qkbnr/pppb1ppp/4p3/3p4/8/2N1PN2/PPPPBPPP/R1BQK2R w KQkq - 0 1";
+import { useMemo, useState } from "react";
+
+const FILES = "abcdefgh";
+const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const PIECE_BASE_URL = "https://images.chesscomfiles.com/chess-themes/pieces/neo/150";
+
+interface ChessBoardProps {
+  fen?: string;
+  title?: string;
+  currentPlyIndex?: number;
+  onMoveAttempt?: (move: { uci: string; from: string; to: string }) => void;
+  onNavigateNext?: () => void;
+  onNavigatePrev?: () => void;
+  onNavigateStart?: () => void;
+  onNavigateEnd?: () => void;
+  size?: "default" | "large";
+}
+
+function toSquare(rankIndex: number, fileIndex: number): string {
+  return `${FILES[fileIndex] ?? "a"}${8 - rankIndex}`;
+}
 
 function fenToBoard(fen: string): string[][] {
   const boardPart = fen.trim().split(/\s+/)[0] ?? "";
   const rows = boardPart.split("/");
 
-  if (rows.length !== 8) {
-    return fenToBoard(DEFAULT_FEN);
-  }
+  if (rows.length !== 8) return fenToBoard(DEFAULT_FEN);
 
   return rows.map((row) => {
     const squares: string[] = [];
-
     for (const char of row) {
       const emptyCount = Number(char);
       if (Number.isInteger(emptyCount) && emptyCount > 0) {
-        for (let i = 0; i < emptyCount; i += 1) {
-          squares.push("");
-        }
-        continue;
+        for (let i = 0; i < emptyCount; i += 1) squares.push("");
+      } else {
+        squares.push(char);
       }
-      squares.push(char);
     }
-
-    if (squares.length !== 8) {
-      return Array.from({ length: 8 }, () => "");
-    }
-
-    return squares;
+    return squares.length === 8 ? squares : Array.from({ length: 8 }, () => "");
   });
 }
 
-export function ChessBoard({ fen, title }: { fen?: string; title?: string }) {
-  const board = fenToBoard(fen || DEFAULT_FEN);
+function pieceToImageCode(piece: string): string | null {
+  if (!piece) return null;
+  const side = piece === piece.toUpperCase() ? "w" : "b";
+  const kind = piece.toLowerCase();
+  return `${side}${kind}`;
+}
+
+export function buildMoveAttempt(from: string, to: string): { uci: string; from: string; to: string } {
+  return { uci: `${from}${to}`, from, to };
+}
+
+function isSameSide(pieceA: string, pieceB: string): boolean {
+  if (!pieceA || !pieceB) return false;
+  return (pieceA === pieceA.toUpperCase()) === (pieceB === pieceB.toUpperCase());
+}
+
+export function ChessBoard({
+  fen,
+  title,
+  currentPlyIndex,
+  onMoveAttempt,
+  onNavigateNext,
+  onNavigatePrev,
+  onNavigateStart,
+  onNavigateEnd,
+  size = "default",
+}: ChessBoardProps) {
+  const safeFen = fen || DEFAULT_FEN;
+  const board = useMemo(() => fenToBoard(safeFen), [safeFen]);
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+
+  const handleSquareClick = (rankIndex: number, fileIndex: number) => {
+    if (!onMoveAttempt) return;
+
+    const square = toSquare(rankIndex, fileIndex);
+    const piece = board[rankIndex]?.[fileIndex] ?? "";
+
+    if (!selectedSquare) {
+      if (piece) setSelectedSquare(square);
+      return;
+    }
+
+    const selectedFile = FILES.indexOf(selectedSquare[0] ?? "a");
+    const selectedRank = 8 - Number(selectedSquare[1] ?? 8);
+    const selectedPiece = board[selectedRank]?.[selectedFile] ?? "";
+
+    if (selectedSquare === square) {
+      setSelectedSquare(null);
+      return;
+    }
+
+    if (piece && isSameSide(selectedPiece, piece)) {
+      setSelectedSquare(square);
+      return;
+    }
+
+    onMoveAttempt(buildMoveAttempt(selectedSquare, square));
+    setSelectedSquare(null);
+  };
 
   return (
-    <div className="board-wrap" aria-label={title ?? "Chess board"}>
+    <div className={`board-wrap ${size === "large" ? "board-wrap-large" : ""}`.trim()} aria-label={title ?? "Chess board"}>
       {title ? <h3>{title}</h3> : null}
-      <div className="board" role="img" aria-label={`Board position: ${fen || DEFAULT_FEN}`}>
+      <div className="board" role="img" aria-label={`Board position: ${safeFen}`} data-ply-index={currentPlyIndex ?? 0}>
         {board.map((rank, rankIndex) =>
           rank.map((piece, fileIndex) => {
             const isLight = (rankIndex + fileIndex) % 2 === 0;
+            const square = toSquare(rankIndex, fileIndex);
+            const imageCode = pieceToImageCode(piece);
             return (
-              <div key={`${rankIndex}-${fileIndex}`} className={`square ${isLight ? "light" : "dark"}`}>
-                <span aria-hidden="true">{piece ? PIECE_SYMBOLS[piece] ?? "" : ""}</span>
-              </div>
+              <button
+                key={`${rankIndex}-${fileIndex}`}
+                type="button"
+                className={`square ${isLight ? "light" : "dark"} ${selectedSquare === square ? "square-selected" : ""}`}
+                aria-label={`Square ${square}${piece ? ` with ${piece}` : ""}`}
+                onClick={() => handleSquareClick(rankIndex, fileIndex)}
+              >
+                {imageCode ? (
+                  <span
+                    aria-hidden="true"
+                    className="piece-img"
+                    style={{ backgroundImage: `url(${PIECE_BASE_URL}/${imageCode}.png)` }}
+                  />
+                ) : null}
+              </button>
             );
           }),
         )}
       </div>
-      <small>FEN: {fen || DEFAULT_FEN}</small>
+      <div className="board-controls" role="group" aria-label="Board navigation">
+        <button type="button" onClick={onNavigateStart} disabled={!onNavigateStart}>
+          ⏮
+        </button>
+        <button type="button" onClick={onNavigatePrev} disabled={!onNavigatePrev}>
+          ◀
+        </button>
+        <button type="button" onClick={onNavigateNext} disabled={!onNavigateNext}>
+          ▶
+        </button>
+        <button type="button" onClick={onNavigateEnd} disabled={!onNavigateEnd}>
+          ⏭
+        </button>
+      </div>
+      <small>FEN: {safeFen}</small>
     </div>
   );
 }

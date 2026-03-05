@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { SidelineAnalysisForm } from "@/components/analysis/sideline-analysis-form";
 import { ChessBoard } from "@/components/chess/chess-board";
@@ -10,26 +10,85 @@ import { EvalBar } from "@/components/games/eval-bar";
 import { MoveQualityBadge } from "@/components/games/move-quality-badge";
 import { getGame } from "@/lib/api-client";
 
+export function applyCursorKey(key: string, current: number, max: number): number {
+  if (key === "ArrowRight") return Math.min(max, current + 1);
+  if (key === "ArrowLeft") return Math.max(0, current - 1);
+  if (key === "ArrowUp") return max;
+  if (key === "ArrowDown") return 0;
+  return current;
+}
+
 export function GameDetail({ gameId }: { gameId: number }) {
-  const [selectedPly, setSelectedPly] = useState<number | null>(null);
+  const [cursorIndex, setCursorIndex] = useState(0);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["game", gameId],
     queryFn: () => getGame(gameId),
   });
 
+  const moves = useMemo(() => data?.moves ?? [], [data]);
+
+  useEffect(() => {
+    if (!moves.length) {
+      setCursorIndex(0);
+      return;
+    }
+    setCursorIndex((current) => Math.max(0, Math.min(moves.length, current)));
+  }, [moves]);
+
   const selectedMove = useMemo(() => {
-    if (!data || selectedPly === null) return null;
-    return data.moves.find((move) => move.ply === selectedPly) ?? null;
-  }, [data, selectedPly]);
+    if (cursorIndex === 0) return null;
+    return moves[cursorIndex - 1] ?? null;
+  }, [moves, cursorIndex]);
+
+  const selectedPly = selectedMove?.ply ?? null;
+
+  const boardFen = useMemo(() => {
+    if (!moves.length) return undefined;
+    if (cursorIndex === 0) return undefined;
+    return selectedMove?.fen ?? undefined;
+  }, [moves.length, cursorIndex, selectedMove]);
 
   const hasEvalData = selectedMove?.pre_eval_cp !== null || selectedMove?.post_eval_cp !== null;
+
+  const navigateNext = useCallback(() => {
+    setCursorIndex((current) => Math.min(moves.length, current + 1));
+  }, [moves.length]);
+
+  const navigatePrev = useCallback(() => {
+    setCursorIndex((current) => Math.max(0, current - 1));
+  }, []);
+
+  const navigateStart = useCallback(() => {
+    setCursorIndex(0);
+  }, []);
+
+  const navigateEnd = useCallback(() => {
+    setCursorIndex(moves.length);
+  }, [moves.length]);
+
+  const onKeyNavigate = useCallback(
+    (event: KeyboardEvent | ReactKeyboardEvent) => {
+      const nextCursor = applyCursorKey(event.key, cursorIndex, moves.length);
+      if (nextCursor !== cursorIndex) {
+        event.preventDefault();
+        setCursorIndex(nextCursor);
+      }
+    },
+    [cursorIndex, moves.length],
+  );
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => onKeyNavigate(event);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onKeyNavigate]);
 
   if (isLoading) return <p>Loading game detail...</p>;
   if (error) return <p>Failed to load game detail: {(error as Error).message}</p>;
 
   return (
-    <div className="stack">
+    <div className="stack" onKeyDown={onKeyNavigate} tabIndex={0}>
       <div className="card">
         <h3>Header</h3>
         <pre className="code">{JSON.stringify(data?.header, null, 2)}</pre>
@@ -37,15 +96,37 @@ export function GameDetail({ gameId }: { gameId: number }) {
 
       <div className="card">
         <h3>Create sideline analysis job</h3>
-        <ChessBoard fen={selectedMove?.fen ?? undefined} title="Selected game position" />
+        <ChessBoard
+          fen={boardFen}
+          title="Selected game position"
+          currentPlyIndex={cursorIndex}
+          onNavigateNext={navigateNext}
+          onNavigatePrev={navigatePrev}
+          onNavigateStart={navigateStart}
+          onNavigateEnd={navigateEnd}
+          onMoveAttempt={({ uci }) => {
+            const nextMove = moves[cursorIndex];
+            if (nextMove?.uci_move === uci) {
+              navigateNext();
+            }
+          }}
+        />
         <label>
           Move ply
           <select
             value={selectedPly ?? ""}
-            onChange={(event) => setSelectedPly(event.target.value ? Number(event.target.value) : null)}
+            onChange={(event) => {
+              const ply = event.target.value ? Number(event.target.value) : null;
+              if (ply === null) {
+                setCursorIndex(0);
+                return;
+              }
+              const moveIndex = moves.findIndex((move) => move.ply === ply);
+              setCursorIndex(moveIndex >= 0 ? moveIndex + 1 : 0);
+            }}
           >
-            <option value="">Select a move...</option>
-            {data?.moves.map((move) => (
+            <option value="">Initial position</option>
+            {moves.map((move) => (
               <option key={move.ply} value={move.ply}>
                 Ply {move.ply} - {move.san_move ?? move.uci_move ?? "-"}
               </option>
@@ -123,11 +204,14 @@ export function GameDetail({ gameId }: { gameId: number }) {
             </tr>
           </thead>
           <tbody>
-            {data?.moves.map((move) => (
+            {moves.map((move) => (
               <tr
                 key={move.ply}
-                className={move.ply === selectedMove?.ply ? "move-row-selected" : "move-row"}
-                onClick={() => setSelectedPly(move.ply)}
+                className={move.ply === selectedPly ? "move-row-selected" : "move-row"}
+                onClick={() => {
+                  const moveIndex = moves.findIndex((candidate) => candidate.ply === move.ply);
+                  setCursorIndex(moveIndex + 1);
+                }}
               >
                 <td>{move.ply}</td>
                 <td>{move.san_move ?? "-"}</td>

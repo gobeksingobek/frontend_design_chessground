@@ -26,8 +26,22 @@ export function TreeExplorer() {
   if (nodes.length === 0) return <p>No tree nodes yet. Queue analysis from Games or Analysis to populate your tree.</p>;
 
   return (
-    <div className="split-layout">
+    <div className="board-page-layout">
       <div className="card">
+        <h3>Selected node</h3>
+        {selectedNode ? (
+          <>
+            <ChessBoard fen={selectedNode.fen} size="large" title={selectedNode.san_move ?? selectedNode.uci_move ?? "Root position"} />
+            <p>
+              Branch depth: <strong>{selectedNode.branch_depth}</strong> · Children: <strong>{selectedNode.child_count}</strong>
+            </p>
+          </>
+        ) : (
+          <p>Select a node to inspect the position.</p>
+        )}
+      </div>
+
+      <div className="card menu-card">
         <h3>Node list</h3>
         <table className="table">
           <thead>
@@ -58,20 +72,6 @@ export function TreeExplorer() {
             ))}
           </tbody>
         </table>
-      </div>
-
-      <div className="card">
-        <h3>Selected node</h3>
-        {selectedNode ? (
-          <>
-            <ChessBoard fen={selectedNode.fen} title={selectedNode.san_move ?? selectedNode.uci_move ?? "Root position"} />
-            <p>
-              Branch depth: <strong>{selectedNode.branch_depth}</strong> · Children: <strong>{selectedNode.child_count}</strong>
-            </p>
-          </>
-        ) : (
-          <p>Select a node to inspect the position.</p>
-        )}
       </div>
     </div>
   );
