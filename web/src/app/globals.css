@@ -45,11 +45,24 @@ label { display: grid; gap: 6px; }
 
 small { color: var(--muted); }
 
-.board-wrap { display: grid; gap: 8px; max-width: 420px; }
-.board { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); border: 1px solid #1f2a44; border-radius: 8px; overflow: hidden; aspect-ratio: 1; }
-.square { display: grid; place-items: center; font-size: clamp(20px, 3.5vw, 36px); user-select: none; }
+.board-page-layout { display: grid; gap: 12px; grid-template-columns: minmax(0, 4fr) minmax(280px, 1fr); align-items: start; }
+@media (max-width: 980px) { .board-page-layout { grid-template-columns: 1fr; } }
+
+.board-wrap { display: grid; gap: 8px; width: 100%; max-width: 420px; }
+.board-wrap-large { max-width: none; width: 100%; }
+.board { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); border: 1px solid #1f2a44; border-radius: 8px; overflow: hidden; aspect-ratio: 1; width: 100%; }
+.square { display: grid; place-items: center; user-select: none; width: 100%; aspect-ratio: 1; border: 0; border-radius: 0; padding: 0; }
+.square:focus-visible { outline: 2px solid #38bdf8; outline-offset: -2px; }
+.square-selected { box-shadow: inset 0 0 0 3px #38bdf8; }
 .square.light { background: #f0d9b5; color: #111827; }
 .square.dark { background: #b58863; color: #111827; }
+.piece-img { width: 88%; height: 88%; background-size: contain; background-repeat: no-repeat; background-position: center; display: block; }
+.board-wrap-large .piece-img { width: 92%; height: 92%; }
+
+.board-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+.board-controls button { min-width: 56px; font-size: 18px; padding: 8px 10px; }
+
+.menu-card { position: sticky; top: 16px; }
 
 .move-row { cursor: pointer; }
 .move-row-selected { background: #1c2b4d; cursor: pointer; }
