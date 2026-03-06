@@ -162,6 +162,8 @@ class GameMoveResponse(BaseModel):
 class GameDetailResponse(BaseModel):
     header: dict[str, Any]
     moves: list[GameMoveResponse]
+    prev_game_id: int | None = None
+    next_game_id: int | None = None
 
 
 class AnalysisRunResponse(BaseModel):

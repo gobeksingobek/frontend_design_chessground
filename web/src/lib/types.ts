@@ -76,6 +76,8 @@ export interface GameMove {
 export interface GameDetail {
   header: Record<string, unknown>;
   moves: GameMove[];
+  prev_game_id: number | null;
+  next_game_id: number | null;
 }
 
 export interface OverviewSummary {
