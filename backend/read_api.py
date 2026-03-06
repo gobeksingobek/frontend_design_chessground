@@ -44,6 +44,20 @@ def _fetch_game_detail_sqlite(game_id: int) -> dict[str, Any] | None:
         if header is None:
             return None
         moves = queries.fetch_game_moves(conn, game_id)
+        neighbors = conn.execute(
+            """
+            SELECT prev_game_id, next_game_id
+            FROM (
+                SELECT
+                    id,
+                    LAG(id) OVER (ORDER BY date DESC, id DESC) AS prev_game_id,
+                    LEAD(id) OVER (ORDER BY date DESC, id DESC) AS next_game_id
+                FROM games
+            ) ordered_games
+            WHERE id = ?
+            """,
+            (game_id,),
+        ).fetchone()
 
         pos_ids = sorted({int(move["pos_id"]) for move in moves if move.get("pos_id") is not None})
         fen_by_pos: dict[int, str] = {}
@@ -65,6 +79,8 @@ def _fetch_game_detail_sqlite(game_id: int) -> dict[str, Any] | None:
     return {
         "header": header,
         "moves": enriched_moves,
+        "prev_game_id": int(neighbors["prev_game_id"]) if neighbors and neighbors["prev_game_id"] is not None else None,
+        "next_game_id": int(neighbors["next_game_id"]) if neighbors and neighbors["next_game_id"] is not None else None,
     }
 
 
@@ -151,7 +167,26 @@ async def _fetch_game_detail_postgres(game_id: int) -> dict[str, Any] | None:
             """,
             game_id,
         )
-        return {"header": header_data, "moves": [dict(row) for row in moves]}
+        neighbors = await conn.fetchrow(
+            """
+            SELECT prev_game_id, next_game_id
+            FROM (
+                SELECT
+                    id,
+                    LAG(id) OVER (ORDER BY date DESC, id DESC) AS prev_game_id,
+                    LEAD(id) OVER (ORDER BY date DESC, id DESC) AS next_game_id
+                FROM games
+            ) ordered_games
+            WHERE id = $1
+            """,
+            game_id,
+        )
+        return {
+            "header": header_data,
+            "moves": [dict(row) for row in moves],
+            "prev_game_id": neighbors["prev_game_id"] if neighbors else None,
+            "next_game_id": neighbors["next_game_id"] if neighbors else None,
+        }
     finally:
         await conn.close()
 

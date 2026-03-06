@@ -8,9 +8,14 @@ test("applyCursorKey moves cursor next and prev", () => {
   assert.equal(applyCursorKey("ArrowLeft", 1, 4), 0);
 });
 
-test("applyCursorKey jumps to start and end", () => {
+test("applyCursorKey jumps to start and end with arrows", () => {
   assert.equal(applyCursorKey("ArrowUp", 1, 4), 4);
   assert.equal(applyCursorKey("ArrowDown", 3, 4), 0);
+});
+
+test("applyCursorKey jumps to start and end with Home/End", () => {
+  assert.equal(applyCursorKey("End", 1, 4), 4);
+  assert.equal(applyCursorKey("Home", 3, 4), 0);
 });
 
 test("applyCursorKey respects bounds", () => {

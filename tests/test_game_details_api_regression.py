@@ -114,3 +114,41 @@ def test_get_game_raises_not_found_for_missing_game(monkeypatch) -> None:
         assert exc.detail["error_code"] == "NOT_FOUND"
     else:
         raise AssertionError("Expected HTTPException for missing game")
+
+
+def test_get_game_includes_neighbors(monkeypatch) -> None:
+    async def fake_fetch_game_detail(game_id: int):
+        assert game_id == 44
+        return {
+            "header": {"id": 44, "result": "0-1"},
+            "moves": [],
+            "prev_game_id": 45,
+            "next_game_id": 43,
+        }
+
+    monkeypatch.setattr(api_service, "fetch_game_detail", fake_fetch_game_detail)
+
+    result = asyncio.run(api_service.get_game(44, _="dev-user"))
+
+    assert result.prev_game_id == 45
+    assert result.next_game_id == 43
+
+
+def test_get_game_neighbors_handle_edge_games(monkeypatch) -> None:
+    payloads = {
+        100: {"header": {"id": 100}, "moves": [], "prev_game_id": None, "next_game_id": 99},
+        1: {"header": {"id": 1}, "moves": [], "prev_game_id": 2, "next_game_id": None},
+    }
+
+    async def fake_fetch_game_detail(game_id: int):
+        return payloads[game_id]
+
+    monkeypatch.setattr(api_service, "fetch_game_detail", fake_fetch_game_detail)
+
+    newest = asyncio.run(api_service.get_game(100, _="dev-user"))
+    oldest = asyncio.run(api_service.get_game(1, _="dev-user"))
+
+    assert newest.prev_game_id is None
+    assert newest.next_game_id == 99
+    assert oldest.prev_game_id == 2
+    assert oldest.next_game_id is None

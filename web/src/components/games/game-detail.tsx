@@ -13,12 +13,20 @@ import { getGame } from "@/lib/api-client";
 export function applyCursorKey(key: string, current: number, max: number): number {
   if (key === "ArrowRight") return Math.min(max, current + 1);
   if (key === "ArrowLeft") return Math.max(0, current - 1);
-  if (key === "ArrowUp") return max;
-  if (key === "ArrowDown") return 0;
+  if (key === "ArrowUp" || key === "End") return max;
+  if (key === "ArrowDown" || key === "Home") return 0;
   return current;
 }
 
-export function GameDetail({ gameId }: { gameId: number }) {
+function shouldIgnoreKeyboardEvent(event: KeyboardEvent | ReactKeyboardEvent): boolean {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName;
+  if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return true;
+  return target.isContentEditable;
+}
+
+export function GameDetail({ gameId, initialPly }: { gameId: number; initialPly: number | null }) {
   const [cursorIndex, setCursorIndex] = useState(0);
 
   const { data, isLoading, error } = useQuery({
@@ -33,8 +41,15 @@ export function GameDetail({ gameId }: { gameId: number }) {
       setCursorIndex(0);
       return;
     }
-    setCursorIndex((current) => Math.max(0, Math.min(moves.length, current)));
-  }, [moves]);
+    if (initialPly !== null) {
+      const moveIndex = moves.findIndex((move) => move.ply === initialPly);
+      if (moveIndex >= 0) {
+        setCursorIndex(moveIndex + 1);
+        return;
+      }
+    }
+    setCursorIndex(0);
+  }, [gameId, initialPly, moves]);
 
   const selectedMove = useMemo(() => {
     if (cursorIndex === 0) return null;
@@ -69,6 +84,7 @@ export function GameDetail({ gameId }: { gameId: number }) {
 
   const onKeyNavigate = useCallback(
     (event: KeyboardEvent | ReactKeyboardEvent) => {
+      if (shouldIgnoreKeyboardEvent(event)) return;
       const nextCursor = applyCursorKey(event.key, cursorIndex, moves.length);
       if (nextCursor !== cursorIndex) {
         event.preventDefault();
@@ -78,19 +94,27 @@ export function GameDetail({ gameId }: { gameId: number }) {
     [cursorIndex, moves.length],
   );
 
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => onKeyNavigate(event);
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onKeyNavigate]);
-
   if (isLoading) return <p>Loading game detail...</p>;
   if (error) return <p>Failed to load game detail: {(error as Error).message}</p>;
 
   return (
     <div className="stack" onKeyDown={onKeyNavigate} tabIndex={0}>
       <div className="card">
-        <h3>Header</h3>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+          <h3>Header</h3>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            {data?.prev_game_id ? (
+              <Link href={{ pathname: `/games/${data.prev_game_id}`, query: selectedPly ? { ply: String(selectedPly) } : {} }}>← Previous game</Link>
+            ) : (
+              <span style={{ opacity: 0.6 }}>← Previous game</span>
+            )}
+            {data?.next_game_id ? (
+              <Link href={{ pathname: `/games/${data.next_game_id}`, query: selectedPly ? { ply: String(selectedPly) } : {} }}>Next game →</Link>
+            ) : (
+              <span style={{ opacity: 0.6 }}>Next game →</span>
+            )}
+          </div>
+        </div>
         <pre className="code">{JSON.stringify(data?.header, null, 2)}</pre>
       </div>
 
