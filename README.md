@@ -156,6 +156,19 @@ Key analysis options:
 3) Review results across Games, Lines, Time usage, Rating bands, and Review.
 4) After updating PGNs or settings, run analysis again.
 
+
+## Repertoire upload format (web/API)
+
+Repertoire import accepts either:
+- a `.zip` archive containing one or more PGN files (`*.pgn` / `*.PGN`, nested folders allowed), or
+- a single `.pgn` file.
+
+Database snapshot uploads (`.db`, `.sqlite`, `.sql`) are not accepted by the current web/API import path.
+
+Import safety checks include:
+- payload-level idempotency (exact same upload bytes are rejected as already imported), and
+- line-level deduplication using canonical repertoire path hashing (duplicate lines are skipped with a user-facing message).
+
 ## Async backend services (API + Worker)
 
 For server deployments, use the new backend processes in `backend/`:

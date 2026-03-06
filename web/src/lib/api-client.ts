@@ -24,6 +24,8 @@ import type {
   ReviewActionResponse,
   RuntimeSettings,
   RuntimeSettingsUpdateRequest,
+  RepertoireImportResponse,
+  RepertoireImportJobResponse,
 } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -333,6 +335,29 @@ export async function runSmokeTest(): Promise<AnalysisRunResponse> {
     headers: headers(),
   });
   return unwrap<AnalysisRunResponse>(response);
+}
+
+
+export async function importRepertoire(file: File): Promise<RepertoireImportResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(`${API_BASE_URL}/repertoires/import`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${currentToken()}`,
+    },
+    body: formData,
+  });
+  return unwrap<RepertoireImportResponse>(response);
+}
+
+export async function getRepertoireImportJob(jobId: string): Promise<RepertoireImportJobResponse> {
+  const response = await fetch(`${API_BASE_URL}/repertoires/import-jobs/${jobId}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<RepertoireImportJobResponse>(response);
 }
 
 export async function getAnalysisStatus(): Promise<AnalysisStatusResponse> {

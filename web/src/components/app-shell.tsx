@@ -19,6 +19,7 @@ const navItems = [
   { href: "/insights", label: "Insights" },
   { href: "/review", label: "Review" },
   { href: "/sidelines", label: "Sidelines" },
+  { href: "/repertoires", label: "Repertoires" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {

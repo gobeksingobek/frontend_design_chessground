@@ -261,3 +261,20 @@ export interface RuntimeSettingsUpdateRequest {
   variants: string[];
   days_back: number;
 }
+
+
+export interface RepertoireImportResponse {
+  job_id: string;
+  status: "completed";
+  upload_hash: string;
+  inserted_lines: number;
+  duplicate_lines: number;
+  total_lines: number;
+  detail: string;
+}
+
+export interface RepertoireImportJobResponse {
+  id: string;
+  status: "completed";
+  progress: Record<string, unknown>;
+}

@@ -4,7 +4,11 @@ import uuid
 import threading
 import configparser
 import asyncio
+import hashlib
+import json
 import sqlite3
+import tempfile
+import zipfile
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
@@ -14,12 +18,13 @@ from typing import Callable
 from typing import Literal
 
 import asyncpg
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from backend import db
+from backend import repertoire_import
 from backend.queue import enqueue_job, ensure_consumer_group, redis_client
 from backend.read_api import (
     fetch_game_detail,
@@ -306,6 +311,23 @@ class RuntimeSettingsUpdateRequest(BaseModel):
 
 
 
+
+
+class RepertoireImportResponse(BaseModel):
+    job_id: str
+    status: Literal["completed"]
+    upload_hash: str
+    inserted_lines: int
+    duplicate_lines: int
+    total_lines: int
+    detail: str
+
+
+class RepertoireImportJobResponse(BaseModel):
+    id: str
+    status: Literal["completed"]
+    progress: dict[str, Any]
+
 def _sqlite_runtime_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(SETTINGS.sqlite_path)
     conn.row_factory = sqlite3.Row
@@ -587,6 +609,7 @@ def _run_fetch_games(progress_cb) -> None:
 
 app = FastAPI(title="ChessGround API Service")
 auth_scheme = HTTPBearer(auto_error=False)
+REPERTOIRE_IMPORT_JOBS: dict[str, dict[str, Any]] = {}
 
 if SETTINGS.api_cors_origins:
     allow_all_origins = len(SETTINGS.api_cors_origins) == 1 and SETTINGS.api_cors_origins[0] == "*"
@@ -736,6 +759,76 @@ async def get_runtime_settings(_: str = Depends(require_auth)) -> RuntimeSetting
 @app.put('/settings/runtime', response_model=RuntimeSettingsResponse, responses={401: {"model": ErrorResponse}, 422: {"model": ErrorResponse}})
 async def update_runtime_settings(payload: RuntimeSettingsUpdateRequest, _: str = Depends(require_auth)) -> RuntimeSettingsResponse:
     return _save_runtime_settings(payload)
+
+
+@app.post('/repertoires/import', response_model=RepertoireImportResponse, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
+async def import_repertoires(file: UploadFile = File(...), _: str = Depends(require_auth)) -> RepertoireImportResponse:
+    cfg = _load_runtime_config()
+    if not cfg.database_path:
+        raise api_error(400, "INVALID_RUNTIME_CONFIG", "Database path is missing in runtime settings.")
+
+    payload = await file.read()
+    if not payload:
+        raise api_error(400, "EMPTY_UPLOAD", "Uploaded file is empty.")
+
+    upload_hash = hashlib.sha256(payload).hexdigest()
+
+    duplicate_job = next((job for job in REPERTOIRE_IMPORT_JOBS.values() if job.get("upload_hash") == upload_hash), None)
+    if duplicate_job:
+        raise api_error(
+            409,
+            "UPLOAD_ALREADY_IMPORTED",
+            "This exact upload payload was already imported. Please upload a new export.",
+        )
+
+    try:
+        parsed_lines = repertoire_import.parse_repertoire_upload(payload, file.filename or "upload")
+    except ValueError as exc:
+        raise api_error(400, "INVALID_UPLOAD", str(exc)) from exc
+
+    conn = database.ensure_db(cfg.database_path, reset_on_mismatch=True)
+    try:
+        inserted, duplicates, total = repertoire_import.ingest_repertoire_lines(conn, parsed_lines)
+    finally:
+        conn.close()
+
+    job_id = str(uuid.uuid4())
+    progress = {
+        "message": "Import completed",
+        "done": total,
+        "total": total,
+        "inserted_lines": inserted,
+        "duplicate_lines": duplicates,
+    }
+    REPERTOIRE_IMPORT_JOBS[job_id] = {
+        "id": job_id,
+        "status": "completed",
+        "upload_hash": upload_hash,
+        "progress": progress,
+    }
+
+    detail = (
+        f"Imported {inserted} repertoire lines."
+        if duplicates == 0
+        else f"Imported {inserted} repertoire lines; skipped {duplicates} duplicate line(s)."
+    )
+    return RepertoireImportResponse(
+        job_id=job_id,
+        status="completed",
+        upload_hash=upload_hash,
+        inserted_lines=inserted,
+        duplicate_lines=duplicates,
+        total_lines=total,
+        detail=detail,
+    )
+
+
+@app.get('/repertoires/import-jobs/{job_id}', response_model=RepertoireImportJobResponse, responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
+async def get_repertoire_import_job(job_id: str, _: str = Depends(require_auth)) -> RepertoireImportJobResponse:
+    job = REPERTOIRE_IMPORT_JOBS.get(job_id)
+    if not job:
+        raise api_error(404, "IMPORT_JOB_NOT_FOUND", "Repertoire import job was not found.")
+    return RepertoireImportJobResponse(id=job["id"], status=job["status"], progress=job["progress"])
 
 
 @app.post(
