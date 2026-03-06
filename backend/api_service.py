@@ -288,6 +288,22 @@ class AuthValidateResponse(BaseModel):
     detail: str
 
 
+class RuntimeSettingsResponse(BaseModel):
+    chesscom_usernames: list[str]
+    lichess_usernames: list[str]
+    variants: list[str]
+    days_back: int = Field(ge=1)
+    games_dir: str | None = None
+    database_path: str | None = None
+
+
+class RuntimeSettingsUpdateRequest(BaseModel):
+    chesscom_usernames: list[str] = Field(default_factory=list)
+    lichess_usernames: list[str] = Field(default_factory=list)
+    variants: list[str] = Field(default_factory=list)
+    days_back: int = Field(ge=1, le=3650)
+
+
 
 
 def _sqlite_runtime_conn() -> sqlite3.Connection:
@@ -322,6 +338,21 @@ def _parse_list(value: str | None) -> list[str]:
     if not value:
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _normalize_list(values: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        item = value.strip()
+        if not item:
+            continue
+        key = item.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(item)
+    return normalized
 
 
 def _load_runtime_config() -> RuntimeConfig:
@@ -378,8 +409,44 @@ def _load_runtime_config() -> RuntimeConfig:
         missing_coverage_proposal_threshold=_safe_int(analysis.get("missing_coverage_proposal_threshold"), 5),
         chesscom_usernames=chesscom_usernames,
         lichess_usernames=lichess_usernames,
-        fetch_variants=_parse_list(fetch.get("variants") or "blitz,rapid,daily"),
-        fetch_days_back=_safe_int(fetch.get("days_back"), 180),
+        fetch_variants=_parse_list(fetch.get("variants") or fetch.get("fetch_variants") or "blitz,rapid,daily"),
+        fetch_days_back=_safe_int(fetch.get("days_back") or fetch.get("fetch_days_back"), 180),
+    )
+
+
+def _save_runtime_settings(payload: RuntimeSettingsUpdateRequest) -> RuntimeSettingsResponse:
+    config = configparser.ConfigParser()
+    if SETTINGS_INI_PATH.exists():
+        config.read(SETTINGS_INI_PATH, encoding="utf-8")
+
+    for section in ["PATHS", "ANALYSIS", "PLAYER", "FETCH"]:
+        if section not in config:
+            config[section] = {}
+
+    fetch = config["FETCH"]
+    normalized_chesscom = _normalize_list(payload.chesscom_usernames)
+    normalized_lichess = _normalize_list(payload.lichess_usernames)
+    normalized_variants = [variant.strip().lower() for variant in payload.variants if variant.strip()]
+    normalized_variants = _normalize_list(normalized_variants)
+    if not normalized_variants:
+        raise api_error(status_code=422, error_code="VALIDATION_ERROR", detail="At least one variant is required")
+
+    fetch["chesscom_usernames"] = ",".join(normalized_chesscom)
+    fetch["lichess_usernames"] = ",".join(normalized_lichess)
+    fetch["variants"] = ",".join(normalized_variants)
+    fetch["days_back"] = str(payload.days_back)
+
+    with SETTINGS_INI_PATH.open("w", encoding="utf-8") as f:
+        config.write(f)
+
+    cfg = _load_runtime_config()
+    return RuntimeSettingsResponse(
+        chesscom_usernames=cfg.chesscom_usernames,
+        lichess_usernames=cfg.lichess_usernames,
+        variants=cfg.fetch_variants,
+        days_back=cfg.fetch_days_back,
+        games_dir=cfg.games_dir,
+        database_path=cfg.database_path,
     )
 
 
@@ -651,6 +718,24 @@ async def get_analysis_progress(request: Request, _: str = Depends(require_auth)
 @app.get('/auth/validate', response_model=AuthValidateResponse, responses={401: {"model": ErrorResponse}})
 async def auth_validate(_: str = Depends(require_auth)) -> AuthValidateResponse:
     return AuthValidateResponse(ok=True, detail="Token is valid")
+
+
+@app.get('/settings/runtime', response_model=RuntimeSettingsResponse, responses={401: {"model": ErrorResponse}})
+async def get_runtime_settings(_: str = Depends(require_auth)) -> RuntimeSettingsResponse:
+    cfg = _load_runtime_config()
+    return RuntimeSettingsResponse(
+        chesscom_usernames=cfg.chesscom_usernames,
+        lichess_usernames=cfg.lichess_usernames,
+        variants=cfg.fetch_variants,
+        days_back=cfg.fetch_days_back,
+        games_dir=cfg.games_dir,
+        database_path=cfg.database_path,
+    )
+
+
+@app.put('/settings/runtime', response_model=RuntimeSettingsResponse, responses={401: {"model": ErrorResponse}, 422: {"model": ErrorResponse}})
+async def update_runtime_settings(payload: RuntimeSettingsUpdateRequest, _: str = Depends(require_auth)) -> RuntimeSettingsResponse:
+    return _save_runtime_settings(payload)
 
 
 @app.post(

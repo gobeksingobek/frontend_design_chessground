@@ -245,3 +245,19 @@ export interface AnalysisProgressResponse {
   progress: Record<string, unknown> | null;
   updated_at: string;
 }
+
+export interface RuntimeSettings {
+  chesscom_usernames: string[];
+  lichess_usernames: string[];
+  variants: string[];
+  days_back: number;
+  games_dir: string | null;
+  database_path: string | null;
+}
+
+export interface RuntimeSettingsUpdateRequest {
+  chesscom_usernames: string[];
+  lichess_usernames: string[];
+  variants: string[];
+  days_back: number;
+}
