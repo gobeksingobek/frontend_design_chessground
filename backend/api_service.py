@@ -268,6 +268,49 @@ class TrainerPriorityOverrideRequest(BaseModel):
     value: Literal[-1, 0, 1]
 
 
+
+
+class TrainerSessionCreateRequest(BaseModel):
+    mode: Literal["learn", "review"] = "review"
+    line_id: str | None = None
+
+
+class TrainerSessionNextStep(BaseModel):
+    phase: Literal["prompt", "user_attempt", "reveal_explanation", "grading", "next_item_transition", "completed"]
+    expected_move_uci: str | None = None
+    explanation: str | None = None
+
+
+class TrainerSessionResponse(BaseModel):
+    session_id: str
+    line_id: str
+    mode: Literal["learn", "review"]
+    player_move_index: int
+    expected_move_uci: str | None = None
+    completed: bool
+    next_step: TrainerSessionNextStep
+
+
+class TrainerSessionAnswerRequest(BaseModel):
+    answer_uci: str = Field(min_length=4)
+
+
+class TrainerSessionAnswerResponse(BaseModel):
+    session_id: str
+    line_id: str
+    mode: Literal["learn", "review"]
+    answer_uci: str
+    expected_move_uci: str | None
+    is_correct: bool
+    feedback: str
+    learned: int
+    needs_review: int
+    correct_streak: int
+    times_correct: int
+    times_incorrect: int
+    completed: bool
+    next_step: TrainerSessionNextStep
+
 class ReviewPropositionResponse(BaseModel):
     id: int
     proposition_type: str
@@ -338,9 +381,13 @@ def _sqlite_runtime_conn() -> sqlite3.Connection:
 
 async def _with_sqlite(fn, *args, **kwargs):
     if SETTINGS.data_backend == "postgres":
-        raise RuntimeError(
-            "This endpoint is currently implemented for SQLite data backend. "
-            "Use DATA_BACKEND=sqlite locally until Postgres parity endpoints are added."
+        raise api_error(
+            status_code=501,
+            error_code="NOT_IMPLEMENTED",
+            detail=(
+                "This endpoint is currently implemented for SQLite data backend. "
+                "Postgres parity is not yet implemented for trainer/stateful line endpoints."
+            ),
         )
 
     def runner():
@@ -1027,6 +1074,283 @@ async def get_lines_tree_branch_metrics(pos_id: int = 1, my_side_only: bool = Tr
         top_repertoire_branches=repertoire_sorted[:10],
         top_game_branches=game_sorted[:10],
     )
+
+
+def _require_postgres_trainer_sessions() -> None:
+    if SETTINGS.data_backend != "postgres":
+        raise api_error(
+            status_code=501,
+            error_code="NOT_IMPLEMENTED",
+            detail="Trainer sessions API is implemented only for PostgreSQL backend.",
+        )
+
+
+def _trainer_player_moves_for_side(line_moves: list[dict[str, Any]], side_to_play: str) -> list[dict[str, Any]]:
+    player_is_white = (side_to_play or "white").lower() != "black"
+    return [
+        move
+        for move in line_moves
+        if (int(move.get("ply") or 0) % 2 == 1) == player_is_white
+    ]
+
+
+async def _ensure_trainer_state_postgres(conn: asyncpg.Connection) -> None:
+    await conn.execute(
+        """
+        INSERT INTO trainer_line_state (line_id, side_to_play)
+        SELECT line_id, COALESCE(side_to_play, 'white')
+        FROM repertoire_lines
+        ON CONFLICT (line_id) DO NOTHING
+        """
+    )
+    await conn.execute(
+        """
+        UPDATE trainer_line_state tls
+        SET side_to_play = COALESCE(rl.side_to_play, 'white')
+        FROM repertoire_lines rl
+        WHERE rl.line_id = tls.line_id
+        """
+    )
+
+
+async def _fetch_trainer_line_info_postgres(conn: asyncpg.Connection, line_id: str) -> dict[str, Any] | None:
+    row = await conn.fetchrow(
+        """
+        SELECT rl.line_id, rl.side_to_play, rl.is_priority,
+               tls.learned, tls.needs_review, tls.correct_streak, tls.priority_override,
+               tls.auto_priority_score, tls.focus_max_ply
+        FROM repertoire_lines rl
+        JOIN trainer_line_state tls ON rl.line_id = tls.line_id
+        WHERE rl.line_id = $1
+        """,
+        line_id,
+    )
+    return dict(row) if row else None
+
+
+async def _fetch_line_moves_postgres(conn: asyncpg.Connection, line_id: str) -> list[dict[str, Any]]:
+    rows = await conn.fetch(
+        """
+        SELECT ply, san_move, uci_move, pos_id, next_pos_id
+        FROM line_positions
+        WHERE line_id = $1
+        ORDER BY ply
+        """,
+        line_id,
+    )
+    return [dict(row) for row in rows]
+
+
+async def _trainer_session_snapshot_postgres(conn: asyncpg.Connection, session: dict[str, Any]) -> TrainerSessionResponse:
+    line_info = await _fetch_trainer_line_info_postgres(conn, str(session["line_id"]))
+    if not line_info:
+        raise ValueError("Line not found in trainer state")
+
+    line_moves = await _fetch_line_moves_postgres(conn, str(session["line_id"]))
+    player_moves = _trainer_player_moves_for_side(line_moves, str(line_info.get("side_to_play") or "white"))
+    player_idx = int(session.get("player_move_index") or 0)
+    completed = bool(session.get("completed")) or player_idx >= len(player_moves)
+    expected = None if completed else str(player_moves[player_idx].get("uci_move") or "")
+
+    phase: Literal["prompt", "user_attempt", "reveal_explanation", "grading", "next_item_transition", "completed"]
+    if completed:
+        phase = "completed"
+    else:
+        phase = "prompt" if player_idx == 0 else "user_attempt"
+
+    return TrainerSessionResponse(
+        session_id=str(session["id"]),
+        line_id=str(session["line_id"]),
+        mode=session["mode"],
+        player_move_index=player_idx,
+        expected_move_uci=expected or None,
+        completed=completed,
+        next_step=TrainerSessionNextStep(
+            phase=phase,
+            expected_move_uci=expected or None,
+            explanation="Play the expected repertoire move.",
+        ),
+    )
+
+
+@app.post("/trainer/sessions", response_model=TrainerSessionResponse)
+async def create_trainer_session(payload: TrainerSessionCreateRequest, request: Request, _: str = Depends(require_auth)) -> TrainerSessionResponse:
+    _require_postgres_trainer_sessions()
+
+    async with request.app.state.db_pool.acquire() as conn:
+        await _ensure_trainer_state_postgres(conn)
+
+        line_id = payload.line_id
+        if not line_id:
+            row = await conn.fetchrow(
+                """
+                SELECT rl.line_id
+                FROM repertoire_lines rl
+                JOIN trainer_line_state tls ON rl.line_id = tls.line_id
+                WHERE tls.learned = $1
+                ORDER BY rl.line_id
+                LIMIT 1
+                """,
+                1 if payload.mode == "review" else 0,
+            )
+            if not row:
+                raise api_error(404, "NOT_FOUND", "No trainer lines available for mode")
+            line_id = str(row["line_id"])
+
+        line_info = await _fetch_trainer_line_info_postgres(conn, line_id)
+        if not line_info:
+            raise api_error(404, "NOT_FOUND", "Line not found in trainer state")
+
+        session_id = str(uuid.uuid4())
+        session_row = await conn.fetchrow(
+            """
+            INSERT INTO trainer_sessions (id, line_id, mode, player_move_index, had_incorrect, completed)
+            VALUES ($1::uuid, $2, $3, 0, 0, 0)
+            RETURNING id, line_id, mode, player_move_index, had_incorrect, completed
+            """,
+            session_id,
+            line_id,
+            payload.mode,
+        )
+        if not session_row:
+            raise api_error(500, "INTERNAL_ERROR", "Failed to create trainer session")
+        return await _trainer_session_snapshot_postgres(conn, dict(session_row))
+
+
+@app.post("/trainer/sessions/{session_id}/answer", response_model=TrainerSessionAnswerResponse)
+async def answer_trainer_session(session_id: str, payload: TrainerSessionAnswerRequest, request: Request, _: str = Depends(require_auth)) -> TrainerSessionAnswerResponse:
+    _require_postgres_trainer_sessions()
+
+    async with request.app.state.db_pool.acquire() as conn:
+        await _ensure_trainer_state_postgres(conn)
+        session = await conn.fetchrow(
+            """
+            SELECT id, line_id, mode, player_move_index, had_incorrect, completed
+            FROM trainer_sessions
+            WHERE id = $1::uuid
+            """,
+            session_id,
+        )
+        if not session:
+            raise api_error(404, "NOT_FOUND", "Trainer session not found")
+
+        session_data = dict(session)
+        if int(session_data.get("completed") or 0) == 1:
+            raise api_error(409, "CONFLICT", "Trainer session already completed")
+
+        line_info = await _fetch_trainer_line_info_postgres(conn, str(session_data["line_id"]))
+        if not line_info:
+            raise api_error(404, "NOT_FOUND", "Line not found in trainer state")
+
+        line_moves = await _fetch_line_moves_postgres(conn, str(session_data["line_id"]))
+        player_moves = _trainer_player_moves_for_side(line_moves, str(line_info.get("side_to_play") or "white"))
+
+        player_idx = int(session_data.get("player_move_index") or 0)
+        if player_idx >= len(player_moves):
+            raise api_error(409, "CONFLICT", "Trainer session already completed")
+
+        expected_move = str(player_moves[player_idx].get("uci_move") or "")
+        is_correct = payload.answer_uci == expected_move
+        had_incorrect = int(session_data.get("had_incorrect") or 0)
+
+        if is_correct:
+            player_idx += 1
+            completed = 1 if player_idx >= len(player_moves) else 0
+        else:
+            had_incorrect = 1
+            completed = 0
+
+        await conn.execute(
+            """
+            UPDATE trainer_sessions
+            SET player_move_index = $2,
+                had_incorrect = $3,
+                completed = $4,
+                updated_at = NOW()
+            WHERE id = $1::uuid
+            """,
+            session_id,
+            player_idx,
+            had_incorrect,
+            completed,
+        )
+
+        if completed:
+            current_streak = int(line_info.get("correct_streak") or 0)
+            if had_incorrect:
+                await conn.execute(
+                    """
+                    UPDATE trainer_line_state
+                    SET learned = 1,
+                        needs_review = 1,
+                        correct_streak = 0,
+                        times_incorrect = times_incorrect + 1,
+                        last_seen = $2
+                    WHERE line_id = $1
+                    """,
+                    str(session_data["line_id"]),
+                    datetime.now(timezone.utc).isoformat(),
+                )
+            else:
+                await conn.execute(
+                    """
+                    UPDATE trainer_line_state
+                    SET learned = 1,
+                        needs_review = 0,
+                        correct_streak = $2,
+                        times_correct = times_correct + 1,
+                        last_seen = $3
+                    WHERE line_id = $1
+                    """,
+                    str(session_data["line_id"]),
+                    current_streak + 1,
+                    datetime.now(timezone.utc).isoformat(),
+                )
+
+        state_row = await conn.fetchrow(
+            """
+            SELECT line_id, learned, needs_review, correct_streak, times_correct, times_incorrect
+            FROM trainer_line_state
+            WHERE line_id = $1
+            """,
+            str(session_data["line_id"]),
+        )
+        if not state_row:
+            raise api_error(404, "NOT_FOUND", "Line not found after trainer session answer")
+
+        next_expected = None
+        next_phase: Literal["prompt", "user_attempt", "reveal_explanation", "grading", "next_item_transition", "completed"] = "completed"
+        explanation: str | None = None
+        feedback = "Correct." if is_correct else "Incorrect. Review the expected move and try again."
+
+        if not completed:
+            next_expected = expected_move if not is_correct else str(player_moves[player_idx].get("uci_move") or "")
+            next_phase = "reveal_explanation" if not is_correct else "user_attempt"
+            explanation = "Expected move shown for remediation." if not is_correct else "Continue to the next player move."
+        else:
+            next_phase = "next_item_transition"
+            explanation = "Line complete. Move to the next queue item."
+
+        return TrainerSessionAnswerResponse(
+            session_id=session_id,
+            line_id=str(session_data["line_id"]),
+            mode=session_data["mode"],
+            answer_uci=payload.answer_uci,
+            expected_move_uci=expected_move,
+            is_correct=is_correct,
+            feedback=feedback,
+            learned=int(state_row["learned"]),
+            needs_review=int(state_row["needs_review"]),
+            correct_streak=int(state_row["correct_streak"]),
+            times_correct=int(state_row["times_correct"]),
+            times_incorrect=int(state_row["times_incorrect"]),
+            completed=bool(completed),
+            next_step=TrainerSessionNextStep(
+                phase=next_phase,
+                expected_move_uci=next_expected,
+                explanation=explanation,
+            ),
+        )
 
 
 @app.get("/trainer/queue", response_model=TrainerQueueResponse)
