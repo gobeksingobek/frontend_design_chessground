@@ -180,6 +180,9 @@ Postgres remains the source of truth (request rows, statuses, results, idempoten
 
 See `backend/README.md` for run commands and environment variables.
 
+Desktop/web parity tracking checklist:
+- `docs/web_desktop_parity_checklist.md`
+
 Render/Neon migration path:
 - Deploy `web/` (Next.js), `backend.api_service`, and `backend.worker_service` as separate Render services.
 - Configure Render env vars exactly as follows:
