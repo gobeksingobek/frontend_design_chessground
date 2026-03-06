@@ -181,6 +181,50 @@ export interface TrainerOutcomeResponse {
   times_incorrect: number;
 }
 
+
+
+export interface TrainerSessionCreateRequest {
+  mode: "learn" | "review";
+  line_id?: string;
+}
+
+export interface TrainerSessionNextStep {
+  phase: "prompt" | "user_attempt" | "reveal_explanation" | "grading" | "next_item_transition" | "completed";
+  expected_move_uci: string | null;
+  explanation: string | null;
+}
+
+export interface TrainerSessionResponse {
+  session_id: string;
+  line_id: string;
+  mode: "learn" | "review";
+  player_move_index: number;
+  expected_move_uci: string | null;
+  completed: boolean;
+  next_step: TrainerSessionNextStep;
+}
+
+export interface TrainerSessionAnswerRequest {
+  answer_uci: string;
+}
+
+export interface TrainerSessionAnswerResponse {
+  session_id: string;
+  line_id: string;
+  mode: "learn" | "review";
+  answer_uci: string;
+  expected_move_uci: string | null;
+  is_correct: boolean;
+  feedback: string;
+  learned: number;
+  needs_review: number;
+  correct_streak: number;
+  times_correct: number;
+  times_incorrect: number;
+  completed: boolean;
+  next_step: TrainerSessionNextStep;
+}
+
 export interface TrainerPriorityOverrideRequest {
   line_id: string;
   value: -1 | 0 | 1;

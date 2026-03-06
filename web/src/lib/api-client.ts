@@ -11,6 +11,10 @@ import type {
   StatsRow,
   TrainerAnswerRequest,
   TrainerAnswerResult,
+  TrainerSessionAnswerRequest,
+  TrainerSessionAnswerResponse,
+  TrainerSessionCreateRequest,
+  TrainerSessionResponse,
   TrainerOutcomeRequest,
   TrainerOutcomeResponse,
   TrainerPriorityOverrideRequest,
@@ -238,6 +242,25 @@ export async function getLineTreeBranchMetrics(posId = 1, mySideOnly = true): Pr
     cache: "no-store",
   });
   return unwrap<TreeBranchMetricsResponse>(response);
+}
+
+
+export async function createTrainerSession(payload: TrainerSessionCreateRequest): Promise<TrainerSessionResponse> {
+  const response = await fetch(`${API_BASE_URL}/trainer/sessions`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(payload),
+  });
+  return unwrap<TrainerSessionResponse>(response);
+}
+
+export async function submitTrainerSessionAnswer(sessionId: string, payload: TrainerSessionAnswerRequest): Promise<TrainerSessionAnswerResponse> {
+  const response = await fetch(`${API_BASE_URL}/trainer/sessions/${sessionId}/answer`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(payload),
+  });
+  return unwrap<TrainerSessionAnswerResponse>(response);
 }
 
 export async function getTrainerQueueV2(mode: "learn" | "review" = "review"): Promise<TrainerQueueResponse> {
