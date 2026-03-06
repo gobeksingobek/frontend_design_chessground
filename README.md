@@ -2,7 +2,7 @@
 
 ## Overview
 
-This desktop app analyzes your Chess.com games against your memorized repertoire and stores all results in SQLite. The GUI only reads from the database; all parsing and analysis happens in the backend.
+This desktop app analyzes your Chess.com games against your memorized repertoire and stores all results in PostgreSQL. The GUI only reads from the database; all parsing and analysis happens in the backend.
 
 ## Setup
 
@@ -84,9 +84,9 @@ Key analysis options:
 - Time patterns are derived per game: slow in-book, instant out-of-book (first out-of-repertoire move within 10 plies), and blunder clusters (a 200+ CPL blunder within 6 plies after leaving book).
 
 7) Storage
-- All parsed data, matches, and analysis results are stored in `data/analysis.db` (SQLite).
-- The GUI reads from SQLite only; it does not compute analysis directly.
-- Insights and review items are stored in SQLite and displayed in their tabs.
+- All parsed data, matches, and analysis results are stored in PostgreSQL.
+- The GUI reads from PostgreSQL only; it does not compute analysis directly.
+- Insights and review items are stored in PostgreSQL and displayed in their tabs.
 - Repertoire lines are stored in compact JSON form (`repertoire_compact`) and exposed through a compatibility `line_positions` view.
 
 ## Tabs and how to use them
@@ -100,11 +100,11 @@ Key analysis options:
 - Use Run Smoke Test to generate a small sampled repertoire/games dataset and run full analysis in a separate smoke DB.
 - Analysis status shows live phase/progress/ETA during engine computation.
 - Use Full reanalysis (overwrite DB) for a clean rebuild.
-- Use Refresh to reload summary counters from SQLite.
+- Use Refresh to reload summary counters from PostgreSQL
 - Use Fetch Games to download the last 180 days of games for selected variants into:
   - `games_dir/chesscom/` for Chess.com
   - `games_dir/lichess/` for Lichess
-  - Fetch is DB-aware: only games not already present in SQLite are written.
+  - Fetch is DB-aware: only games not already present in PostgreSQL are written.
   - Chess.com current-month archives are included; reruns append only newly found games.
 
 ### Games
@@ -133,13 +133,13 @@ Key analysis options:
 - Time usage includes both seconds and normalized percentages.
 
 ### Insights
-- Aggregated conclusions derived from SQLite (coverage, deviations, time patterns, and performance).
+- Aggregated conclusions derived from PostgreSQL (coverage, deviations, time patterns, and performance).
 
 ### Trainer
 - Learn and Review your repertoire lines with a large interactive board.
 - Learn mode: the app shows your moves first, you replay them, then you complete the line.
 - Review mode: you play the line; wrong moves are flagged and prioritized for review.
-- Use Mark Priority to set a trainer-only priority override (stored in SQLite).
+- Use Mark Priority to set a trainer-only priority override (stored in PostgreSQL).
 
 ### Review
 - Review items (line ID + reason + detail) based on:
