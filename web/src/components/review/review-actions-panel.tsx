@@ -1,19 +1,73 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { executeReviewAction, listReviewActions } from "@/lib/api-client";
+import { executeReviewAction, getReviewAction, listReviewActions, listReviewBranchQueue } from "@/lib/api-client";
+import type { ReviewActionRequest, ReviewActionResponse } from "@/lib/types";
+
+export function summarizeReviewActionResult(result: ReviewActionResponse): string {
+  const statusBefore = result.status_change?.before ?? "unknown";
+  const statusAfter = result.status_change?.after ?? "unknown";
+
+  const queueBefore = result.queue_change?.before?.queue_status ?? "none";
+  const queueAfter = result.queue_change?.after?.queue_status ?? "none";
+
+  const priorityBefore = result.priority_change?.before;
+  const priorityAfter = result.priority_change?.after;
+  const prioritySegment =
+    priorityBefore === null || priorityBefore === undefined || priorityAfter === null || priorityAfter === undefined
+      ? "priority unchanged"
+      : `priority ${priorityBefore}→${priorityAfter}`;
+
+  return `Status ${statusBefore}→${statusAfter}; queue ${queueBefore}→${queueAfter}; ${prioritySegment}.`;
+}
+
+export function buildQueueStatusMap(rows: { proposition_id: number; queue_status: string }[] | undefined): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const row of rows ?? []) {
+    map.set(row.proposition_id, row.queue_status);
+  }
+  return map;
+}
+
+export function deriveSelectedIdAfterAction(currentSelectedId: number | null, result: ReviewActionResponse): number | null {
+  return result.proposition?.id ?? currentSelectedId;
+}
 
 export function ReviewActionsPanel() {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<"pending" | "approved" | "disapproved" | "all">("pending");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [lastResult, setLastResult] = useState<ReviewActionResponse | null>(null);
 
   const actions = useQuery({ queryKey: ["review-actions", status], queryFn: () => listReviewActions(status) });
+  const branchQueue = useQuery({ queryKey: ["review-branch-queue"], queryFn: listReviewBranchQueue });
+  const detail = useQuery({
+    queryKey: ["review-action-detail", selectedId],
+    queryFn: () => getReviewAction(selectedId as number),
+    enabled: selectedId !== null,
+  });
+
   const mutate = useMutation({
     mutationFn: executeReviewAction,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["review-actions"] }),
+    onSuccess: (result) => {
+      setLastResult(result);
+      const nextSelectedId = deriveSelectedIdAfterAction(selectedId, result);
+      setSelectedId(nextSelectedId);
+      if (result.proposition) {
+        queryClient.setQueryData(["review-action-detail", result.proposition.id], result.proposition);
+      }
+      queryClient.invalidateQueries({ queryKey: ["review-actions"] });
+      queryClient.invalidateQueries({ queryKey: ["review-branch-queue"] });
+    },
   });
+
+  const queueCountByProposition = useMemo(() => buildQueueStatusMap(branchQueue.data), [branchQueue.data]);
+
+  const submitAction = (payload: ReviewActionRequest) => {
+    mutate.mutate(payload);
+  };
 
   return (
     <div className="card">
@@ -30,15 +84,43 @@ export function ReviewActionsPanel() {
       <p>Items: {actions.data?.length ?? 0}</p>
       {(actions.data ?? []).slice(0, 8).map((item) => (
         <div key={item.id} className="card">
-          <div>#{item.id} {item.uci_move} ({item.status})</div>
           <div>
-            <button type="button" onClick={() => mutate.mutate({ proposition_id: item.id, action: "done" })}>Done</button>
-            <button type="button" onClick={() => mutate.mutate({ proposition_id: item.id, action: "defer" })}>Defer</button>
-            <button type="button" onClick={() => mutate.mutate({ proposition_id: item.id, action: "priority" })}>Priority</button>
+            <button type="button" onClick={() => setSelectedId(item.id)}>
+              #{item.id} {item.uci_move} ({item.status})
+            </button>
+          </div>
+          <div>
+            evidence {item.evidence_count}/{item.threshold_count} · queue {queueCountByProposition.get(item.id) ?? "none"}
+          </div>
+          <div>
+            <button type="button" onClick={() => submitAction({ proposition_id: item.id, action: "done" })}>Done</button>
+            <button type="button" onClick={() => submitAction({ proposition_id: item.id, action: "defer" })}>Defer</button>
+            <button type="button" onClick={() => submitAction({ proposition_id: item.id, action: "priority" })}>Priority</button>
           </div>
         </div>
       ))}
-      {actions.error || mutate.error ? <p className="warn">Review action request failed.</p> : null}
+
+      <div className="card">
+        <h4>Evidence details</h4>
+        {selectedId === null ? <p>Select a proposition to inspect evidence.</p> : null}
+        {selectedId !== null && detail.isLoading ? <p>Loading proposition detail…</p> : null}
+        {detail.data ? (
+          <div>
+            <p>
+              #{detail.data.id} · {detail.data.uci_move} · status {detail.data.status}
+            </p>
+            <p>line hint: {detail.data.line_id_hint ?? "n/a"}</p>
+            <pre>{JSON.stringify(detail.data.detail, null, 2)}</pre>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="card">
+        <h4>Latest action result</h4>
+        {lastResult ? <p>{summarizeReviewActionResult(lastResult)}</p> : <p>No action taken in this session.</p>}
+      </div>
+
+      {actions.error || mutate.error || detail.error || branchQueue.error ? <p className="warn">Review action request failed.</p> : null}
     </div>
   );
 }

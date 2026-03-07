@@ -330,6 +330,54 @@ def fetch_review_proposition_detail(
     return data
 
 
+def fetch_branch_queue(
+    conn: sqlite3.Connection,
+) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT bq.proposition_id,
+               bq.queue_status,
+               bq.queued_at,
+               rp.status AS proposition_status,
+               rp.evidence_count,
+               rp.threshold_count,
+               rp.pos_id,
+               rp.uci_move,
+               rp.line_id_hint,
+               rp.updated_at
+        FROM branch_queue bq
+        JOIN review_propositions rp ON rp.id = bq.proposition_id
+        ORDER BY bq.queued_at DESC, bq.proposition_id DESC
+        """
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def fetch_branch_queue_entry(
+    conn: sqlite3.Connection,
+    proposition_id: int,
+) -> dict | None:
+    row = conn.execute(
+        """
+        SELECT bq.proposition_id,
+               bq.queue_status,
+               bq.queued_at,
+               rp.status AS proposition_status,
+               rp.evidence_count,
+               rp.threshold_count,
+               rp.pos_id,
+               rp.uci_move,
+               rp.line_id_hint,
+               rp.updated_at
+        FROM branch_queue bq
+        JOIN review_propositions rp ON rp.id = bq.proposition_id
+        WHERE bq.proposition_id = ?
+        """,
+        (int(proposition_id),),
+    ).fetchone()
+    return dict(row) if row else None
+
+
 def approve_review_proposition(
     conn: sqlite3.Connection,
     proposition_id: int,
@@ -394,6 +442,137 @@ def disapprove_review_proposition(
     )
     conn.commit()
     return True, "Proposition disapproved."
+
+
+def execute_review_action(
+    conn: sqlite3.Connection,
+    proposition_id: int,
+    action: str,
+) -> dict:
+    pid = int(proposition_id)
+    action_key = (action or "").strip().lower()
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        detail = fetch_review_proposition_detail(conn, pid)
+        if not detail:
+            conn.rollback()
+            return {"success": False, "message": "Proposition not found."}
+
+        previous_status = str(detail.get("status") or "")
+        queue_before = fetch_branch_queue_entry(conn, pid)
+        priority_before: int | None = None
+        line_id_hint = detail.get("line_id_hint")
+        if line_id_hint:
+            row = conn.execute(
+                "SELECT priority_override FROM trainer_line_state WHERE line_id = ?",
+                (str(line_id_hint),),
+            ).fetchone()
+            if row:
+                priority_before = int(row["priority_override"])
+
+        message = ""
+        if action_key == "done":
+            result = conn.execute(
+                """
+                UPDATE review_propositions
+                SET status = 'APPROVED',
+                    decided_at = ?,
+                    updated_at = ?
+                WHERE id = ?
+                  AND proposition_type = 'MISSING_COVERAGE_BRANCH'
+                """,
+                (now_iso, now_iso, pid),
+            )
+            if result.rowcount <= 0:
+                conn.rollback()
+                return {"success": False, "message": "Proposition not found."}
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO branch_queue (proposition_id, queue_status, queued_at)
+                VALUES (?, 'QUEUED', ?)
+                """,
+                (pid, now_iso),
+            )
+            message = "Proposition approved and queued."
+        elif action_key == "defer":
+            evidence_count = int(detail.get("evidence_count") or 0)
+            conn.execute(
+                """
+                UPDATE review_propositions
+                SET status = 'DISAPPROVED',
+                    dismissed_count = ?,
+                    decided_at = ?,
+                    updated_at = ?
+                WHERE id = ?
+                  AND proposition_type = 'MISSING_COVERAGE_BRANCH'
+                """,
+                (evidence_count, now_iso, now_iso, pid),
+            )
+            conn.execute("DELETE FROM branch_queue WHERE proposition_id = ?", (pid,))
+            message = "Proposition disapproved."
+        elif action_key == "priority":
+            if not line_id_hint:
+                conn.rollback()
+                return {"success": False, "message": "No line hint available to mark priority."}
+            result = conn.execute(
+                """
+                UPDATE trainer_line_state
+                SET priority_override = 1
+                WHERE line_id = ?
+                """,
+                (str(line_id_hint),),
+            )
+            if result.rowcount <= 0:
+                conn.rollback()
+                return {"success": False, "message": "Line not found in trainer state."}
+            conn.execute(
+                """
+                UPDATE review_propositions
+                SET updated_at = ?
+                WHERE id = ?
+                """,
+                (now_iso, pid),
+            )
+            message = f"Priority override enabled for {line_id_hint}."
+        else:
+            conn.rollback()
+            return {"success": False, "message": "Unsupported review action."}
+
+        updated_detail = fetch_review_proposition_detail(conn, pid)
+        queue_after = fetch_branch_queue_entry(conn, pid)
+        priority_after: int | None = None
+        if line_id_hint:
+            row = conn.execute(
+                "SELECT priority_override FROM trainer_line_state WHERE line_id = ?",
+                (str(line_id_hint),),
+            ).fetchone()
+            if row:
+                priority_after = int(row["priority_override"])
+
+        conn.commit()
+        return {
+            "success": True,
+            "message": message,
+            "proposition": updated_detail,
+            "status_change": {
+                "before": previous_status,
+                "after": (updated_detail or {}).get("status"),
+            },
+            "queue_change": {
+                "before": queue_before,
+                "after": queue_after,
+            },
+            "priority_change": {
+                "line_id": line_id_hint,
+                "before": priority_before,
+                "after": priority_after,
+            },
+        }
+    except Exception:
+        conn.rollback()
+        raise
 
 
 

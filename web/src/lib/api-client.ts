@@ -24,8 +24,10 @@ import type {
   TreeCoverageResponse,
   TreeExplorerResponse,
   ReviewProposition,
+  ReviewPropositionDetail,
   ReviewActionRequest,
   ReviewActionResponse,
+  BranchQueueEntry,
   RuntimeSettings,
   RuntimeSettingsUpdateRequest,
   RepertoireImportResponse,
@@ -297,6 +299,24 @@ export async function listReviewActions(status: "pending" | "approved" | "disapp
     cache: "no-store",
   });
   return unwrap<ReviewProposition[]>(response);
+}
+
+export async function getReviewAction(propositionId: number): Promise<ReviewPropositionDetail> {
+  const response = await fetch(`${API_BASE_URL}/review/actions/${propositionId}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<ReviewPropositionDetail>(response);
+}
+
+export async function listReviewBranchQueue(): Promise<BranchQueueEntry[]> {
+  const response = await fetch(`${API_BASE_URL}/review/branch-queue`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<BranchQueueEntry[]>(response);
 }
 
 export async function executeReviewAction(payload: ReviewActionRequest): Promise<ReviewActionResponse> {
