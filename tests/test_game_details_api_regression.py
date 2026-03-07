@@ -33,8 +33,8 @@ from backend import api_service
 def test_list_games_bounds_limit_and_offset(monkeypatch) -> None:
     calls: list[tuple[int, int]] = []
 
-    async def fake_fetch_games(*, limit: int, offset: int):
-        calls.append((limit, offset))
+    async def fake_fetch_games(**kwargs):
+        calls.append((kwargs["limit"], kwargs["offset"]))
         return [
             {
                 "id": 11,

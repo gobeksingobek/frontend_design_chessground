@@ -20,7 +20,62 @@ def _raise_sqlite_disabled() -> None:
     )
 
 
-def _fetch_games_sqlite(limit: int, offset: int) -> list[dict[str, Any]]:
+def _apply_games_filters(
+    rows: list[dict[str, Any]],
+    *,
+    result: str | None = None,
+    compliance: str | None = None,
+    line_id: str | None = None,
+    player: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> list[dict[str, Any]]:
+    filtered = rows
+    if result:
+        filtered = [row for row in filtered if str(row.get("result") or "").casefold() == result.casefold()]
+    if compliance:
+        filtered = [row for row in filtered if str(row.get("compliance") or "").casefold() == compliance.casefold()]
+    if line_id:
+        filtered = [row for row in filtered if str(row.get("line_id") or "").casefold() == line_id.casefold()]
+    if player:
+        player_key = player.casefold()
+        filtered = [
+            row
+            for row in filtered
+            if player_key in str(row.get("white") or "").casefold() or player_key in str(row.get("black") or "").casefold()
+        ]
+    if date_from:
+        filtered = [row for row in filtered if (row.get("date") or "") >= date_from]
+    if date_to:
+        filtered = [row for row in filtered if (row.get("date") or "") <= date_to]
+    return filtered
+
+
+def _sort_games(rows: list[dict[str, Any]], sort_by: str, sort_dir: str) -> list[dict[str, Any]]:
+    reverse = sort_dir.lower() == "desc"
+
+    if sort_by == "date":
+        return sorted(rows, key=lambda row: (row.get("date") or "", row.get("id") or 0), reverse=reverse)
+    if sort_by == "compliance":
+        return sorted(rows, key=lambda row: (row.get("compliance") or "", row.get("date") or ""), reverse=reverse)
+    if sort_by == "result":
+        return sorted(rows, key=lambda row: (row.get("result") or "", row.get("date") or ""), reverse=reverse)
+    return sorted(rows, key=lambda row: row.get("id") or 0, reverse=reverse)
+
+
+def _fetch_games_sqlite(
+    limit: int,
+    offset: int,
+    *,
+    result: str | None = None,
+    compliance: str | None = None,
+    line_id: str | None = None,
+    player: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    sort_by: str = "date",
+    sort_dir: str = "desc",
+) -> list[dict[str, Any]]:
     if not _sqlite_backend_allowed():
         _raise_sqlite_disabled()
 
@@ -29,7 +84,17 @@ def _fetch_games_sqlite(limit: int, offset: int) -> list[dict[str, Any]]:
     with sqlite3.connect(SETTINGS.sqlite_path) as conn:
         conn.row_factory = sqlite3.Row
         rows = queries.fetch_game_overview(conn)
-    return rows[offset : offset + limit]
+    filtered = _apply_games_filters(
+        rows,
+        result=result,
+        compliance=compliance,
+        line_id=line_id,
+        player=player,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    sorted_rows = _sort_games(filtered, sort_by=sort_by, sort_dir=sort_dir)
+    return sorted_rows[offset : offset + limit]
 
 
 def _fetch_game_detail_sqlite(game_id: int) -> dict[str, Any] | None:
@@ -84,7 +149,19 @@ def _fetch_game_detail_sqlite(game_id: int) -> dict[str, Any] | None:
     }
 
 
-async def _fetch_games_postgres(limit: int, offset: int) -> list[dict[str, Any]]:
+async def _fetch_games_postgres(
+    limit: int,
+    offset: int,
+    *,
+    result: str | None = None,
+    compliance: str | None = None,
+    line_id: str | None = None,
+    player: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    sort_by: str = "date",
+    sort_dir: str = "desc",
+) -> list[dict[str, Any]]:
     conn = await asyncpg.connect(SETTINGS.postgres_dsn)
     try:
         rows = await conn.fetch(
@@ -113,13 +190,19 @@ async def _fetch_games_postgres(limit: int, offset: int) -> list[dict[str, Any]]
                    ) AS out_rep
             FROM games g
             LEFT JOIN matches m ON g.id = m.game_id
-            ORDER BY g.date DESC, g.id DESC
-            LIMIT $1 OFFSET $2
-            """,
-            limit,
-            offset,
+            """
         )
-        return [dict(row) for row in rows]
+        filtered = _apply_games_filters(
+            [dict(row) for row in rows],
+            result=result,
+            compliance=compliance,
+            line_id=line_id,
+            player=player,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        sorted_rows = _sort_games(filtered, sort_by=sort_by, sort_dir=sort_dir)
+        return sorted_rows[offset : offset + limit]
     finally:
         await conn.close()
 
@@ -191,10 +274,45 @@ async def _fetch_game_detail_postgres(game_id: int) -> dict[str, Any] | None:
         await conn.close()
 
 
-async def fetch_games(limit: int, offset: int) -> list[dict[str, Any]]:
+async def fetch_games(
+    limit: int,
+    offset: int,
+    *,
+    result: str | None = None,
+    compliance: str | None = None,
+    line_id: str | None = None,
+    player: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    sort_by: str = "date",
+    sort_dir: str = "desc",
+) -> list[dict[str, Any]]:
     if SETTINGS.data_backend == "postgres":
-        return await _fetch_games_postgres(limit, offset)
-    return await asyncio.to_thread(_fetch_games_sqlite, limit, offset)
+        return await _fetch_games_postgres(
+            limit,
+            offset,
+            result=result,
+            compliance=compliance,
+            line_id=line_id,
+            player=player,
+            date_from=date_from,
+            date_to=date_to,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+        )
+    return await asyncio.to_thread(
+        _fetch_games_sqlite,
+        limit,
+        offset,
+        result=result,
+        compliance=compliance,
+        line_id=line_id,
+        player=player,
+        date_from=date_from,
+        date_to=date_to,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+    )
 
 
 async def fetch_game_detail(game_id: int) -> dict[str, Any] | None:

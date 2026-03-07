@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SidelineTable } from "@/components/sideline-table";
 import {
   getAnalysisProgress,
+  getAnalysisRuns,
   getAnalysisStatus,
   getOverviewSummary,
   runEngineOnlyAnalysis,
@@ -17,6 +18,13 @@ import {
 function formatRunType(value: string | null | undefined): string {
   if (!value) return "N/A";
   return value.replaceAll("-", " ");
+}
+
+function formatTs(value: string | null | undefined): string {
+  if (!value) return "N/A";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
 }
 
 export default function OverviewPage() {
@@ -34,6 +42,11 @@ export default function OverviewPage() {
     queryFn: getAnalysisProgress,
     refetchInterval: 2000,
   });
+  const { data: runs } = useQuery({
+    queryKey: ["analysis-runs", 10],
+    queryFn: () => getAnalysisRuns(10),
+    refetchInterval: 2000,
+  });
 
   const isRunning = status?.state === "running";
 
@@ -48,6 +61,7 @@ export default function OverviewPage() {
       setActionMessage(`Started ${formatRunType(result.run_type)} (${result.job_id.slice(0, 8)}…).`);
       queryClient.invalidateQueries({ queryKey: ["analysis-status"] });
       queryClient.invalidateQueries({ queryKey: ["analysis-progress"] });
+      queryClient.invalidateQueries({ queryKey: ["analysis-runs", 10] });
     },
     onError: (err) => {
       setActionMessage((err as Error).message);
@@ -85,6 +99,7 @@ export default function OverviewPage() {
           <button onClick={() => {
             queryClient.invalidateQueries({ queryKey: ["analysis-status"] });
             queryClient.invalidateQueries({ queryKey: ["analysis-progress"] });
+            queryClient.invalidateQueries({ queryKey: ["analysis-runs", 10] });
           }}>Refresh status</button>
         </div>
         {actionMessage ? <p className={actionMessage.includes("already running") ? "warn" : "ok"}>{actionMessage}</p> : null}
@@ -96,6 +111,20 @@ export default function OverviewPage() {
         <p>Active job: {status?.active_job_id ? `${status.active_job_id.slice(0, 8)}… (${formatRunType(status.active_run_type)})` : "None"}</p>
         <p>Last job: {status?.last_completed_job_id ? `${status.last_completed_job_id.slice(0, 8)}… (${formatRunType(status.last_run_type)})` : "None"}</p>
         {status?.last_error ? <p className="warn">Last failure: {status.last_error}</p> : null}
+      </div>
+
+      <div className="card">
+        <h3>Run timeline</h3>
+        {(runs?.runs.length ?? 0) === 0 ? <p>No analysis runs yet.</p> : null}
+        <ul>
+          {(runs?.runs ?? []).map((run) => (
+            <li key={run.job_id}>
+              <strong>{formatRunType(run.run_type)}</strong> · {run.state} · started {formatTs(run.started_at)}
+              {run.finished_at ? ` · finished ${formatTs(run.finished_at)}` : ""}
+              {run.error ? ` · error: ${run.error}` : ""}
+            </li>
+          ))}
+        </ul>
       </div>
 
       <div className="card">
