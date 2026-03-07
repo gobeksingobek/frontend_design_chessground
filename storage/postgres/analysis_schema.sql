@@ -122,10 +122,10 @@ CREATE OR REPLACE VIEW line_positions AS
 SELECT
     rc.line_id,
     je.idx::INTEGER AS ply,
-    (rc.pos_ids_json ->> ((je.idx - 1)::INTEGER))::BIGINT AS pos_id,
-    (rc.san_moves_json ->> ((je.idx - 1)::INTEGER)) AS san_move,
+    (rc.pos_ids_json ->> (je.idx - 1))::BIGINT AS pos_id,
+    (rc.san_moves_json ->> (je.idx - 1)) AS san_move,
     je.value AS uci_move,
-    (rc.pos_ids_json ->> (je.idx::INTEGER))::BIGINT AS next_pos_id
+    (rc.pos_ids_json ->> je.idx)::BIGINT AS next_pos_id
 FROM repertoire_compact rc
 JOIN LATERAL jsonb_array_elements_text(rc.moves_json) WITH ORDINALITY AS je(value, idx) ON TRUE;
 
