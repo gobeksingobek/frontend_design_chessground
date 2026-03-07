@@ -14,6 +14,10 @@ REQUIRED_ANALYSIS_TABLES = (
     "game_positions",
     "matches",
     "analysis_ply",
+    "repertoire_lines",
+    "repertoire_compact",
+    "trainer_line_state",
+    "trainer_sessions",
 )
 
 
