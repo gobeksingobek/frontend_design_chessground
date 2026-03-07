@@ -201,6 +201,19 @@ class AnalysisProgressResponse(BaseModel):
     updated_at: str
 
 
+class AnalysisRunHistoryEntry(BaseModel):
+    job_id: str
+    run_type: str
+    state: Literal["running", "completed", "failed"]
+    started_at: str
+    finished_at: str | None = None
+    error: str | None = None
+
+
+class AnalysisRunHistoryResponse(BaseModel):
+    runs: list[AnalysisRunHistoryEntry]
+
+
 class TreeBrowseMoveResponse(BaseModel):
     uci_move: str
     san_move: str | None = None
@@ -381,6 +394,28 @@ class RuntimeSettingsResponse(BaseModel):
     days_back: int = Field(ge=1)
     games_dir: str | None = None
     database_path: str | None = None
+    repertoire_dir: str | None = None
+    stockfish_path: str | None = None
+    piece_dir: str | None = None
+    engine_depth: int | None = None
+    max_plies: int | None = None
+    player_name: str | None = None
+    player_names: list[str] = Field(default_factory=list)
+    rating_band_size: int | None = None
+    matching_mode: str | None = None
+    enable_engine_cache: bool | None = None
+    incremental_analysis: bool | None = None
+    review_top_n: int | None = None
+    tabiya_top_n: int | None = None
+    engine_workers: int | None = None
+    engine_worker_cap: int | None = None
+    engine_threads: int | None = None
+    engine_hash_mb: int | None = None
+    engine_mode: str | None = None
+    engine_max_time_ms: int | None = None
+    engine_profile: str | None = None
+    engine_cache_prune_non_active: bool | None = None
+    missing_coverage_proposal_threshold: int | None = None
 
 
 class RuntimeSettingsUpdateRequest(BaseModel):
@@ -388,6 +423,30 @@ class RuntimeSettingsUpdateRequest(BaseModel):
     lichess_usernames: list[str] = Field(default_factory=list)
     variants: list[str] = Field(default_factory=list)
     days_back: int = Field(ge=1, le=3650)
+    repertoire_dir: str | None = None
+    games_dir: str | None = None
+    database_path: str | None = None
+    stockfish_path: str | None = None
+    piece_dir: str | None = None
+    engine_depth: int | None = Field(default=None, ge=1)
+    max_plies: int | None = Field(default=None, ge=1)
+    player_name: str | None = None
+    player_names: list[str] | None = None
+    rating_band_size: int | None = Field(default=None, ge=1)
+    matching_mode: str | None = None
+    enable_engine_cache: bool | None = None
+    incremental_analysis: bool | None = None
+    review_top_n: int | None = Field(default=None, ge=1)
+    tabiya_top_n: int | None = Field(default=None, ge=1)
+    engine_workers: int | None = Field(default=None, ge=1)
+    engine_worker_cap: int | None = Field(default=None, ge=1)
+    engine_threads: int | None = Field(default=None, ge=1)
+    engine_hash_mb: int | None = Field(default=None, ge=1)
+    engine_mode: str | None = None
+    engine_max_time_ms: int | None = Field(default=None, ge=1)
+    engine_profile: str | None = None
+    engine_cache_prune_non_active: bool | None = None
+    missing_coverage_proposal_threshold: int | None = Field(default=None, ge=1)
 
 
 
@@ -521,6 +580,39 @@ def _load_runtime_config() -> RuntimeConfig:
     )
 
 
+def _runtime_settings_response(cfg: RuntimeConfig) -> RuntimeSettingsResponse:
+    return RuntimeSettingsResponse(
+        chesscom_usernames=cfg.chesscom_usernames,
+        lichess_usernames=cfg.lichess_usernames,
+        variants=cfg.fetch_variants,
+        days_back=cfg.fetch_days_back,
+        games_dir=cfg.games_dir,
+        database_path=cfg.database_path,
+        repertoire_dir=cfg.repertoire_dir,
+        stockfish_path=cfg.stockfish_path,
+        piece_dir=cfg.piece_dir,
+        engine_depth=cfg.engine_depth,
+        max_plies=cfg.max_plies,
+        player_name=cfg.player_name,
+        player_names=cfg.player_names,
+        rating_band_size=cfg.rating_band_size,
+        matching_mode=cfg.matching_mode,
+        enable_engine_cache=cfg.enable_engine_cache,
+        incremental_analysis=cfg.incremental_analysis,
+        review_top_n=cfg.review_top_n,
+        tabiya_top_n=cfg.tabiya_top_n,
+        engine_workers=cfg.engine_workers,
+        engine_worker_cap=cfg.engine_worker_cap,
+        engine_threads=cfg.engine_threads,
+        engine_hash_mb=cfg.engine_hash_mb,
+        engine_mode=cfg.engine_mode,
+        engine_max_time_ms=cfg.engine_max_time_ms,
+        engine_profile=cfg.engine_profile,
+        engine_cache_prune_non_active=cfg.engine_cache_prune_non_active,
+        missing_coverage_proposal_threshold=cfg.missing_coverage_proposal_threshold,
+    )
+
+
 def _save_runtime_settings(payload: RuntimeSettingsUpdateRequest) -> RuntimeSettingsResponse:
     config = configparser.ConfigParser()
     if SETTINGS_INI_PATH.exists():
@@ -543,18 +635,66 @@ def _save_runtime_settings(payload: RuntimeSettingsUpdateRequest) -> RuntimeSett
     fetch["variants"] = ",".join(normalized_variants)
     fetch["days_back"] = str(payload.days_back)
 
+    paths = config["PATHS"]
+    analysis = config["ANALYSIS"]
+    player = config["PLAYER"]
+
+    if payload.repertoire_dir is not None:
+        paths["repertoire_dir"] = payload.repertoire_dir
+    if payload.games_dir is not None:
+        paths["games_dir"] = payload.games_dir
+    if payload.database_path is not None:
+        paths["database_path"] = payload.database_path
+    if payload.stockfish_path is not None:
+        paths["stockfish_path"] = payload.stockfish_path
+    if payload.piece_dir is not None:
+        paths["piece_dir"] = payload.piece_dir
+
+    if payload.engine_depth is not None:
+        analysis["engine_depth"] = str(payload.engine_depth)
+    if payload.max_plies is not None:
+        analysis["max_plies"] = str(payload.max_plies)
+    if payload.matching_mode is not None:
+        analysis["matching_mode"] = payload.matching_mode
+    if payload.enable_engine_cache is not None:
+        analysis["enable_engine_cache"] = "1" if payload.enable_engine_cache else "0"
+    if payload.incremental_analysis is not None:
+        analysis["incremental_analysis"] = "1" if payload.incremental_analysis else "0"
+    if payload.review_top_n is not None:
+        analysis["review_top_n"] = str(payload.review_top_n)
+    if payload.tabiya_top_n is not None:
+        analysis["tabiya_top_n"] = str(payload.tabiya_top_n)
+    if payload.engine_workers is not None:
+        analysis["engine_workers"] = str(payload.engine_workers)
+    if payload.engine_worker_cap is not None:
+        analysis["engine_worker_cap"] = str(payload.engine_worker_cap)
+    if payload.engine_threads is not None:
+        analysis["engine_threads"] = str(payload.engine_threads)
+    if payload.engine_hash_mb is not None:
+        analysis["engine_hash_mb"] = str(payload.engine_hash_mb)
+    if payload.engine_mode is not None:
+        analysis["engine_mode"] = payload.engine_mode
+    if payload.engine_max_time_ms is not None:
+        analysis["engine_max_time_ms"] = str(payload.engine_max_time_ms)
+    if payload.engine_profile is not None:
+        analysis["engine_profile"] = payload.engine_profile
+    if payload.engine_cache_prune_non_active is not None:
+        analysis["engine_cache_prune_non_active"] = "1" if payload.engine_cache_prune_non_active else "0"
+    if payload.missing_coverage_proposal_threshold is not None:
+        analysis["missing_coverage_proposal_threshold"] = str(payload.missing_coverage_proposal_threshold)
+
+    if payload.player_name is not None:
+        player["player_name"] = payload.player_name
+    if payload.player_names is not None:
+        player["player_names"] = ",".join(_normalize_list(payload.player_names))
+    if payload.rating_band_size is not None:
+        player["rating_band_size"] = str(payload.rating_band_size)
+
     with SETTINGS_INI_PATH.open("w", encoding="utf-8") as f:
         config.write(f)
 
     cfg = _load_runtime_config()
-    return RuntimeSettingsResponse(
-        chesscom_usernames=cfg.chesscom_usernames,
-        lichess_usernames=cfg.lichess_usernames,
-        variants=cfg.fetch_variants,
-        days_back=cfg.fetch_days_back,
-        games_dir=cfg.games_dir,
-        database_path=cfg.database_path,
-    )
+    return _runtime_settings_response(cfg)
 
 
 class AnalysisRuntimeManager:
@@ -569,6 +709,7 @@ class AnalysisRuntimeManager:
         self._progress: dict[str, Any] | None = None
         self._progress_updated_at = datetime.now(timezone.utc)
         self._updated_at = datetime.now(timezone.utc)
+        self._runs: list[AnalysisRunHistoryEntry] = []
 
     def _touch(self) -> None:
         self._updated_at = datetime.now(timezone.utc)
@@ -587,6 +728,17 @@ class AnalysisRuntimeManager:
             self._active_job_id = job_id
             self._active_run_type = run_type
             self._last_error = None
+            started_at = datetime.now(timezone.utc).isoformat()
+            self._runs.insert(
+                0,
+                AnalysisRunHistoryEntry(
+                    job_id=job_id,
+                    run_type=run_type,
+                    state="running",
+                    started_at=started_at,
+                ),
+            )
+            self._runs = self._runs[:50]
             self._set_progress({"message": f"Starting {run_type}", "done": 0, "total": 0})
 
         def worker() -> None:
@@ -600,6 +752,17 @@ class AnalysisRuntimeManager:
                     self._last_completed_job_id = job_id
                     self._active_job_id = None
                     self._active_run_type = None
+                    for idx, run in enumerate(self._runs):
+                        if run.job_id == job_id:
+                            self._runs[idx] = AnalysisRunHistoryEntry(
+                                job_id=run.job_id,
+                                run_type=run.run_type,
+                                state="failed",
+                                started_at=run.started_at,
+                                finished_at=datetime.now(timezone.utc).isoformat(),
+                                error=str(exc),
+                            )
+                            break
                     self._set_progress({"message": f"{run_type} failed", "error": str(exc)})
             else:
                 with self._lock:
@@ -608,6 +771,17 @@ class AnalysisRuntimeManager:
                     self._last_completed_job_id = job_id
                     self._active_job_id = None
                     self._active_run_type = None
+                    for idx, run in enumerate(self._runs):
+                        if run.job_id == job_id:
+                            self._runs[idx] = AnalysisRunHistoryEntry(
+                                job_id=run.job_id,
+                                run_type=run.run_type,
+                                state="completed",
+                                started_at=run.started_at,
+                                finished_at=datetime.now(timezone.utc).isoformat(),
+                                error=None,
+                            )
+                            break
                     self._set_progress({"message": f"{run_type} completed", "done": 1, "total": 1})
 
         thread = threading.Thread(target=worker, daemon=True, name=f"analysis-{run_type}")
@@ -641,6 +815,11 @@ class AnalysisRuntimeManager:
                 progress=self._progress,
                 updated_at=self._progress_updated_at.isoformat(),
             )
+
+    def runs(self, limit: int = 10) -> AnalysisRunHistoryResponse:
+        with self._lock:
+            bounded_limit = min(max(limit, 1), 50)
+            return AnalysisRunHistoryResponse(runs=self._runs[:bounded_limit])
 
 
 def _run_full_analysis(progress_cb) -> None:
@@ -823,6 +1002,12 @@ async def get_analysis_progress(request: Request, _: str = Depends(require_auth)
     return runtime.progress()
 
 
+@app.get('/analysis/runs', response_model=AnalysisRunHistoryResponse)
+async def get_analysis_runs(request: Request, limit: int = 10, _: str = Depends(require_auth)) -> AnalysisRunHistoryResponse:
+    runtime: AnalysisRuntimeManager = request.app.state.analysis_runtime
+    return runtime.runs(limit=limit)
+
+
 @app.get('/auth/validate', response_model=AuthValidateResponse, responses={401: {"model": ErrorResponse}})
 async def auth_validate(_: str = Depends(require_auth)) -> AuthValidateResponse:
     return AuthValidateResponse(ok=True, detail="Token is valid")
@@ -831,14 +1016,7 @@ async def auth_validate(_: str = Depends(require_auth)) -> AuthValidateResponse:
 @app.get('/settings/runtime', response_model=RuntimeSettingsResponse, responses={401: {"model": ErrorResponse}})
 async def get_runtime_settings(_: str = Depends(require_auth)) -> RuntimeSettingsResponse:
     cfg = _load_runtime_config()
-    return RuntimeSettingsResponse(
-        chesscom_usernames=cfg.chesscom_usernames,
-        lichess_usernames=cfg.lichess_usernames,
-        variants=cfg.fetch_variants,
-        days_back=cfg.fetch_days_back,
-        games_dir=cfg.games_dir,
-        database_path=cfg.database_path,
-    )
+    return _runtime_settings_response(cfg)
 
 
 @app.put('/settings/runtime', response_model=RuntimeSettingsResponse, responses={401: {"model": ErrorResponse}, 422: {"model": ErrorResponse}})
@@ -1016,11 +1194,32 @@ async def list_sidelines(request: Request, limit: int = 20, _: str = Depends(req
 async def list_games(
     limit: int = 50,
     offset: int = 0,
+    result: str | None = None,
+    compliance: str | None = None,
+    line_id: str | None = None,
+    player: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    sort_by: str = "date",
+    sort_dir: str = "desc",
     _: str = Depends(require_auth),
 ) -> list[GameOverviewResponse]:
     bounded_limit = min(max(limit, 1), 200)
     bounded_offset = max(offset, 0)
-    rows = await fetch_games(limit=bounded_limit, offset=bounded_offset)
+    normalized_sort_by = sort_by if sort_by in {"date", "result", "compliance", "id"} else "date"
+    normalized_sort_dir = sort_dir if sort_dir in {"asc", "desc"} else "desc"
+    rows = await fetch_games(
+        limit=bounded_limit,
+        offset=bounded_offset,
+        result=result,
+        compliance=compliance,
+        line_id=line_id,
+        player=player,
+        date_from=date_from,
+        date_to=date_to,
+        sort_by=normalized_sort_by,
+        sort_dir=normalized_sort_dir,
+    )
     return [GameOverviewResponse(**row) for row in rows]
 
 

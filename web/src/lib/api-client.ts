@@ -1,6 +1,7 @@
 import { getWebToken, setWebAuth } from "@/lib/auth";
 import type {
   AnalysisProgressResponse,
+  AnalysisRunHistoryResponse,
   AnalysisRunResponse,
   AnalysisStatusResponse,
   GameDetail,
@@ -146,6 +147,40 @@ export async function createSideline(payload: SidelineCreateRequest, idempotency
 
 export async function listGames(limit = 50, offset = 0): Promise<GameOverview[]> {
   const response = await fetch(`${API_BASE_URL}/games?limit=${limit}&offset=${offset}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<GameOverview[]>(response);
+}
+
+export interface ListGamesParams {
+  limit?: number;
+  offset?: number;
+  result?: string;
+  compliance?: string;
+  lineId?: string;
+  player?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sortBy?: "date" | "result" | "compliance" | "id";
+  sortDir?: "asc" | "desc";
+}
+
+export async function listGamesFiltered(params: ListGamesParams = {}): Promise<GameOverview[]> {
+  const search = new URLSearchParams();
+  search.set("limit", String(params.limit ?? 50));
+  search.set("offset", String(params.offset ?? 0));
+  if (params.result) search.set("result", params.result);
+  if (params.compliance) search.set("compliance", params.compliance);
+  if (params.lineId) search.set("line_id", params.lineId);
+  if (params.player) search.set("player", params.player);
+  if (params.dateFrom) search.set("date_from", params.dateFrom);
+  if (params.dateTo) search.set("date_to", params.dateTo);
+  if (params.sortBy) search.set("sort_by", params.sortBy);
+  if (params.sortDir) search.set("sort_dir", params.sortDir);
+
+  const response = await fetch(`${API_BASE_URL}/games?${search.toString()}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -419,4 +454,13 @@ export async function getAnalysisProgress(): Promise<AnalysisProgressResponse> {
     cache: "no-store",
   });
   return unwrap<AnalysisProgressResponse>(response);
+}
+
+export async function getAnalysisRuns(limit = 10): Promise<AnalysisRunHistoryResponse> {
+  const response = await fetch(`${API_BASE_URL}/analysis/runs?limit=${limit}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<AnalysisRunHistoryResponse>(response);
 }

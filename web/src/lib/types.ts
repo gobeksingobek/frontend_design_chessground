@@ -89,6 +89,19 @@ export interface OverviewSummary {
   fully_compliant: number;
 }
 
+export interface AnalysisRunHistoryEntry {
+  job_id: string;
+  run_type: AnalysisRunType;
+  state: "running" | "completed" | "failed";
+  started_at: string;
+  finished_at: string | null;
+  error: string | null;
+}
+
+export interface AnalysisRunHistoryResponse {
+  runs: AnalysisRunHistoryEntry[];
+}
+
 export type StatsRow = Record<string, string | number | boolean | null>;
 
 export interface TreeNodeSummary {
@@ -322,8 +335,30 @@ export interface RuntimeSettings {
   lichess_usernames: string[];
   variants: string[];
   days_back: number;
+  repertoire_dir: string | null;
   games_dir: string | null;
   database_path: string | null;
+  stockfish_path: string | null;
+  piece_dir: string | null;
+  engine_depth: number | null;
+  max_plies: number | null;
+  player_name: string | null;
+  player_names: string[];
+  rating_band_size: number | null;
+  matching_mode: string | null;
+  enable_engine_cache: boolean | null;
+  incremental_analysis: boolean | null;
+  review_top_n: number | null;
+  tabiya_top_n: number | null;
+  engine_workers: number | null;
+  engine_worker_cap: number | null;
+  engine_threads: number | null;
+  engine_hash_mb: number | null;
+  engine_mode: string | null;
+  engine_max_time_ms: number | null;
+  engine_profile: string | null;
+  engine_cache_prune_non_active: boolean | null;
+  missing_coverage_proposal_threshold: number | null;
 }
 
 export interface RuntimeSettingsUpdateRequest {
@@ -331,6 +366,30 @@ export interface RuntimeSettingsUpdateRequest {
   lichess_usernames: string[];
   variants: string[];
   days_back: number;
+  repertoire_dir?: string;
+  games_dir?: string;
+  database_path?: string;
+  stockfish_path?: string;
+  piece_dir?: string;
+  engine_depth?: number;
+  max_plies?: number;
+  player_name?: string;
+  player_names?: string[];
+  rating_band_size?: number;
+  matching_mode?: string;
+  enable_engine_cache?: boolean;
+  incremental_analysis?: boolean;
+  review_top_n?: number;
+  tabiya_top_n?: number;
+  engine_workers?: number;
+  engine_worker_cap?: number;
+  engine_threads?: number;
+  engine_hash_mb?: number;
+  engine_mode?: string;
+  engine_max_time_ms?: number;
+  engine_profile?: string;
+  engine_cache_prune_non_active?: boolean;
+  missing_coverage_proposal_threshold?: number;
 }
 
 
