@@ -323,6 +323,38 @@ class ReviewPropositionResponse(BaseModel):
     updated_at: str
 
 
+class ReviewPropositionDetailResponse(ReviewPropositionResponse):
+    proposition_key: str
+    dismissed_count: int | None = None
+    detail: dict[str, Any] | None = None
+    created_at: str | None = None
+    decided_at: str | None = None
+
+
+class BranchQueueEntryResponse(BaseModel):
+    proposition_id: int
+    queue_status: str
+    queued_at: str | None = None
+    proposition_status: str
+    evidence_count: int
+    threshold_count: int
+    pos_id: int
+    uci_move: str
+    line_id_hint: str | None = None
+    updated_at: str
+
+
+class ReviewActionDelta(BaseModel):
+    before: Any = None
+    after: Any = None
+
+
+class ReviewPriorityDelta(BaseModel):
+    line_id: str | None = None
+    before: int | None = None
+    after: int | None = None
+
+
 class ReviewActionRequest(BaseModel):
     proposition_id: int = Field(ge=1)
     action: Literal["done", "defer", "priority"]
@@ -331,6 +363,10 @@ class ReviewActionRequest(BaseModel):
 class ReviewActionResponse(BaseModel):
     success: bool
     message: str
+    proposition: ReviewPropositionDetailResponse | None = None
+    status_change: ReviewActionDelta | None = None
+    queue_change: ReviewActionDelta | None = None
+    priority_change: ReviewPriorityDelta | None = None
 
 
 class AuthValidateResponse(BaseModel):
@@ -1434,25 +1470,31 @@ async def list_review_actions(status: Literal["pending", "approved", "disapprove
     return [ReviewPropositionResponse(**row) for row in rows]
 
 
+@app.get("/review/actions/{proposition_id}", response_model=ReviewPropositionDetailResponse)
+async def get_review_action(proposition_id: int, _: str = Depends(require_auth)) -> ReviewPropositionDetailResponse:
+    detail = await _with_sqlite(queries.fetch_review_proposition_detail, proposition_id)
+    if not detail:
+        raise api_error(404, "NOT_FOUND", "Proposition not found.")
+    return ReviewPropositionDetailResponse(**detail)
+
+
+@app.get("/review/branch-queue", response_model=list[BranchQueueEntryResponse])
+async def list_review_branch_queue(_: str = Depends(require_auth)) -> list[BranchQueueEntryResponse]:
+    rows = await _with_sqlite(queries.fetch_branch_queue)
+    return [BranchQueueEntryResponse(**row) for row in rows]
+
+
 @app.post("/review/actions", response_model=ReviewActionResponse)
 async def execute_review_action(payload: ReviewActionRequest, _: str = Depends(require_auth)) -> ReviewActionResponse:
-    if payload.action == "done":
-        success, message = await _with_sqlite(queries.approve_review_proposition, payload.proposition_id)
-    elif payload.action == "defer":
-        success, message = await _with_sqlite(queries.disapprove_review_proposition, payload.proposition_id)
-    else:
-        def _mark_priority(conn: sqlite3.Connection):
-            detail = queries.fetch_review_proposition_detail(conn, payload.proposition_id)
-            if not detail:
-                return False, "Proposition not found."
-            line_id = detail.get("line_id_hint")
-            if not line_id:
-                return False, "No line hint available to mark priority."
-            queries.set_trainer_priority_override(conn, str(line_id), 1)
-            return True, f"Priority override enabled for {line_id}."
+    result = await _with_sqlite(queries.execute_review_action, payload.proposition_id, payload.action)
+    if not result.get("success"):
+        raise api_error(404, "NOT_FOUND", str(result.get("message") or "Review action failed."))
 
-        success, message = await _with_sqlite(_mark_priority)
-
-    if not success:
-        raise api_error(404, "NOT_FOUND", message)
-    return ReviewActionResponse(success=success, message=message)
+    return ReviewActionResponse(
+        success=True,
+        message=str(result.get("message") or ""),
+        proposition=ReviewPropositionDetailResponse(**result["proposition"]) if result.get("proposition") else None,
+        status_change=ReviewActionDelta(**result["status_change"]) if result.get("status_change") else None,
+        queue_change=ReviewActionDelta(**result["queue_change"]) if result.get("queue_change") else None,
+        priority_change=ReviewPriorityDelta(**result["priority_change"]) if result.get("priority_change") else None,
+    )

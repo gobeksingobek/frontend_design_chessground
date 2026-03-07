@@ -255,6 +255,27 @@ export interface ReviewProposition {
   updated_at: string;
 }
 
+export interface ReviewPropositionDetail extends ReviewProposition {
+  proposition_key: string;
+  dismissed_count: number | null;
+  detail: Record<string, unknown> | null;
+  created_at: string | null;
+  decided_at: string | null;
+}
+
+export interface BranchQueueEntry {
+  proposition_id: number;
+  queue_status: string;
+  queued_at: string | null;
+  proposition_status: string;
+  evidence_count: number;
+  threshold_count: number;
+  pos_id: number;
+  uci_move: string;
+  line_id_hint: string | null;
+  updated_at: string;
+}
+
 export interface ReviewActionRequest {
   proposition_id: number;
   action: "done" | "defer" | "priority";
@@ -263,6 +284,10 @@ export interface ReviewActionRequest {
 export interface ReviewActionResponse {
   success: boolean;
   message: string;
+  proposition: ReviewPropositionDetail | null;
+  status_change: { before: string | null; after: string | null } | null;
+  queue_change: { before: BranchQueueEntry | null; after: BranchQueueEntry | null } | null;
+  priority_change: { line_id: string | null; before: number | null; after: number | null } | null;
 }
 
 export type AnalysisRunType = "full-analysis" | "engine-only-analysis" | "fetch-games" | "smoke-test";
