@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
-    "test:ui-regression": "node --test --loader ./scripts/node-test-ts-loader.mjs \"src/**/*.test.ts\" \"src/**/*.test.tsx\"",
+    "test:ui-regression": "node ./scripts/run-ui-regression-tests.mjs",
     "check:stats-pages-client": "node scripts/check-stats-pages-client.mjs"
   },
   "dependencies": {
