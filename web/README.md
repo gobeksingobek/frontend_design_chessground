@@ -1,5 +1,15 @@
 # ChessGround Web
 
+## UI regression tests
+
+Run the canonical UI regression suite with:
+
+```bash
+npm run test:ui-regression
+```
+
+The command uses Node's test runner with a local loader that transpiles TS/TSX and resolves the `@/` alias to `web/src/*`, matching application imports.
+
 ## Repertoire import upload format
 
 The web app supports repertoire import through `POST /repertoires/import`.
