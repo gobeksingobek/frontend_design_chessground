@@ -103,6 +103,14 @@ Legend: `Done` = parity reached + API/UI regression coverage added. `In progress
 
 A cluster can only be marked `Done` after both API and UI regression checks are committed and green for that cluster.
 
+Canonical UI regression command:
+
+```bash
+npm --prefix web run test:ui-regression
+```
+
+CI parity requirement: the GitHub Actions workflow `.github/workflows/ui-regression.yml` runs the same `npm run test:ui-regression` command from `web/`, and parity clusters must wait for that job to pass before completion.
+
 > Note: frontend TSX unit tests currently rely on project-specific tooling (path aliases/TS transpilation). Ensure CI/frontend test runner support is wired before promoting any UI-heavy cluster to `Done`.
 
 ### Completed parity cluster with regression coverage
