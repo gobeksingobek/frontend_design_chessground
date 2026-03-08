@@ -163,7 +163,7 @@ Repertoire import accepts either:
 - a `.zip` archive containing one or more PGN files (`*.pgn` / `*.PGN`, nested folders allowed), or
 - a single `.pgn` file.
 
-Database snapshot uploads (`.db`, `.sqlite`, `.sql`) are not accepted by the current web/API import path.
+Database snapshot uploads (`.db`, `.sql`) are not accepted by the current web/API import path.
 
 Import safety checks include:
 - payload-level idempotency (exact same upload bytes are rejected as already imported), and
@@ -193,8 +193,6 @@ Render/Neon migration path:
 - Redeploy web, API, and worker services after env var updates.
 - Bootstrap Postgres schema before API startup:
   - `python -m backend.bootstrap_postgres_schema`
-- Backfill existing SQLite analysis data:
-  - `python -m backend.backfill_sqlite_to_postgres --sqlite-path data/analysis.db`
 - A Render blueprint is included at `render.yaml`.
 
 

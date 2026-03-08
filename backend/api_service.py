@@ -1589,8 +1589,28 @@ async def answer_trainer_session(session_id: str, payload: TrainerSessionAnswerR
 
 
 @app.get("/trainer/queue", response_model=TrainerQueueResponse)
-async def get_trainer_queue(mode: Literal["learn", "review"] = "review", _: str = Depends(require_auth)) -> TrainerQueueResponse:
+async def get_trainer_queue(
+    request: Request,
+    mode: Literal["learn", "review"] = "review",
+    _: str = Depends(require_auth),
+) -> TrainerQueueResponse:
     learned_only = mode == "review"
+
+    if SETTINGS.data_backend == "postgres":
+        async with request.app.state.db_pool.acquire() as conn:
+            await _ensure_trainer_state_postgres(conn)
+            rows = await conn.fetch(
+                """
+                SELECT rl.line_id, rl.is_priority, rl.side_to_play,
+                       tls.learned, tls.needs_review, tls.correct_streak, tls.priority_override,
+                       tls.auto_priority_score, tls.focus_max_ply
+                FROM repertoire_lines rl
+                JOIN trainer_line_state tls ON rl.line_id = tls.line_id
+                WHERE tls.learned = $1
+                """,
+                1 if learned_only else 0,
+            )
+        return TrainerQueueResponse(mode=mode, items=[TrainerQueueEntry(**dict(row)) for row in rows])
 
     def _fetch(conn: sqlite3.Connection):
         queries.ensure_trainer_state(conn)
@@ -1601,7 +1621,62 @@ async def get_trainer_queue(mode: Literal["learn", "review"] = "review", _: str 
 
 
 @app.post("/trainer/outcomes", response_model=TrainerOutcomeResponse)
-async def post_trainer_outcome(payload: TrainerOutcomeRequest, _: str = Depends(require_auth)) -> TrainerOutcomeResponse:
+async def post_trainer_outcome(
+    payload: TrainerOutcomeRequest,
+    request: Request,
+    _: str = Depends(require_auth),
+) -> TrainerOutcomeResponse:
+    if SETTINGS.data_backend == "postgres":
+        async with request.app.state.db_pool.acquire() as conn:
+            await _ensure_trainer_state_postgres(conn)
+            info = await _fetch_trainer_line_info_postgres(conn, payload.line_id)
+            if not info:
+                raise api_error(404, "NOT_FOUND", "Line not found in trainer state")
+
+            current_streak = int(info.get("correct_streak") or 0)
+            now_iso = datetime.now(timezone.utc).isoformat()
+            if payload.is_correct:
+                await conn.execute(
+                    """
+                    UPDATE trainer_line_state
+                    SET learned = COALESCE($2, learned),
+                        needs_review = 0,
+                        correct_streak = $3,
+                        times_correct = times_correct + 1,
+                        last_seen = $4
+                    WHERE line_id = $1
+                    """,
+                    payload.line_id,
+                    1 if payload.mode == "learn" else None,
+                    current_streak + 1,
+                    now_iso,
+                )
+            else:
+                await conn.execute(
+                    """
+                    UPDATE trainer_line_state
+                    SET needs_review = 1,
+                        correct_streak = 0,
+                        times_incorrect = times_incorrect + 1,
+                        last_seen = $2
+                    WHERE line_id = $1
+                    """,
+                    payload.line_id,
+                    now_iso,
+                )
+
+            row = await conn.fetchrow(
+                """
+                SELECT line_id, learned, needs_review, correct_streak, times_correct, times_incorrect
+                FROM trainer_line_state
+                WHERE line_id = $1
+                """,
+                payload.line_id,
+            )
+            if not row:
+                raise api_error(404, "NOT_FOUND", "Line not found after update")
+            return TrainerOutcomeResponse(**dict(row))
+
     def _update(conn: sqlite3.Connection):
         info = queries.fetch_trainer_line_info(conn, payload.line_id)
         if not info:
@@ -1648,7 +1723,28 @@ async def post_trainer_outcome(payload: TrainerOutcomeRequest, _: str = Depends(
 
 
 @app.post("/trainer/priority-override", response_model=TrainerQueueEntry)
-async def set_trainer_priority_override(payload: TrainerPriorityOverrideRequest, _: str = Depends(require_auth)) -> TrainerQueueEntry:
+async def set_trainer_priority_override(
+    payload: TrainerPriorityOverrideRequest,
+    request: Request,
+    _: str = Depends(require_auth),
+) -> TrainerQueueEntry:
+    if SETTINGS.data_backend == "postgres":
+        async with request.app.state.db_pool.acquire() as conn:
+            await _ensure_trainer_state_postgres(conn)
+            await conn.execute(
+                """
+                UPDATE trainer_line_state
+                SET priority_override = $2
+                WHERE line_id = $1
+                """,
+                payload.line_id,
+                int(payload.value),
+            )
+            row = await _fetch_trainer_line_info_postgres(conn, payload.line_id)
+            if not row:
+                raise api_error(404, "NOT_FOUND", "Line not found in trainer state")
+            return TrainerQueueEntry(**row)
+
     def _set(conn: sqlite3.Connection):
         queries.set_trainer_priority_override(conn, payload.line_id, payload.value)
         row = queries.fetch_trainer_line_info(conn, payload.line_id)

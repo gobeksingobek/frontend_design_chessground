@@ -23,7 +23,7 @@ def _is_production_environment() -> bool:
 
 
 def _default_data_backend() -> str:
-    return "postgres" if _is_render_environment() else "sqlite"
+    return "postgres"
 
 
 def _parse_csv(value: str | None) -> tuple[str, ...]:
