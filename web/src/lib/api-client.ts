@@ -36,14 +36,37 @@ import type {
 } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN ?? "dev-token";
+const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN ?? "";
+const DEFAULT_API_TOKENS = new Set(["dev-token", "changeme", "change-me", "default-token", "your-token-here", "example-token"]);
 const MAX_CONSECUTIVE_401S = 2;
 
 let consecutiveUnauthorizedCount = 0;
 
-function currentToken(): string {
+function isProductionBuild(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+function isDefaultTokenValue(token: string): boolean {
+  return DEFAULT_API_TOKENS.has(token.trim().toLowerCase());
+}
+
+function resolveApiToken(): string {
   const fromStorage = getWebToken();
-  return fromStorage && fromStorage.trim() ? fromStorage : API_TOKEN;
+  if (fromStorage && fromStorage.trim()) {
+    return fromStorage.trim();
+  }
+
+  const fromEnv = API_TOKEN.trim();
+  if (isProductionBuild() && (!fromEnv || isDefaultTokenValue(fromEnv))) {
+    throw new Error(
+      "Missing valid API token for production build. Set NEXT_PUBLIC_API_TOKEN to a non-default token or configure a user login flow that stores cg_web_api_token in localStorage.",
+    );
+  }
+  return fromEnv;
+}
+
+function currentToken(): string {
+  return resolveApiToken();
 }
 
 export function getAuthDiagnostics() {
