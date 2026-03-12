@@ -22,7 +22,7 @@ Accepted upload formats:
 2. **Single PGN file (`.pgn`)**
 
 Not accepted:
-- Database snapshots (`.db`, `.sqlite`, `.sql`) are not currently importable from the web endpoint.
+- Database snapshots (`.db`, `.sql`) are not currently importable from the web endpoint.
 - Archives without any PGN files.
 
 Duplicate protection:

@@ -14,7 +14,7 @@ Repo: `ChessGround`
   - `https://<web>.onrender.com`
   - `http://localhost:3000`
 - Confirm expected Postgres-backed data appears on pages.
-- Record gaps that still depend on local/SQLite-only workflows (`main.py` desktop paths).
+- Record gaps that still depend on local/PostgreSQL-only workflows (`main.py` desktop paths).
 - Produce cutover action lists.
 
 ## Validation approach
@@ -80,12 +80,12 @@ Because live Render endpoints were not reachable from this environment (proxy `C
 ### Current validation status
 
 - **Could not directly verify deployed Postgres rows rendering in the browser** from this environment due outbound proxy blocking to Render.
-- Local repo SQLite file (`data/analysis.db`) has no tables in this environment, so local fallback rendering could not be used as a substitute dataset.
+- Local repo PostgreSQL file (`data/analysis.db`) has no tables in this environment, so local fallback rendering could not be used as a substitute dataset.
 
-## Gaps still tied to local/SQLite desktop workflow
+## Gaps still tied to local/PostgreSQL desktop workflow
 
 1. Primary documented end-to-end workflow remains desktop-first (`python main.py`), including local path prompts and settings for PGN folders, Stockfish path, and piece image assets.
-2. Data ingest/analysis is still documented and implemented around local SQLite outputs from desktop runs before optional backfill to Postgres.
+2. Data ingest/analysis is still documented and implemented around local PostgreSQL outputs from desktop runs before optional backfill to Postgres.
 3. Some operational paths (analysis recomputation, fetch workflows) are still described in desktop-tab terms rather than pure web/API jobs.
 4. If Postgres backfill/bootstrap steps are skipped or stale, web pages have no guaranteed dataset source.
 
@@ -117,10 +117,16 @@ Because live Render endpoints were not reachable from this environment (proxy `C
 rg -n "onrender|NEXT_PUBLIC_API_BASE_URL|API_CORS_ORIGINS|API_AUTH_TOKEN" -S
 curl -sS -D - https://chessground-api.onrender.com/health -o /tmp/health.out && head -n 20 /tmp/health.out
 python - <<'PY'
-import sqlite3
-conn=sqlite3.connect('data/analysis.db')
-cur=conn.cursor()
-print(cur.execute("select name from sqlite_master where type='table' order by 1").fetchall())
+import asyncpg
+import asyncio
+
+async def main():
+    conn = await asyncpg.connect("postgresql://postgres:postgres@localhost:5432/chessground")
+    rows = await conn.fetch("select tablename from pg_tables where schemaname='public' order by 1")
+    print(rows)
+    await conn.close()
+
+asyncio.run(main())
 PY
 ```
 

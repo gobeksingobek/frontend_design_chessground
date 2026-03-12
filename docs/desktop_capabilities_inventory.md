@@ -16,7 +16,7 @@
 - Supports review propositions and branch queue decisions for missing-coverage branches.
 
 ## Storage paths and files
-- Default SQLite DB: `data/analysis.db`.
+- Default PostgreSQL DB: `data/analysis.db`.
 - Runtime settings: `config/settings.ini`.
 - Fetch state marker: `<games_dir>/.fetch_state.json` (analysis runtime manager path).
 

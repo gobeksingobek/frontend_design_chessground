@@ -49,17 +49,8 @@ Validate schema only:
 python -m backend.bootstrap_postgres_schema --validate-only
 ```
 
-Backfill existing SQLite analysis data into Postgres:
+Postgres-only deployment no longer uses local database backfill scripts.
 
-```bash
-python -m backend.backfill_sqlite_to_postgres --sqlite-path data/analysis.db
-```
-
-Safe no-op backfill (useful in deploy hooks when SQLite may not exist):
-
-```bash
-python -m backend.backfill_sqlite_to_postgres --sqlite-path data/analysis.db --skip-if-missing
-```
 
 ## Required env vars
 
@@ -73,7 +64,6 @@ Optional tuning:
 
 - `API_CORS_ORIGINS` (comma-separated list such as `https://your-web.onrender.com`)
 - `ENFORCE_POSTGRES_ON_RENDER` (`1` by default)
-- `SQLITE_PATH` (dev/local fallback for read APIs when `DATA_BACKEND=sqlite`)
 - `SIDELINE_MAX_RETRIES`
 - `SIDELINE_STREAM_BLOCK_MS`
 - `SIDELINE_CONSUMER_NAME`
@@ -119,7 +109,7 @@ Use the following checklist when promoting staging configuration to production:
 
 1. Run a parity pass in staging and promote to production only after parity succeeds.
 2. Keep `DATA_BACKEND=postgres` permanently in Render for API and worker services.
-3. Do not allow production paths to read from or write to SQLite directly.
+3. Do not allow production paths to read from or write to local file-based databases directly.
 4. Tag the release immediately after promotion, then monitor API and worker logs for the first 24 hours.
 5. Keep a rollback plan with both the previous service revision and a known-good environment snapshot.
 
@@ -167,9 +157,8 @@ Then run:
 
 ```bash
 python -m backend.bootstrap_postgres_schema
-python -m backend.backfill_sqlite_to_postgres --sqlite-path data/analysis.db
 ```
 
-The API will read games/moves/positions from Postgres instead of SQLite.
+The API reads games/moves/positions from Postgres.
 
-If `DATA_BACKEND=sqlite`, existing SQLite behavior remains available for local development.
+Use `DATA_BACKEND=postgres` for local development to match production.

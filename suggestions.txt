@@ -1,4 +1,4 @@
-You are a senior engineer improving an existing Python + SQLite + GUI chess repertoire analyzer app.
+You are a senior engineer improving an existing Python + PostgreSQL + GUI chess repertoire analyzer app.
 
 CONTEXT (current behavior)
 - Loads config/settings.ini; asks for missing paths and saves back.
@@ -12,15 +12,15 @@ CONTEXT (current behavior)
   - Compliance: FULLY_COMPLIANT, OPPONENT_DEVIATED, YOU_DEVIATED, BOTH_DEVIATED.
 - Engine: Stockfish fixed depth (default 20) for first 30 plies; stores eval, best move, and centipawn loss on user moves only.
 - Time: computes time spent from clock values and increment.
-- Storage: everything stored in data/analysis.db (SQLite). GUI reads from SQLite only; analysis pipeline writes to SQLite.
+- Storage: everything stored in data/analysis.db (PostgreSQL). GUI reads from PostgreSQL only; analysis pipeline writes to PostgreSQL.
 
 USER PREFERENCE
 - Keep engine depth FIXED at 20 (do NOT introduce variable depth). Performance improvements may be done via caching/incremental runs, but depth remains 20.
 
 GOAL
 Implement the features below with clean architecture:
-- Analysis pipeline remains responsible for computing and writing to SQLite.
-- GUI remains read-only from SQLite (no heavy computation in UI).
+- Analysis pipeline remains responsible for computing and writing to PostgreSQL.
+- GUI remains read-only from PostgreSQL (no heavy computation in UI).
 - Provide migrations so existing users’ DB can upgrade safely.
 - Add incremental analysis so “Run Analysis” only reprocesses changed files/games/lines and reuses cached engine results.
 - Add transposition-aware matching as an OPTIONAL mode controlled by config/INI, while preserving current strict behavior.
@@ -135,7 +135,7 @@ Engine caching:
 - Cache engine results keyed by (position_key, side_to_move, depth=20, multipv=1, engine_version optional).
 - If the same position appears in multiple games/lines, reuse cached results.
 
-8) SCHEMA CHANGES (SQLite) + MIGRATIONS
+8) SCHEMA CHANGES (PostgreSQL) + MIGRATIONS
 Implement schema migrations with a schema_version table.
 Propose tables (adjust as needed but keep these concepts):
 - positions(pos_id PK, fen_norm, zobrist, material_key, side_to_move)
@@ -187,7 +187,7 @@ IMPLEMENTATION REQUIREMENTS
 
 DELIVERABLES
 1) Code changes implementing all features above.
-2) SQLite migration script/module with schema_version handling.
+2) PostgreSQL migration script/module with schema_version handling.
 3) Updated settings.ini template + code to upgrade existing INI.
 4) UI updates wired to new DB fields.
 5) Brief developer notes in README: how matching modes differ, what new review metrics mean.

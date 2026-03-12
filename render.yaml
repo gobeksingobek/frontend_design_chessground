@@ -15,7 +15,7 @@ services:
     name: chessground-api
     runtime: python
     buildCommand: pip install -r requirements.txt
-    preDeployCommand: python -m backend.bootstrap_postgres_schema && python -m backend.backfill_sqlite_to_postgres --sqlite-path ${SQLITE_PATH:-data/analysis.db} --skip-if-missing
+    preDeployCommand: python -m backend.bootstrap_postgres_schema
     startCommand: uvicorn backend.api_service:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: POSTGRES_DSN
