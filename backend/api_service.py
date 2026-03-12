@@ -491,6 +491,471 @@ async def _with_sqlite(fn, *args, **kwargs):
 
     return await asyncio.to_thread(runner)
 
+
+def _require_postgres_request(request: Request | None) -> Request:
+    if request is None:
+        raise api_error(500, "INTERNAL_ERROR", "Request context is required for PostgreSQL backend access.")
+    return request
+
+
+async def _fetch_tree_repertoire_children_backend(
+    pos_id: int,
+    my_side_only: bool,
+    request: Request | None,
+) -> list[dict[str, Any]]:
+    if SETTINGS.data_backend != "postgres":
+        return await _with_sqlite(queries.fetch_tree_repertoire_children, pos_id, my_side_only=my_side_only)
+
+    req = _require_postgres_request(request)
+    async with req.app.state.db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            WITH repertoire_rows AS (
+                SELECT lp.uci_move,
+                       MIN(lp.san_move) AS san_move,
+                       lp.next_pos_id,
+                       COUNT(*)::int AS weight,
+                       MAX(CASE WHEN rl.is_priority = 1 THEN 1 ELSE 0 END)::int AS is_priority_edge,
+                       MAX(CASE WHEN re.is_user_mainline = 1 THEN 1 ELSE 0 END)::int AS is_user_mainline,
+                       SUM(
+                           CASE
+                               WHEN (
+                                   (rl.side_to_play = 'white' AND MOD(lp.ply, 2) = 1)
+                                   OR
+                                   (rl.side_to_play = 'black' AND MOD(lp.ply, 2) = 0)
+                               )
+                               THEN 1
+                               ELSE 0
+                           END
+                       )::int AS self_count,
+                       0::int AS is_sideline_pending
+                FROM line_positions lp
+                JOIN repertoire_lines rl
+                  ON rl.line_id = lp.line_id
+                LEFT JOIN repertoire_edges re
+                  ON re.pos_id = lp.pos_id
+                 AND re.uci_move = lp.uci_move
+                 AND re.next_pos_id = lp.next_pos_id
+                WHERE lp.pos_id = $1
+                GROUP BY lp.uci_move, lp.next_pos_id
+            ),
+            pending_sidelines AS (
+                SELECT sq.move_uci AS uci_move,
+                       sq.move_uci AS san_move,
+                       NULL::int AS next_pos_id,
+                       0::int AS weight,
+                       0::int AS is_priority_edge,
+                       0::int AS is_user_mainline,
+                       CASE WHEN $2 = 1 THEN 1 ELSE 0 END::int AS self_count,
+                       1::int AS is_sideline_pending
+                FROM sideline_queue sq
+                WHERE sq.pos_id = $1
+                  AND sq.status IN ('PENDING', 'EVAL_OK', 'EVAL_WARN')
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM repertoire_rows rr
+                      WHERE rr.uci_move = sq.move_uci
+                  )
+            )
+            SELECT uci_move, san_move, next_pos_id, weight, is_priority_edge, is_user_mainline, self_count, is_sideline_pending
+            FROM repertoire_rows
+            WHERE ($2 = 0 OR self_count > 0)
+            UNION ALL
+            SELECT uci_move, san_move, next_pos_id, weight, is_priority_edge, is_user_mainline, self_count, is_sideline_pending
+            FROM pending_sidelines
+            ORDER BY is_sideline_pending DESC, weight DESC, uci_move
+            """,
+            int(pos_id),
+            1 if my_side_only else 0,
+        )
+    return [dict(row) for row in rows]
+
+
+async def _fetch_tree_game_children_backend(
+    pos_id: int,
+    my_side_only: bool,
+    request: Request | None,
+) -> list[dict[str, Any]]:
+    if SETTINGS.data_backend != "postgres":
+        return await _with_sqlite(queries.fetch_tree_game_children, pos_id, my_side_only=my_side_only)
+
+    req = _require_postgres_request(request)
+    where_clause = "gp.pos_id = $1 AND gp.is_self = 1" if my_side_only else "gp.pos_id = $1"
+    async with req.app.state.db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            f"""
+            SELECT gp.uci_move,
+                   MIN(gp.san_move) AS san_move,
+                   MIN(gp_next.pos_id) AS next_pos_id,
+                   COUNT(*)::int AS games,
+                   SUM(
+                       CASE
+                           WHEN (
+                               (g.result = '1-0' AND g.player_color = 'white')
+                               OR
+                               (g.result = '0-1' AND g.player_color = 'black')
+                           ) THEN 1 ELSE 0
+                       END
+                   )::int AS wins,
+                   SUM(CASE WHEN g.result = '1/2-1/2' THEN 1 ELSE 0 END)::int AS draws,
+                   SUM(
+                       CASE
+                           WHEN (
+                               (g.result = '0-1' AND g.player_color = 'white')
+                               OR
+                               (g.result = '1-0' AND g.player_color = 'black')
+                           ) THEN 1 ELSE 0
+                       END
+                   )::int AS losses,
+                   AVG(
+                       CASE
+                           WHEN g.player_color = 'white' THEN g.black_elo
+                           ELSE g.white_elo
+                       END
+                   ) AS avg_opp_elo
+            FROM game_positions gp
+            JOIN games g
+              ON g.id = gp.game_id
+            LEFT JOIN game_positions gp_next
+              ON gp_next.game_id = gp.game_id
+             AND gp_next.ply = gp.ply + 1
+            WHERE {where_clause}
+            GROUP BY gp.uci_move
+            ORDER BY games DESC, gp.uci_move
+            """,
+            int(pos_id),
+        )
+
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        entry = dict(row)
+        total = int(entry.get("games") or 0)
+        wins = int(entry.get("wins") or 0)
+        draws = int(entry.get("draws") or 0)
+        entry["score_pct"] = ((wins + 0.5 * draws) / total * 100.0) if total > 0 else 0.0
+        out.append(entry)
+    return out
+
+
+async def _fetch_review_propositions_backend(
+    status_filter: str,
+    request: Request | None,
+) -> list[dict[str, Any]]:
+    if SETTINGS.data_backend != "postgres":
+        return await _with_sqlite(queries.fetch_review_propositions, status_filter=status_filter)
+
+    status_key = (status_filter or "pending").strip().lower()
+    where = ["proposition_type = 'MISSING_COVERAGE_BRANCH'"]
+    if status_key == "pending":
+        where.append("status = 'PENDING'")
+        where.append("evidence_count > threshold_count")
+    elif status_key == "approved":
+        where.append("status = 'APPROVED'")
+    elif status_key == "disapproved":
+        where.append("status = 'DISAPPROVED'")
+    elif status_key != "all":
+        where.append("status = 'PENDING'")
+        where.append("evidence_count > threshold_count")
+
+    req = _require_postgres_request(request)
+    async with req.app.state.db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            f"""
+            SELECT id,
+                   proposition_type,
+                   status,
+                   evidence_count,
+                   threshold_count,
+                   pos_id,
+                   uci_move,
+                   line_id_hint,
+                   updated_at
+            FROM review_propositions
+            WHERE {' AND '.join(where)}
+            ORDER BY evidence_count DESC, updated_at DESC, id DESC
+            """
+        )
+    return [dict(row) for row in rows]
+
+
+async def _fetch_review_proposition_detail_backend(
+    proposition_id: int,
+    request: Request | None,
+) -> dict[str, Any] | None:
+    if SETTINGS.data_backend != "postgres":
+        return await _with_sqlite(queries.fetch_review_proposition_detail, proposition_id)
+
+    req = _require_postgres_request(request)
+    async with req.app.state.db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id,
+                   proposition_type,
+                   proposition_key,
+                   status,
+                   evidence_count,
+                   threshold_count,
+                   dismissed_count,
+                   pos_id,
+                   uci_move,
+                   line_id_hint,
+                   detail_json,
+                   created_at,
+                   updated_at,
+                   decided_at
+            FROM review_propositions
+            WHERE id = $1
+            """,
+            int(proposition_id),
+        )
+    if not row:
+        return None
+    data = dict(row)
+    payload = data.get("detail_json")
+    if payload:
+        try:
+            data["detail"] = json.loads(payload)
+        except json.JSONDecodeError:
+            data["detail"] = None
+    else:
+        data["detail"] = None
+    return data
+
+
+async def _fetch_branch_queue_backend(request: Request | None) -> list[dict[str, Any]]:
+    if SETTINGS.data_backend != "postgres":
+        return await _with_sqlite(queries.fetch_branch_queue)
+
+    req = _require_postgres_request(request)
+    async with req.app.state.db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT bq.proposition_id,
+                   bq.queue_status,
+                   bq.queued_at,
+                   rp.status AS proposition_status,
+                   rp.evidence_count,
+                   rp.threshold_count,
+                   rp.pos_id,
+                   rp.uci_move,
+                   rp.line_id_hint,
+                   rp.updated_at
+            FROM branch_queue bq
+            JOIN review_propositions rp ON rp.id = bq.proposition_id
+            ORDER BY bq.queued_at DESC, bq.proposition_id DESC
+            """
+        )
+    return [dict(row) for row in rows]
+
+
+async def _execute_review_action_backend(
+    proposition_id: int,
+    action: str,
+    request: Request | None,
+) -> dict[str, Any]:
+    if SETTINGS.data_backend != "postgres":
+        return await _with_sqlite(queries.execute_review_action, proposition_id, action)
+
+    pid = int(proposition_id)
+    action_key = (action or "").strip().lower()
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    req = _require_postgres_request(request)
+    async with req.app.state.db_pool.acquire() as conn:
+        async with conn.transaction():
+            detail_row = await conn.fetchrow(
+                """
+                SELECT id, status, evidence_count, line_id_hint
+                FROM review_propositions
+                WHERE id = $1
+                """,
+                pid,
+            )
+            if not detail_row:
+                return {"success": False, "message": "Proposition not found."}
+
+            previous_status = str(detail_row["status"])
+            line_id_hint = detail_row["line_id_hint"]
+
+            queue_before_row = await conn.fetchrow(
+                """
+                SELECT bq.proposition_id,
+                       bq.queue_status,
+                       bq.queued_at,
+                       rp.status AS proposition_status,
+                       rp.evidence_count,
+                       rp.threshold_count,
+                       rp.pos_id,
+                       rp.uci_move,
+                       rp.line_id_hint,
+                       rp.updated_at
+                FROM branch_queue bq
+                JOIN review_propositions rp ON rp.id = bq.proposition_id
+                WHERE bq.proposition_id = $1
+                """,
+                pid,
+            )
+            queue_before = dict(queue_before_row) if queue_before_row else None
+
+            priority_before = None
+            if line_id_hint:
+                priority_before_row = await conn.fetchrow(
+                    "SELECT priority_override FROM trainer_line_state WHERE line_id = $1",
+                    str(line_id_hint),
+                )
+                if priority_before_row:
+                    priority_before = int(priority_before_row["priority_override"])
+
+            if action_key == "done":
+                tag = await conn.execute(
+                    """
+                    UPDATE review_propositions
+                    SET status = 'APPROVED',
+                        decided_at = $2,
+                        updated_at = $2
+                    WHERE id = $1
+                      AND proposition_type = 'MISSING_COVERAGE_BRANCH'
+                    """,
+                    pid,
+                    now_iso,
+                )
+                if tag.endswith('0'):
+                    return {"success": False, "message": "Proposition not found."}
+                await conn.execute(
+                    """
+                    INSERT INTO branch_queue (proposition_id, queue_status, queued_at)
+                    VALUES ($1, 'QUEUED', $2)
+                    ON CONFLICT (proposition_id) DO UPDATE
+                    SET queue_status = EXCLUDED.queue_status,
+                        queued_at = EXCLUDED.queued_at
+                    """,
+                    pid,
+                    now_iso,
+                )
+                message = "Proposition approved and queued."
+            elif action_key == "defer":
+                await conn.execute(
+                    """
+                    UPDATE review_propositions
+                    SET status = 'DISAPPROVED',
+                        dismissed_count = $2,
+                        decided_at = $3,
+                        updated_at = $3
+                    WHERE id = $1
+                      AND proposition_type = 'MISSING_COVERAGE_BRANCH'
+                    """,
+                    pid,
+                    int(detail_row["evidence_count"] or 0),
+                    now_iso,
+                )
+                await conn.execute("DELETE FROM branch_queue WHERE proposition_id = $1", pid)
+                message = "Proposition disapproved."
+            elif action_key == "priority":
+                if not line_id_hint:
+                    return {"success": False, "message": "No line hint available to mark priority."}
+                tag = await conn.execute(
+                    """
+                    UPDATE trainer_line_state
+                    SET priority_override = 1
+                    WHERE line_id = $1
+                    """,
+                    str(line_id_hint),
+                )
+                if tag.endswith('0'):
+                    return {"success": False, "message": "Line not found in trainer state."}
+                await conn.execute(
+                    """
+                    UPDATE review_propositions
+                    SET updated_at = $2
+                    WHERE id = $1
+                    """,
+                    pid,
+                    now_iso,
+                )
+                message = f"Priority override enabled for {line_id_hint}."
+            else:
+                return {"success": False, "message": "Unsupported review action."}
+
+            updated_detail_row = await conn.fetchrow(
+                """
+                SELECT id,
+                       proposition_type,
+                       proposition_key,
+                       status,
+                       evidence_count,
+                       threshold_count,
+                       dismissed_count,
+                       pos_id,
+                       uci_move,
+                       line_id_hint,
+                       detail_json,
+                       created_at,
+                       updated_at,
+                       decided_at
+                FROM review_propositions
+                WHERE id = $1
+                """,
+                pid,
+            )
+            updated_detail = dict(updated_detail_row) if updated_detail_row else None
+            if updated_detail is not None:
+                payload = updated_detail.get("detail_json")
+                if payload:
+                    try:
+                        updated_detail["detail"] = json.loads(payload)
+                    except json.JSONDecodeError:
+                        updated_detail["detail"] = None
+                else:
+                    updated_detail["detail"] = None
+
+            queue_after_row = await conn.fetchrow(
+                """
+                SELECT bq.proposition_id,
+                       bq.queue_status,
+                       bq.queued_at,
+                       rp.status AS proposition_status,
+                       rp.evidence_count,
+                       rp.threshold_count,
+                       rp.pos_id,
+                       rp.uci_move,
+                       rp.line_id_hint,
+                       rp.updated_at
+                FROM branch_queue bq
+                JOIN review_propositions rp ON rp.id = bq.proposition_id
+                WHERE bq.proposition_id = $1
+                """,
+                pid,
+            )
+            queue_after = dict(queue_after_row) if queue_after_row else None
+
+            priority_after = None
+            if line_id_hint:
+                priority_after_row = await conn.fetchrow(
+                    "SELECT priority_override FROM trainer_line_state WHERE line_id = $1",
+                    str(line_id_hint),
+                )
+                if priority_after_row:
+                    priority_after = int(priority_after_row["priority_override"])
+
+    return {
+        "success": True,
+        "message": message,
+        "proposition": updated_detail,
+        "status_change": {
+            "before": previous_status,
+            "after": (updated_detail or {}).get("status"),
+        },
+        "queue_change": {
+            "before": queue_before,
+            "after": queue_after,
+        },
+        "priority_change": {
+            "line_id": line_id_hint,
+            "before": priority_before,
+            "after": priority_after,
+        },
+    }
+
 def _safe_int(value: str | None, default: int) -> int:
     if value is None:
         return default
@@ -1270,9 +1735,14 @@ async def list_review_items(_: str = Depends(require_auth)) -> list[dict[str, An
 
 
 @app.get("/lines/tree/browse", response_model=TreeBrowseResponse)
-async def get_lines_tree_browse(pos_id: int = 1, my_side_only: bool = True, _: str = Depends(require_auth)) -> TreeBrowseResponse:
-    repertoire_rows = await _with_sqlite(queries.fetch_tree_repertoire_children, pos_id, my_side_only=my_side_only)
-    game_rows = await _with_sqlite(queries.fetch_tree_game_children, pos_id, my_side_only=my_side_only)
+async def get_lines_tree_browse(
+    pos_id: int = 1,
+    my_side_only: bool = True,
+    request: Request = None,
+    _: str = Depends(require_auth),
+) -> TreeBrowseResponse:
+    repertoire_rows = await _fetch_tree_repertoire_children_backend(pos_id, my_side_only, request)
+    game_rows = await _fetch_tree_game_children_backend(pos_id, my_side_only, request)
     return TreeBrowseResponse(
         pos_id=pos_id,
         my_side_only=my_side_only,
@@ -1282,9 +1752,14 @@ async def get_lines_tree_browse(pos_id: int = 1, my_side_only: bool = True, _: s
 
 
 @app.get("/lines/tree/coverage", response_model=TreeCoverageResponse)
-async def get_lines_tree_coverage(pos_id: int = 1, my_side_only: bool = True, _: str = Depends(require_auth)) -> TreeCoverageResponse:
-    repertoire_rows = await _with_sqlite(queries.fetch_tree_repertoire_children, pos_id, my_side_only=my_side_only)
-    game_rows = await _with_sqlite(queries.fetch_tree_game_children, pos_id, my_side_only=my_side_only)
+async def get_lines_tree_coverage(
+    pos_id: int = 1,
+    my_side_only: bool = True,
+    request: Request = None,
+    _: str = Depends(require_auth),
+) -> TreeCoverageResponse:
+    repertoire_rows = await _fetch_tree_repertoire_children_backend(pos_id, my_side_only, request)
+    game_rows = await _fetch_tree_game_children_backend(pos_id, my_side_only, request)
     rep_moves = {str(row.get("uci_move") or "") for row in repertoire_rows if row.get("uci_move")}
     game_moves = {str(row.get("uci_move") or "") for row in game_rows if row.get("uci_move")}
     covered = len(rep_moves & game_moves)
@@ -1299,9 +1774,14 @@ async def get_lines_tree_coverage(pos_id: int = 1, my_side_only: bool = True, _:
 
 
 @app.get("/lines/tree/branch-metrics", response_model=TreeBranchMetricsResponse)
-async def get_lines_tree_branch_metrics(pos_id: int = 1, my_side_only: bool = True, _: str = Depends(require_auth)) -> TreeBranchMetricsResponse:
-    repertoire_rows = await _with_sqlite(queries.fetch_tree_repertoire_children, pos_id, my_side_only=my_side_only)
-    game_rows = await _with_sqlite(queries.fetch_tree_game_children, pos_id, my_side_only=my_side_only)
+async def get_lines_tree_branch_metrics(
+    pos_id: int = 1,
+    my_side_only: bool = True,
+    request: Request = None,
+    _: str = Depends(require_auth),
+) -> TreeBranchMetricsResponse:
+    repertoire_rows = await _fetch_tree_repertoire_children_backend(pos_id, my_side_only, request)
+    game_rows = await _fetch_tree_game_children_backend(pos_id, my_side_only, request)
     repertoire_sorted = sorted(repertoire_rows, key=lambda row: int(row.get("weight") or 0), reverse=True)
     game_sorted = sorted(game_rows, key=lambda row: int(row.get("games") or 0), reverse=True)
     return TreeBranchMetricsResponse(
@@ -1760,28 +2240,43 @@ async def set_trainer_priority_override(
 
 
 @app.get("/review/actions", response_model=list[ReviewPropositionResponse])
-async def list_review_actions(status: Literal["pending", "approved", "disapproved", "all"] = "pending", _: str = Depends(require_auth)) -> list[ReviewPropositionResponse]:
-    rows = await _with_sqlite(queries.fetch_review_propositions, status_filter=status)
+async def list_review_actions(
+    status: Literal["pending", "approved", "disapproved", "all"] = "pending",
+    request: Request = None,
+    _: str = Depends(require_auth),
+) -> list[ReviewPropositionResponse]:
+    rows = await _fetch_review_propositions_backend(status, request)
     return [ReviewPropositionResponse(**row) for row in rows]
 
 
 @app.get("/review/actions/{proposition_id}", response_model=ReviewPropositionDetailResponse)
-async def get_review_action(proposition_id: int, _: str = Depends(require_auth)) -> ReviewPropositionDetailResponse:
-    detail = await _with_sqlite(queries.fetch_review_proposition_detail, proposition_id)
+async def get_review_action(
+    proposition_id: int,
+    request: Request = None,
+    _: str = Depends(require_auth),
+) -> ReviewPropositionDetailResponse:
+    detail = await _fetch_review_proposition_detail_backend(proposition_id, request)
     if not detail:
         raise api_error(404, "NOT_FOUND", "Proposition not found.")
     return ReviewPropositionDetailResponse(**detail)
 
 
 @app.get("/review/branch-queue", response_model=list[BranchQueueEntryResponse])
-async def list_review_branch_queue(_: str = Depends(require_auth)) -> list[BranchQueueEntryResponse]:
-    rows = await _with_sqlite(queries.fetch_branch_queue)
+async def list_review_branch_queue(
+    request: Request = None,
+    _: str = Depends(require_auth),
+) -> list[BranchQueueEntryResponse]:
+    rows = await _fetch_branch_queue_backend(request)
     return [BranchQueueEntryResponse(**row) for row in rows]
 
 
 @app.post("/review/actions", response_model=ReviewActionResponse)
-async def execute_review_action(payload: ReviewActionRequest, _: str = Depends(require_auth)) -> ReviewActionResponse:
-    result = await _with_sqlite(queries.execute_review_action, payload.proposition_id, payload.action)
+async def execute_review_action(
+    payload: ReviewActionRequest,
+    request: Request = None,
+    _: str = Depends(require_auth),
+) -> ReviewActionResponse:
+    result = await _execute_review_action_backend(payload.proposition_id, payload.action, request)
     if not result.get("success"):
         raise api_error(404, "NOT_FOUND", str(result.get("message") or "Review action failed."))
 
