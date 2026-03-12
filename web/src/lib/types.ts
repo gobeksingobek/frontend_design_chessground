@@ -201,41 +201,45 @@ export interface TrainerSessionCreateRequest {
   line_id?: string;
 }
 
-export interface TrainerSessionNextStep {
-  phase: "prompt" | "user_attempt" | "reveal_explanation" | "grading" | "next_item_transition" | "completed";
-  expected_move_uci: string | null;
-  explanation: string | null;
+export interface TrainerSessionItem {
+  branch_id: string;
+  fen: string;
+  prompt: string;
+  expected_move_uci: string;
+  difficulty: "easy" | "medium" | "hard";
+}
+
+export interface TrainerQueueSnapshot {
+  remaining: number;
+  learned: number;
+  needs_review: number;
 }
 
 export interface TrainerSessionResponse {
   session_id: string;
-  line_id: string;
-  mode: "learn" | "review";
-  player_move_index: number;
-  expected_move_uci: string | null;
-  completed: boolean;
-  next_step: TrainerSessionNextStep;
+  item: TrainerSessionItem;
+  queue_snapshot: TrainerQueueSnapshot;
 }
 
 export interface TrainerSessionAnswerRequest {
-  answer_uci: string;
+  move_uci: string;
+  elapsed_ms: number;
+}
+
+export interface TrainerSessionRemediation {
+  best_move_uci: string;
+  principal_variation: string[];
+  explanation_markdown: string;
+  retry_required: boolean;
 }
 
 export interface TrainerSessionAnswerResponse {
-  session_id: string;
-  line_id: string;
-  mode: "learn" | "review";
-  answer_uci: string;
-  expected_move_uci: string | null;
-  is_correct: boolean;
-  feedback: string;
-  learned: number;
-  needs_review: number;
-  correct_streak: number;
-  times_correct: number;
-  times_incorrect: number;
-  completed: boolean;
-  next_step: TrainerSessionNextStep;
+  outcome: "correct" | "incorrect";
+  grade: "again" | "hard" | "good" | "easy";
+  streak_delta: number;
+  item_state: "learned" | "needs_review";
+  next_item?: TrainerSessionItem | null;
+  remediation?: TrainerSessionRemediation | null;
 }
 
 export interface TrainerPriorityOverrideRequest {

@@ -1,144 +1,130 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createTrainerSession, getTrainerQueueV2, submitTrainerSessionAnswer } from "@/lib/api-client";
+import type { TrainerSessionAnswerResponse, TrainerSessionItem } from "@/lib/types";
 
-export type TrainerPhase = "prompt" | "user_attempt" | "reveal_explanation" | "grading" | "next_item_transition";
+export type TrainerPhase = "prompt" | "attempt" | "reveal" | "grade" | "next";
 
-export function resolveNextPhase(current: TrainerPhase, isCorrect: boolean, completed: boolean): TrainerPhase {
-  if (completed) return "next_item_transition";
-  if (!isCorrect) return "reveal_explanation";
-  if (current === "prompt") return "user_attempt";
-  return "grading";
+export function resolveNextPhase(current: TrainerPhase, outcome: "correct" | "incorrect"): TrainerPhase {
+  if (current === "prompt") return "attempt";
+  if (current === "attempt") return outcome === "incorrect" ? "reveal" : "grade";
+  if (current === "reveal") return "grade";
+  if (current === "grade") return "next";
+  return "prompt";
 }
 
-export function TrainerQueue() {
-  const queryClient = useQueryClient();
-  const [mode, setMode] = useState<"learn" | "review">("review");
+interface TrainerQueueProps {
+  mode: "learn" | "review";
+  sessionId: string | null;
+  item: TrainerSessionItem | null;
+  onStart: () => void;
+  onAnswer: (moveUci: string, elapsedMs: number) => Promise<TrainerSessionAnswerResponse>;
+  onNext: () => void;
+  statusText?: string | null;
+}
+
+export function TrainerQueue({ mode, sessionId, item, onStart, onAnswer, onNext, statusText }: TrainerQueueProps) {
   const [phase, setPhase] = useState<TrainerPhase>("prompt");
   const [attemptUci, setAttemptUci] = useState("");
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [phaseStartedAt, setPhaseStartedAt] = useState<number>(Date.now());
+  const [result, setResult] = useState<TrainerSessionAnswerResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const queue = useQuery({
-    queryKey: ["trainer", "queue-list", mode],
-    queryFn: () => getTrainerQueueV2(mode),
-  });
-
-  const items = queue.data?.items ?? [];
-  const activeLineId = selectedLineId ?? items[0]?.line_id ?? null;
-
-  const sessionStart = useMutation({
-    mutationFn: createTrainerSession,
-    onSuccess: (session) => {
-      setActiveSessionId(session.session_id);
-      setFeedback(session.next_step.explanation ?? null);
-      setPhase("prompt");
-      setAttemptUci("");
-      queryClient.invalidateQueries({ queryKey: ["trainer", "queue-list"] });
-    },
-  });
-
-  const answer = useMutation({
-    mutationFn: ({ sessionId, answerUci }: { sessionId: string; answerUci: string }) =>
-      submitTrainerSessionAnswer(sessionId, { answer_uci: answerUci }),
-    onSuccess: (result) => {
-      setFeedback(result.feedback);
-      setPhase(resolveNextPhase(phase, result.is_correct, result.completed));
-      if (result.completed) {
-        setActiveSessionId(null);
-        queryClient.invalidateQueries({ queryKey: ["trainer", "queue-list"] });
-      }
-      if (!result.is_correct) {
-        setFeedback(`${result.feedback} Expected: ${result.expected_move_uci ?? "unknown"}. ${result.next_step.explanation ?? ""}`);
-      }
-      setAttemptUci("");
-    },
-  });
-
-  const canStart = Boolean(activeLineId) && !activeSessionId;
-  const activeExpected = answer.data?.next_step.expected_move_uci;
+  const canAnswer = Boolean(sessionId && item && phase === "attempt" && attemptUci.trim());
 
   const phaseHelp = useMemo(() => {
     switch (phase) {
       case "prompt":
-        return "Prompt: prepare for the repertoire move.";
-      case "user_attempt":
-        return "User attempt: submit a UCI move.";
-      case "reveal_explanation":
-        return "Reveal/explanation: remediation after an incorrect answer.";
-      case "grading":
-        return "Grading: answer accepted, state updated.";
-      case "next_item_transition":
-        return "Next item transition: start the next queue item.";
+        return "Review prompt and continue to attempt.";
+      case "attempt":
+        return "Submit your move attempt in UCI format.";
+      case "reveal":
+        return "Review remediation details before grading.";
+      case "grade":
+        return "Answer has been graded.";
+      case "next":
+        return "Continue to the next training item.";
     }
   }, [phase]);
-
-  if (queue.isLoading) return <p>Loading trainer queue...</p>;
-  if (queue.error) return <p className="warn">Failed to load trainer queue: {(queue.error as Error).message}</p>;
 
   return (
     <div className="card">
       <h3>Trainer queue flow</h3>
-      <label>
-        Mode
-        <select value={mode} onChange={(event) => { setMode(event.target.value as "learn" | "review"); setActiveSessionId(null); setPhase("prompt"); }}>
-          <option value="learn">Learn</option>
-          <option value="review">Review</option>
-        </select>
-      </label>
-      <p><strong>Phase:</strong> {phase}</p>
+      <p>
+        <strong>Mode:</strong> {mode}
+      </p>
+      <p>
+        <strong>Stage:</strong> {phase}
+      </p>
       <small>{phaseHelp}</small>
 
-      <div className="stack" style={{ marginTop: 8 }}>
-        {items.slice(0, 8).map((item) => (
-          <button key={item.line_id} type="button" onClick={() => setSelectedLineId(item.line_id)}>
-            {item.line_id} · streak {item.correct_streak} · learned {item.learned} · needs_review {item.needs_review}
+      {!sessionId ? (
+        <div style={{ marginTop: 10 }}>
+          <button type="button" onClick={() => { setPhase("prompt"); setResult(null); setError(null); onStart(); }}>
+            Create session
           </button>
-        ))}
-      </div>
-
-      {items.length === 0 ? <p>No training lines available.</p> : null}
-
-      <div style={{ marginTop: 10 }}>
-        <button
-          type="button"
-          disabled={!canStart || sessionStart.isPending}
-          onClick={() => activeLineId && sessionStart.mutate({ mode, line_id: activeLineId })}
-        >
-          Start session
-        </button>
-      </div>
-
-      {activeSessionId ? (
-        <div className="card" style={{ marginTop: 10 }}>
-          <small>Session: {activeSessionId}</small>
-          <div>
-            <label>
-              Attempt UCI
-              <input
-                value={attemptUci}
-                onChange={(event) => setAttemptUci(event.target.value)}
-                placeholder="e2e4"
-              />
-            </label>
-            <button
-              type="button"
-              disabled={!attemptUci || answer.isPending}
-              onClick={() => answer.mutate({ sessionId: activeSessionId, answerUci: attemptUci.trim() })}
-            >
-              Submit attempt
-            </button>
-          </div>
-          {activeExpected ? <small>Next expected move: {activeExpected}</small> : null}
         </div>
       ) : null}
 
-      {feedback ? <p>{feedback}</p> : null}
-      {sessionStart.error || answer.error ? <p className="warn">Trainer session action failed.</p> : null}
+      {sessionId && item ? (
+        <div className="card" style={{ marginTop: 10 }}>
+          <small>Session: {sessionId}</small>
+          <p>{item.prompt}</p>
+          <p>
+            <strong>Branch:</strong> {item.branch_id} · <strong>Difficulty:</strong> {item.difficulty}
+          </p>
+          <label>
+            Attempt UCI
+            <input value={attemptUci} onChange={(event) => setAttemptUci(event.target.value)} placeholder="e2e4" />
+          </label>
+          <div className="stack" style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => {
+                setPhase("attempt");
+                setPhaseStartedAt(Date.now());
+              }}
+            >
+              Begin attempt
+            </button>
+            <button
+              type="button"
+              disabled={!canAnswer}
+              onClick={async () => {
+                if (!attemptUci.trim()) return;
+                try {
+                  const response = await onAnswer(attemptUci.trim(), Date.now() - phaseStartedAt);
+                  setResult(response);
+                  setAttemptUci("");
+                  setError(null);
+                  setPhase(resolveNextPhase("attempt", response.outcome));
+                } catch (submitError) {
+                  setError((submitError as Error).message);
+                }
+              }}
+            >
+              Submit attempt
+            </button>
+            {phase === "reveal" ? <button type="button" onClick={() => setPhase("grade")}>Continue to grade</button> : null}
+            {phase === "grade" ? <button type="button" onClick={() => setPhase("next")}>Show next action</button> : null}
+            {phase === "next" ? <button type="button" onClick={() => { setPhase("prompt"); setResult(null); onNext(); }}>Next item</button> : null}
+          </div>
+        </div>
+      ) : null}
+
+      {result?.remediation ? (
+        <div className="card" style={{ marginTop: 10 }}>
+          <p>
+            <strong>Best move:</strong> {result.remediation.best_move_uci}
+          </p>
+          <p>{result.remediation.explanation_markdown}</p>
+        </div>
+      ) : null}
+
+      {result ? <p>Outcome: {result.outcome} · Grade: {result.grade} · State: {result.item_state}</p> : null}
+      {statusText ? <p>{statusText}</p> : null}
+      {error ? <p className="warn">{error}</p> : null}
     </div>
   );
 }

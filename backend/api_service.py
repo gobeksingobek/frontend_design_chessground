@@ -285,44 +285,48 @@ class TrainerPriorityOverrideRequest(BaseModel):
 
 class TrainerSessionCreateRequest(BaseModel):
     mode: Literal["learn", "review"] = "review"
-    line_id: str | None = None
+    line_id: str | None = Field(default=None, min_length=1)
 
 
-class TrainerSessionNextStep(BaseModel):
-    phase: Literal["prompt", "user_attempt", "reveal_explanation", "grading", "next_item_transition", "completed"]
-    expected_move_uci: str | None = None
-    explanation: str | None = None
+class TrainerSessionItem(BaseModel):
+    branch_id: str
+    fen: str
+    prompt: str
+    expected_move_uci: str
+    difficulty: Literal["easy", "medium", "hard"]
+
+
+class TrainerQueueSnapshot(BaseModel):
+    remaining: int = Field(ge=0)
+    learned: int = Field(ge=0)
+    needs_review: int = Field(ge=0)
 
 
 class TrainerSessionResponse(BaseModel):
     session_id: str
-    line_id: str
-    mode: Literal["learn", "review"]
-    player_move_index: int
-    expected_move_uci: str | None = None
-    completed: bool
-    next_step: TrainerSessionNextStep
+    item: TrainerSessionItem
+    queue_snapshot: TrainerQueueSnapshot
+
+
+class TrainerSessionRemediation(BaseModel):
+    best_move_uci: str
+    principal_variation: list[str]
+    explanation_markdown: str
+    retry_required: bool
 
 
 class TrainerSessionAnswerRequest(BaseModel):
-    answer_uci: str = Field(min_length=4)
+    move_uci: str = Field(min_length=4, max_length=5)
+    elapsed_ms: int = Field(ge=0)
 
 
 class TrainerSessionAnswerResponse(BaseModel):
-    session_id: str
-    line_id: str
-    mode: Literal["learn", "review"]
-    answer_uci: str
-    expected_move_uci: str | None
-    is_correct: bool
-    feedback: str
-    learned: int
-    needs_review: int
-    correct_streak: int
-    times_correct: int
-    times_incorrect: int
-    completed: bool
-    next_step: TrainerSessionNextStep
+    outcome: Literal["correct", "incorrect"]
+    grade: Literal["again", "hard", "good", "easy"]
+    streak_delta: int
+    item_state: Literal["learned", "needs_review"]
+    next_item: TrainerSessionItem | None = None
+    remediation: TrainerSessionRemediation | None = None
 
 class ReviewPropositionResponse(BaseModel):
     id: int
@@ -1810,6 +1814,15 @@ def _trainer_player_moves_for_side(line_moves: list[dict[str, Any]], side_to_pla
     ]
 
 
+def _trainer_difficulty(line_info: dict[str, Any]) -> Literal["easy", "medium", "hard"]:
+    if int(line_info.get("needs_review") or 0) == 1:
+        return "hard"
+    streak = int(line_info.get("correct_streak") or 0)
+    if streak >= 3:
+        return "easy"
+    return "medium"
+
+
 async def _ensure_trainer_state_postgres(conn: asyncpg.Connection) -> None:
     await conn.execute(
         """
@@ -1847,45 +1860,52 @@ async def _fetch_trainer_line_info_postgres(conn: asyncpg.Connection, line_id: s
 async def _fetch_line_moves_postgres(conn: asyncpg.Connection, line_id: str) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
-        SELECT ply, san_move, uci_move, pos_id, next_pos_id
-        FROM line_positions
-        WHERE line_id = $1
-        ORDER BY ply
+        SELECT lp.ply, lp.san_move, lp.uci_move, lp.pos_id, lp.next_pos_id, COALESCE(p.fen_norm, '') AS fen
+        FROM line_positions lp
+        LEFT JOIN positions p ON p.id = lp.pos_id
+        WHERE lp.line_id = $1
+        ORDER BY lp.ply
         """,
         line_id,
     )
     return [dict(row) for row in rows]
 
 
-async def _trainer_session_snapshot_postgres(conn: asyncpg.Connection, session: dict[str, Any]) -> TrainerSessionResponse:
-    line_info = await _fetch_trainer_line_info_postgres(conn, str(session["line_id"]))
+async def _trainer_queue_snapshot_postgres(conn: asyncpg.Connection) -> TrainerQueueSnapshot:
+    row = await conn.fetchrow(
+        """
+        SELECT
+            COUNT(*) FILTER (WHERE learned = 0) AS remaining,
+            COUNT(*) FILTER (WHERE learned = 1) AS learned,
+            COUNT(*) FILTER (WHERE needs_review = 1) AS needs_review
+        FROM trainer_line_state
+        """
+    )
+    if not row:
+        return TrainerQueueSnapshot(remaining=0, learned=0, needs_review=0)
+    return TrainerQueueSnapshot(
+        remaining=int(row["remaining"] or 0),
+        learned=int(row["learned"] or 0),
+        needs_review=int(row["needs_review"] or 0),
+    )
+
+
+async def _trainer_item_postgres(conn: asyncpg.Connection, line_id: str, player_idx: int) -> TrainerSessionItem | None:
+    line_info = await _fetch_trainer_line_info_postgres(conn, line_id)
     if not line_info:
-        raise ValueError("Line not found in trainer state")
-
-    line_moves = await _fetch_line_moves_postgres(conn, str(session["line_id"]))
+        return None
+    line_moves = await _fetch_line_moves_postgres(conn, line_id)
     player_moves = _trainer_player_moves_for_side(line_moves, str(line_info.get("side_to_play") or "white"))
-    player_idx = int(session.get("player_move_index") or 0)
-    completed = bool(session.get("completed")) or player_idx >= len(player_moves)
-    expected = None if completed else str(player_moves[player_idx].get("uci_move") or "")
-
-    phase: Literal["prompt", "user_attempt", "reveal_explanation", "grading", "next_item_transition", "completed"]
-    if completed:
-        phase = "completed"
-    else:
-        phase = "prompt" if player_idx == 0 else "user_attempt"
-
-    return TrainerSessionResponse(
-        session_id=str(session["id"]),
-        line_id=str(session["line_id"]),
-        mode=session["mode"],
-        player_move_index=player_idx,
-        expected_move_uci=expected or None,
-        completed=completed,
-        next_step=TrainerSessionNextStep(
-            phase=phase,
-            expected_move_uci=expected or None,
-            explanation="Play the expected repertoire move.",
-        ),
+    if player_idx >= len(player_moves):
+        return None
+    move = player_moves[player_idx]
+    expected_move_uci = str(move.get("uci_move") or "")
+    return TrainerSessionItem(
+        branch_id=line_id,
+        fen=str(move.get("fen") or ""),
+        prompt=f"Find the repertoire move for {line_info.get('side_to_play', 'white')}.",
+        expected_move_uci=expected_move_uci,
+        difficulty=_trainer_difficulty(line_info),
     )
 
 
@@ -1917,12 +1937,16 @@ async def create_trainer_session(payload: TrainerSessionCreateRequest, request: 
         if not line_info:
             raise api_error(404, "NOT_FOUND", "Line not found in trainer state")
 
+        item = await _trainer_item_postgres(conn, line_id, 0)
+        if not item:
+            raise api_error(409, "CONFLICT", "Line has no trainable player moves")
+
         session_id = str(uuid.uuid4())
         session_row = await conn.fetchrow(
             """
             INSERT INTO trainer_sessions (id, line_id, mode, player_move_index, had_incorrect, completed)
             VALUES ($1::uuid, $2, $3, 0, 0, 0)
-            RETURNING id, line_id, mode, player_move_index, had_incorrect, completed
+            RETURNING id
             """,
             session_id,
             line_id,
@@ -1930,12 +1954,22 @@ async def create_trainer_session(payload: TrainerSessionCreateRequest, request: 
         )
         if not session_row:
             raise api_error(500, "INTERNAL_ERROR", "Failed to create trainer session")
-        return await _trainer_session_snapshot_postgres(conn, dict(session_row))
+
+        return TrainerSessionResponse(
+            session_id=str(session_row["id"]),
+            item=item,
+            queue_snapshot=await _trainer_queue_snapshot_postgres(conn),
+        )
 
 
 @app.post("/trainer/sessions/{session_id}/answer", response_model=TrainerSessionAnswerResponse)
 async def answer_trainer_session(session_id: str, payload: TrainerSessionAnswerRequest, request: Request, _: str = Depends(require_auth)) -> TrainerSessionAnswerResponse:
     _require_postgres_trainer_sessions()
+
+    try:
+        normalized_session_id = str(uuid.UUID(session_id))
+    except ValueError as exc:
+        raise api_error(400, "INVALID_SESSION_ID", "Session id must be a valid UUID") from exc
 
     async with request.app.state.db_pool.acquire() as conn:
         await _ensure_trainer_state_postgres(conn)
@@ -1945,7 +1979,7 @@ async def answer_trainer_session(session_id: str, payload: TrainerSessionAnswerR
             FROM trainer_sessions
             WHERE id = $1::uuid
             """,
-            session_id,
+            normalized_session_id,
         )
         if not session:
             raise api_error(404, "NOT_FOUND", "Trainer session not found")
@@ -1966,15 +2000,46 @@ async def answer_trainer_session(session_id: str, payload: TrainerSessionAnswerR
             raise api_error(409, "CONFLICT", "Trainer session already completed")
 
         expected_move = str(player_moves[player_idx].get("uci_move") or "")
-        is_correct = payload.answer_uci == expected_move
+        is_correct = payload.move_uci == expected_move
+        prior_streak = int(line_info.get("correct_streak") or 0)
         had_incorrect = int(session_data.get("had_incorrect") or 0)
 
         if is_correct:
             player_idx += 1
             completed = 1 if player_idx >= len(player_moves) else 0
+            grade: Literal["again", "hard", "good", "easy"] = "easy" if completed else "good"
+            streak_delta = 1 if completed else 0
+            await conn.execute(
+                """
+                UPDATE trainer_line_state
+                SET learned = 1,
+                    needs_review = 0,
+                    correct_streak = CASE WHEN $2 THEN correct_streak + 1 ELSE correct_streak END,
+                    times_correct = CASE WHEN $2 THEN times_correct + 1 ELSE times_correct END,
+                    last_seen = $3
+                WHERE line_id = $1
+                """,
+                str(session_data["line_id"]),
+                completed == 1,
+                datetime.now(timezone.utc).isoformat(),
+            )
         else:
             had_incorrect = 1
             completed = 0
+            grade = "again"
+            streak_delta = -prior_streak if prior_streak > 0 else 0
+            await conn.execute(
+                """
+                UPDATE trainer_line_state
+                SET needs_review = 1,
+                    correct_streak = 0,
+                    times_incorrect = times_incorrect + 1,
+                    last_seen = $2
+                WHERE line_id = $1
+                """,
+                str(session_data["line_id"]),
+                datetime.now(timezone.utc).isoformat(),
+            )
 
         await conn.execute(
             """
@@ -1985,47 +2050,15 @@ async def answer_trainer_session(session_id: str, payload: TrainerSessionAnswerR
                 updated_at = NOW()
             WHERE id = $1::uuid
             """,
-            session_id,
+            normalized_session_id,
             player_idx,
             had_incorrect,
             completed,
         )
 
-        if completed:
-            current_streak = int(line_info.get("correct_streak") or 0)
-            if had_incorrect:
-                await conn.execute(
-                    """
-                    UPDATE trainer_line_state
-                    SET learned = 1,
-                        needs_review = 1,
-                        correct_streak = 0,
-                        times_incorrect = times_incorrect + 1,
-                        last_seen = $2
-                    WHERE line_id = $1
-                    """,
-                    str(session_data["line_id"]),
-                    datetime.now(timezone.utc).isoformat(),
-                )
-            else:
-                await conn.execute(
-                    """
-                    UPDATE trainer_line_state
-                    SET learned = 1,
-                        needs_review = 0,
-                        correct_streak = $2,
-                        times_correct = times_correct + 1,
-                        last_seen = $3
-                    WHERE line_id = $1
-                    """,
-                    str(session_data["line_id"]),
-                    current_streak + 1,
-                    datetime.now(timezone.utc).isoformat(),
-                )
-
         state_row = await conn.fetchrow(
             """
-            SELECT line_id, learned, needs_review, correct_streak, times_correct, times_incorrect
+            SELECT learned, needs_review
             FROM trainer_line_state
             WHERE line_id = $1
             """,
@@ -2034,38 +2067,24 @@ async def answer_trainer_session(session_id: str, payload: TrainerSessionAnswerR
         if not state_row:
             raise api_error(404, "NOT_FOUND", "Line not found after trainer session answer")
 
-        next_expected = None
-        next_phase: Literal["prompt", "user_attempt", "reveal_explanation", "grading", "next_item_transition", "completed"] = "completed"
-        explanation: str | None = None
-        feedback = "Correct." if is_correct else "Incorrect. Review the expected move and try again."
-
-        if not completed:
-            next_expected = expected_move if not is_correct else str(player_moves[player_idx].get("uci_move") or "")
-            next_phase = "reveal_explanation" if not is_correct else "user_attempt"
-            explanation = "Expected move shown for remediation." if not is_correct else "Continue to the next player move."
-        else:
-            next_phase = "next_item_transition"
-            explanation = "Line complete. Move to the next queue item."
+        item_state: Literal["learned", "needs_review"] = "needs_review" if int(state_row["needs_review"] or 0) == 1 else "learned"
+        next_item = None if completed else await _trainer_item_postgres(conn, str(session_data["line_id"]), player_idx)
+        remediation = None
+        if not is_correct:
+            remediation = TrainerSessionRemediation(
+                best_move_uci=expected_move,
+                principal_variation=[expected_move],
+                explanation_markdown="The submitted move does not match the expected repertoire continuation.",
+                retry_required=True,
+            )
 
         return TrainerSessionAnswerResponse(
-            session_id=session_id,
-            line_id=str(session_data["line_id"]),
-            mode=session_data["mode"],
-            answer_uci=payload.answer_uci,
-            expected_move_uci=expected_move,
-            is_correct=is_correct,
-            feedback=feedback,
-            learned=int(state_row["learned"]),
-            needs_review=int(state_row["needs_review"]),
-            correct_streak=int(state_row["correct_streak"]),
-            times_correct=int(state_row["times_correct"]),
-            times_incorrect=int(state_row["times_incorrect"]),
-            completed=bool(completed),
-            next_step=TrainerSessionNextStep(
-                phase=next_phase,
-                expected_move_uci=next_expected,
-                explanation=explanation,
-            ),
+            outcome="correct" if is_correct else "incorrect",
+            grade=grade,
+            streak_delta=streak_delta,
+            item_state=item_state,
+            next_item=next_item,
+            remediation=remediation,
         )
 
 
