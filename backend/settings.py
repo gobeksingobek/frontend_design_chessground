@@ -32,6 +32,21 @@ def _parse_csv(value: str | None) -> tuple[str, ...]:
     return tuple(part.strip() for part in value.split(",") if part.strip())
 
 
+_DEFAULT_API_TOKEN_VALUES = {
+    "dev-token",
+    "changeme",
+    "change-me",
+    "default-token",
+    "your-token-here",
+    "example-token",
+}
+
+
+def is_default_api_token(token: str) -> bool:
+    normalized = token.strip().lower()
+    return not normalized or normalized in _DEFAULT_API_TOKEN_VALUES
+
+
 @dataclass(frozen=True)
 class BackendSettings:
     is_render_environment: bool = _is_render_environment()
@@ -51,6 +66,19 @@ class BackendSettings:
     stream_block_ms: int = int(os.getenv("SIDELINE_STREAM_BLOCK_MS", "5000"))
     stockfish_path: str = os.getenv("STOCKFISH_PATH", "stockfish")
     stockfish_depth: int = int(os.getenv("STOCKFISH_DEPTH", "14"))
+
+    def validate_deployment_config(self) -> None:
+        if self.is_production_environment:
+            if not self.api_cors_origins:
+                raise RuntimeError(
+                    "API_CORS_ORIGINS is required in production/Render deployments. "
+                    "Set API_CORS_ORIGINS to a comma-separated allow-list of trusted web origins."
+                )
+            if is_default_api_token(self.api_auth_token):
+                raise RuntimeError(
+                    "API_AUTH_TOKEN must be set to a non-default secret in production/Render deployments. "
+                    "Generate a strong token and set API_AUTH_TOKEN before startup."
+                )
 
 
 SETTINGS = BackendSettings()
