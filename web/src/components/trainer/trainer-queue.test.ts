@@ -3,15 +3,27 @@ import assert from "node:assert/strict";
 
 import { resolveNextPhase } from "@/components/trainer/trainer-queue";
 
-test("resolveNextPhase advances through prompt/attempt/grading", () => {
-  assert.equal(resolveNextPhase("prompt", true, false), "user_attempt");
-  assert.equal(resolveNextPhase("user_attempt", true, false), "grading");
+test("trainer queue deterministic prompt->attempt->grade->next flow on correct answer", () => {
+  const afterPrompt = resolveNextPhase("prompt", "correct");
+  const afterAttempt = resolveNextPhase(afterPrompt, "correct");
+  const afterGrade = resolveNextPhase(afterAttempt, "correct");
+
+  assert.equal(afterPrompt, "attempt");
+  assert.equal(afterAttempt, "grade");
+  assert.equal(afterGrade, "next");
 });
 
-test("resolveNextPhase uses remediation for incorrect answer", () => {
-  assert.equal(resolveNextPhase("user_attempt", false, false), "reveal_explanation");
+test("trainer queue deterministic remediation path uses reveal before grade", () => {
+  const afterPrompt = resolveNextPhase("prompt", "correct");
+  const afterAttempt = resolveNextPhase(afterPrompt, "incorrect");
+  const afterReveal = resolveNextPhase(afterAttempt, "correct");
+
+  assert.equal(afterPrompt, "attempt");
+  assert.equal(afterAttempt, "reveal");
+  assert.equal(afterReveal, "grade");
 });
 
-test("resolveNextPhase ends in transition after completion", () => {
-  assert.equal(resolveNextPhase("grading", true, true), "next_item_transition");
+test("grade actions remain deterministic regardless of outcome source", () => {
+  assert.equal(resolveNextPhase("grade", "correct"), "next");
+  assert.equal(resolveNextPhase("grade", "incorrect"), "next");
 });

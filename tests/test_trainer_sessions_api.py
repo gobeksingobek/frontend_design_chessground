@@ -25,6 +25,8 @@ sys.modules.setdefault("python_multipart", python_multipart_module)
 sys.modules.setdefault("multipart", multipart_module)
 sys.modules.setdefault("multipart.multipart", multipart_submodule)
 
+from pydantic import ValidationError
+
 from backend import api_service
 
 
@@ -50,26 +52,27 @@ class _FakeConn:
             self.sessions[sid]["had_incorrect"] = int(args[2])
             self.sessions[sid]["completed"] = int(args[3])
             return "UPDATE 1"
-        if "SET learned = 1" in query and "times_incorrect = times_incorrect + 1" in query:
+        if "SET learned = 1" in query and "times_correct" in query:
+            completed = bool(args[1])
             self.state.learned = 1
+            self.state.needs_review = 0
+            if completed:
+                self.state.correct_streak += 1
+                self.state.times_correct += 1
+            return "UPDATE 1"
+        if "SET needs_review = 1" in query:
             self.state.needs_review = 1
             self.state.correct_streak = 0
             self.state.times_incorrect += 1
             return "UPDATE 1"
-        if "SET learned = 1" in query and "times_correct = times_correct + 1" in query:
-            self.state.learned = 1
-            self.state.needs_review = 0
-            self.state.correct_streak = int(args[1])
-            self.state.times_correct += 1
-            return "UPDATE 1"
         return "OK"
 
     async def fetch(self, query: str, *args):
-        if "FROM line_positions" in query:
+        if "FROM line_positions lp" in query:
             return [
-                {"ply": 1, "san_move": "e4", "uci_move": "e2e4", "pos_id": 1, "next_pos_id": 2},
-                {"ply": 2, "san_move": "e5", "uci_move": "e7e5", "pos_id": 2, "next_pos_id": 3},
-                {"ply": 3, "san_move": "Nf3", "uci_move": "g1f3", "pos_id": 3, "next_pos_id": 4},
+                {"ply": 1, "san_move": "e4", "uci_move": "e2e4", "pos_id": 1, "next_pos_id": 2, "fen": "fen-1"},
+                {"ply": 2, "san_move": "e5", "uci_move": "e7e5", "pos_id": 2, "next_pos_id": 3, "fen": "fen-2"},
+                {"ply": 3, "san_move": "Nf3", "uci_move": "g1f3", "pos_id": 3, "next_pos_id": 4, "fen": "fen-3"},
             ]
         return []
 
@@ -102,19 +105,14 @@ class _FakeConn:
                 "completed": 0,
             }
             self.sessions[sid] = row
-            return row
+            return {"id": sid}
         if "FROM trainer_sessions" in query:
             sid = args[0]
             return self.sessions.get(sid)
-        if "SELECT line_id, learned, needs_review" in query:
-            return {
-                "line_id": "line-1",
-                "learned": self.state.learned,
-                "needs_review": self.state.needs_review,
-                "correct_streak": self.state.correct_streak,
-                "times_correct": self.state.times_correct,
-                "times_incorrect": self.state.times_incorrect,
-            }
+        if "COUNT(*) FILTER" in query:
+            return {"remaining": 1 if self.state.learned == 0 else 0, "learned": self.state.learned, "needs_review": self.state.needs_review}
+        if "SELECT learned, needs_review" in query:
+            return {"learned": self.state.learned, "needs_review": self.state.needs_review}
         return None
 
 
@@ -142,7 +140,7 @@ class _Request:
         self.app = types.SimpleNamespace(state=types.SimpleNamespace(db_pool=_Pool(conn)))
 
 
-def test_trainer_session_correct_updates_counters(monkeypatch) -> None:
+def test_trainer_session_create_and_completion(monkeypatch) -> None:
     class _Settings:
         data_backend = "postgres"
 
@@ -158,31 +156,36 @@ def test_trainer_session_correct_updates_counters(monkeypatch) -> None:
         )
     )
 
-    asyncio.run(
+    assert session.item.branch_id == "line-1"
+    assert session.queue_snapshot.remaining == 1
+
+    result1 = asyncio.run(
         api_service.answer_trainer_session(
             session.session_id,
-            api_service.TrainerSessionAnswerRequest(answer_uci="e2e4"),
+            api_service.TrainerSessionAnswerRequest(move_uci="e2e4", elapsed_ms=50),
             request=request,
             _="dev-user",
         )
     )
-    final = asyncio.run(
+    assert result1.outcome == "correct"
+    assert result1.grade == "good"
+    assert result1.next_item is not None
+
+    result2 = asyncio.run(
         api_service.answer_trainer_session(
             session.session_id,
-            api_service.TrainerSessionAnswerRequest(answer_uci="g1f3"),
+            api_service.TrainerSessionAnswerRequest(move_uci="g1f3", elapsed_ms=80),
             request=request,
             _="dev-user",
         )
     )
-
-    assert final.completed is True
-    assert final.learned == 1
-    assert final.needs_review == 0
-    assert final.correct_streak == 1
-    assert final.times_correct == 1
+    assert result2.outcome == "correct"
+    assert result2.grade == "easy"
+    assert result2.item_state == "learned"
+    assert result2.next_item is None
 
 
-def test_trainer_session_incorrect_marks_needs_review(monkeypatch) -> None:
+def test_trainer_session_incorrect_marks_review_and_remediation(monkeypatch) -> None:
     class _Settings:
         data_backend = "postgres"
 
@@ -201,34 +204,46 @@ def test_trainer_session_incorrect_marks_needs_review(monkeypatch) -> None:
     wrong = asyncio.run(
         api_service.answer_trainer_session(
             session.session_id,
-            api_service.TrainerSessionAnswerRequest(answer_uci="a2a3"),
+            api_service.TrainerSessionAnswerRequest(move_uci="a2a3", elapsed_ms=10),
             request=request,
             _="dev-user",
         )
     )
-    assert wrong.next_step.phase == "reveal_explanation"
+    assert wrong.outcome == "incorrect"
+    assert wrong.grade == "again"
+    assert wrong.item_state == "needs_review"
+    assert wrong.remediation is not None
 
-    asyncio.run(
-        api_service.answer_trainer_session(
-            session.session_id,
-            api_service.TrainerSessionAnswerRequest(answer_uci="e2e4"),
-            request=request,
-            _="dev-user",
-        )
-    )
-    final = asyncio.run(
-        api_service.answer_trainer_session(
-            session.session_id,
-            api_service.TrainerSessionAnswerRequest(answer_uci="g1f3"),
-            request=request,
-            _="dev-user",
-        )
-    )
 
-    assert final.completed is True
-    assert final.needs_review == 1
-    assert final.correct_streak == 0
-    assert final.times_incorrect == 1
+def test_trainer_session_invalid_paths(monkeypatch) -> None:
+    class _Settings:
+        data_backend = "postgres"
+
+    monkeypatch.setattr(api_service, "SETTINGS", _Settings())
+    conn = _FakeConn()
+    request = _Request(conn)
+
+    try:
+        asyncio.run(
+            api_service.answer_trainer_session(
+                "not-a-uuid",
+                api_service.TrainerSessionAnswerRequest(move_uci="e2e4", elapsed_ms=12),
+                request=request,
+                _="dev-user",
+            )
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert exc.detail["error_code"] == "INVALID_SESSION_ID"
+    else:
+        raise AssertionError("Expected INVALID_SESSION_ID")
+
+    try:
+        api_service.TrainerSessionAnswerRequest(move_uci="e2", elapsed_ms=-1)
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("Expected payload validation to fail")
 
 
 def test_trainer_sessions_not_implemented_for_sqlite(monkeypatch) -> None:
