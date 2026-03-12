@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 import asyncpg
@@ -351,6 +352,249 @@ def _stats_not_supported_for_postgres() -> None:
     )
 
 
+async def _fetch_overview_summary_postgres() -> dict[str, Any]:
+    conn = await asyncpg.connect(SETTINGS.postgres_dsn)
+    try:
+        lines = await conn.fetchval("SELECT COUNT(*) FROM repertoire_lines")
+        games = await conn.fetchval("SELECT COUNT(*) FROM games")
+        matches = await conn.fetchval("SELECT COUNT(*) FROM matches")
+        compliant = await conn.fetchval("SELECT COUNT(*) FROM matches WHERE compliance = 'FULLY_COMPLIANT'")
+        manual_priority = await conn.fetchval("SELECT COUNT(*) FROM repertoire_lines WHERE is_priority = TRUE")
+        auto_priority = await conn.fetchval("SELECT COUNT(*) FROM trainer_line_state WHERE auto_priority_score > 0")
+    finally:
+        await conn.close()
+    return {
+        "lines": int(lines or 0),
+        "manual_priority": int(manual_priority or 0),
+        "auto_priority": int(auto_priority or 0),
+        "games": int(games or 0),
+        "matched": int(matches or 0),
+        "fully_compliant": int(compliant or 0),
+    }
+
+
+async def _fetch_lines_stats_postgres() -> list[dict[str, Any]]:
+    conn = await asyncpg.connect(SETTINGS.postgres_dsn)
+    try:
+        games = await conn.fetch(
+            """
+            SELECT g.id, g.date, g.white, g.black, g.result, g.white_elo, g.black_elo,
+                   g.player_color, g.is_daily, g.time_control,
+                   m.matched_line_id AS line_id,
+                   m.max_matched_ply,
+                   m.deviation_ply_you,
+                   m.deviation_ply_opp,
+                   m.compliance,
+                   m.matching_mode,
+                   m.opponent_dev_to_known
+            FROM games g
+            LEFT JOIN matches m ON g.id = m.game_id
+            """
+        )
+        eval_rows = await conn.fetch(
+            """
+            SELECT ap.game_id, ap.post_eval_cp
+            FROM analysis_ply ap
+            JOIN matches m ON ap.game_id = m.game_id AND ap.ply = m.max_matched_ply
+            """
+        )
+        time_rows = await conn.fetch(
+            """
+            SELECT gp.game_id, gp.ply, gp.time_spent_seconds, gp.time_spent_fraction,
+                   gp.is_self, g.is_daily, gp.repertoire_class, m.max_matched_ply
+            FROM game_positions gp
+            JOIN games g ON gp.game_id = g.id
+            JOIN matches m ON gp.game_id = m.game_id
+            WHERE gp.time_spent_seconds IS NOT NULL
+            """
+        )
+        class_rows = await conn.fetch(
+            """
+            SELECT m.matched_line_id AS line_id,
+                   SUM(CASE WHEN gp.is_self = TRUE AND gp.repertoire_class = 'IN_REPERTOIRE_OTHER' THEN 1 ELSE 0 END) AS in_other,
+                   SUM(CASE WHEN gp.is_self = TRUE AND gp.repertoire_class IN ('IN_REPERTOIRE_MAIN', 'IN_REPERTOIRE_OTHER') THEN 1 ELSE 0 END) AS in_total,
+                   SUM(CASE WHEN gp.is_self = TRUE AND gp.repertoire_class = 'OUT_OF_REPERTOIRE' THEN 1 ELSE 0 END) AS out_total
+            FROM game_positions gp
+            JOIN matches m ON gp.game_id = m.game_id
+            WHERE m.matched_line_id IS NOT NULL
+            GROUP BY m.matched_line_id
+            """
+        )
+    finally:
+        await conn.close()
+
+    eval_at_exit = {int(row["game_id"]): row["post_eval_cp"] for row in eval_rows}
+    time_by_game = statistics.time_analysis.compute_time_usage_by_game([dict(row) for row in time_rows])
+    class_counts = {row["line_id"]: dict(row) for row in class_rows}
+
+    stats: dict[str | None, dict[str, Any]] = {}
+    for game in [dict(row) for row in games]:
+        key = game.get("line_id")
+        if key is None:
+            continue
+        entry = stats.setdefault(key, statistics._init_stat_entry())
+        statistics._accumulate_game(entry, game, eval_at_exit, time_by_game)
+
+    results = statistics._finalize_stats(stats)
+    for result in results:
+        counts = class_counts.get(result["key"] or None, {})
+        in_other = counts.get("in_other") or 0
+        in_total = counts.get("in_total") or 0
+        result["in_rep_other_rate"] = in_other / in_total if in_total else None
+    return results
+
+
+async def _fetch_time_usage_stats_postgres() -> list[dict[str, Any]]:
+    conn = await asyncpg.connect(SETTINGS.postgres_dsn)
+    try:
+        games = await conn.fetch(
+            """
+            SELECT g.id, g.date, g.white, g.black, g.result, g.white_elo, g.black_elo,
+                   g.player_color, g.is_daily, g.time_control,
+                   m.matched_line_id AS line_id,
+                   m.max_matched_ply,
+                   m.deviation_ply_you,
+                   m.deviation_ply_opp,
+                   m.compliance,
+                   m.matching_mode,
+                   m.opponent_dev_to_known
+            FROM games g
+            LEFT JOIN matches m ON g.id = m.game_id
+            """
+        )
+        eval_rows = await conn.fetch(
+            """
+            SELECT ap.game_id, ap.post_eval_cp
+            FROM analysis_ply ap
+            JOIN matches m ON ap.game_id = m.game_id AND ap.ply = m.max_matched_ply
+            """
+        )
+        time_rows = await conn.fetch(
+            """
+            SELECT gp.game_id, gp.ply, gp.time_spent_seconds, gp.time_spent_fraction,
+                   gp.is_self, g.is_daily, gp.repertoire_class, m.max_matched_ply
+            FROM game_positions gp
+            JOIN games g ON gp.game_id = g.id
+            JOIN matches m ON gp.game_id = m.game_id
+            WHERE gp.time_spent_seconds IS NOT NULL
+            """
+        )
+    finally:
+        await conn.close()
+
+    eval_at_exit = {int(row["game_id"]): row["post_eval_cp"] for row in eval_rows}
+    time_by_game = statistics.time_analysis.compute_time_usage_by_game([dict(row) for row in time_rows])
+
+    stats: dict[str | None, dict[str, Any]] = {}
+    for game in [dict(row) for row in games]:
+        date = game.get("date") or ""
+        month = date[:7] if len(date) >= 7 else "Unknown"
+        entry = stats.setdefault(month, statistics._init_stat_entry())
+        statistics._accumulate_game(entry, game, eval_at_exit, time_by_game)
+    return statistics._finalize_stats(stats)
+
+
+async def _fetch_rating_band_stats_postgres(band_size: int) -> list[dict[str, Any]]:
+    conn = await asyncpg.connect(SETTINGS.postgres_dsn)
+    try:
+        games = await conn.fetch(
+            """
+            SELECT g.id, g.date, g.white, g.black, g.result, g.white_elo, g.black_elo,
+                   g.player_color, g.is_daily, g.time_control,
+                   m.matched_line_id AS line_id,
+                   m.max_matched_ply,
+                   m.deviation_ply_you,
+                   m.deviation_ply_opp,
+                   m.compliance,
+                   m.matching_mode,
+                   m.opponent_dev_to_known
+            FROM games g
+            LEFT JOIN matches m ON g.id = m.game_id
+            """
+        )
+        eval_rows = await conn.fetch(
+            """
+            SELECT ap.game_id, ap.post_eval_cp
+            FROM analysis_ply ap
+            JOIN matches m ON ap.game_id = m.game_id AND ap.ply = m.max_matched_ply
+            """
+        )
+        time_rows = await conn.fetch(
+            """
+            SELECT gp.game_id, gp.ply, gp.time_spent_seconds, gp.time_spent_fraction,
+                   gp.is_self, g.is_daily, gp.repertoire_class, m.max_matched_ply
+            FROM game_positions gp
+            JOIN games g ON gp.game_id = g.id
+            JOIN matches m ON gp.game_id = m.game_id
+            WHERE gp.time_spent_seconds IS NOT NULL
+            """
+        )
+    finally:
+        await conn.close()
+
+    eval_at_exit = {int(row["game_id"]): row["post_eval_cp"] for row in eval_rows}
+    time_by_game = statistics.time_analysis.compute_time_usage_by_game([dict(row) for row in time_rows])
+
+    stats: dict[tuple[str, str], dict[str, Any]] = {}
+    for game in [dict(row) for row in games]:
+        white_band = statistics._rating_band(game.get("white_elo"), band_size)
+        black_band = statistics._rating_band(game.get("black_elo"), band_size)
+        key = (white_band, black_band)
+        entry = stats.setdefault(key, statistics._init_stat_entry())
+        statistics._accumulate_game(entry, game, eval_at_exit, time_by_game)
+
+    results = statistics._finalize_stats(stats)
+    for result in results:
+        key = result["key"]
+        if isinstance(key, tuple):
+            result["white_band"], result["black_band"] = key
+        result.pop("key", None)
+    return results
+
+
+async def _fetch_insights_postgres() -> list[dict[str, Any]]:
+    conn = await asyncpg.connect(SETTINGS.postgres_dsn)
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT category, title, details, data_json
+            FROM insights
+            ORDER BY category, title
+            """
+        )
+    finally:
+        await conn.close()
+
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        data = dict(row)
+        payload = data.get("data_json")
+        if payload:
+            try:
+                data["data"] = json.loads(payload) if isinstance(payload, str) else payload
+            except json.JSONDecodeError:
+                data["data"] = None
+        else:
+            data["data"] = None
+        results.append(data)
+    return results
+
+
+async def _fetch_review_items_postgres() -> list[dict[str, Any]]:
+    conn = await asyncpg.connect(SETTINGS.postgres_dsn)
+    try:
+        rows = await conn.fetch(
+            """
+            SELECT line_id, reason, detail
+            FROM review_items
+            ORDER BY reason, line_id
+            """
+        )
+    finally:
+        await conn.close()
+    return [dict(row) for row in rows]
+
+
 def _fetch_lines_stats_sqlite() -> list[dict[str, Any]]:
     if not _sqlite_backend_allowed():
         _raise_sqlite_disabled()
@@ -398,35 +642,35 @@ def _fetch_review_items_sqlite() -> list[dict[str, Any]]:
 
 async def fetch_overview_summary() -> dict[str, Any]:
     if SETTINGS.data_backend == "postgres":
-        _stats_not_supported_for_postgres()
+        return await _fetch_overview_summary_postgres()
     return await asyncio.to_thread(_fetch_overview_summary_sqlite)
 
 
 async def fetch_lines_stats() -> list[dict[str, Any]]:
     if SETTINGS.data_backend == "postgres":
-        _stats_not_supported_for_postgres()
+        return await _fetch_lines_stats_postgres()
     return await asyncio.to_thread(_fetch_lines_stats_sqlite)
 
 
 async def fetch_time_usage_stats() -> list[dict[str, Any]]:
     if SETTINGS.data_backend == "postgres":
-        _stats_not_supported_for_postgres()
+        return await _fetch_time_usage_stats_postgres()
     return await asyncio.to_thread(_fetch_time_usage_stats_sqlite)
 
 
 async def fetch_rating_band_stats(band_size: int) -> list[dict[str, Any]]:
     if SETTINGS.data_backend == "postgres":
-        _stats_not_supported_for_postgres()
+        return await _fetch_rating_band_stats_postgres(band_size)
     return await asyncio.to_thread(_fetch_rating_band_stats_sqlite, band_size)
 
 
 async def fetch_insights() -> list[dict[str, Any]]:
     if SETTINGS.data_backend == "postgres":
-        _stats_not_supported_for_postgres()
+        return await _fetch_insights_postgres()
     return await asyncio.to_thread(_fetch_insights_sqlite)
 
 
 async def fetch_review_items() -> list[dict[str, Any]]:
     if SETTINGS.data_backend == "postgres":
-        _stats_not_supported_for_postgres()
+        return await _fetch_review_items_postgres()
     return await asyncio.to_thread(_fetch_review_items_sqlite)
