@@ -13,7 +13,12 @@
     "check:review-contract": "node scripts/check-review-contract.mjs",
     "check:lines-contract": "node scripts/check-lines-contract.mjs",
     "check:time-usage-contract": "node scripts/check-time-usage-contract.mjs",
-    "check:rating-bands-contract": "node scripts/check-rating-bands-contract.mjs"
+    "check:rating-bands-contract": "node scripts/check-rating-bands-contract.mjs",
+    "check:analysis-runs-contract": "node scripts/check-analysis-runs-contract.mjs",
+    "check:games-list-contract": "node scripts/check-games-list-contract.mjs",
+    "check:insights-contract": "node scripts/check-insights-contract.mjs",
+    "check:tree-contract": "node scripts/check-tree-contract.mjs",
+    "check:settings-contract": "node scripts/check-settings-contract.mjs"
   },
   "dependencies": {
     "next": "14.2.5",

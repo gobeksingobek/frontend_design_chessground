@@ -10,6 +10,7 @@ import type {
   SidelineCreateRequest,
   SidelineResponse,
   StatsRow,
+  InsightRow,
   TrainerAnswerRequest,
   TrainerAnswerResult,
   TrainerSessionAnswerRequest,
@@ -135,13 +136,13 @@ export async function validateApiToken(): Promise<{ ok: true; detail: string }> 
   return unwrap<{ ok: true; detail: string }>(response);
 }
 
-async function getStats(path: string): Promise<StatsRow[]> {
+async function getStats<T = StatsRow>(path: string): Promise<T[]> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
   });
-  return unwrap<StatsRow[]>(response);
+  return unwrap<T[]>(response);
 }
 
 export async function listSidelines(limit = 20): Promise<SidelineResponse[]> {
@@ -185,6 +186,7 @@ export interface ListGamesParams {
   offset?: number;
   result?: string;
   compliance?: string;
+  complianceMin?: string;
   lineId?: string;
   player?: string;
   dateFrom?: string;
@@ -199,6 +201,7 @@ export async function listGamesFiltered(params: ListGamesParams = {}): Promise<G
   search.set("offset", String(params.offset ?? 0));
   if (params.result) search.set("result", params.result);
   if (params.compliance) search.set("compliance", params.compliance);
+  if (params.complianceMin) search.set("compliance_min", params.complianceMin);
   if (params.lineId) search.set("line_id", params.lineId);
   if (params.player) search.set("player", params.player);
   if (params.dateFrom) search.set("date_from", params.dateFrom);
@@ -272,8 +275,8 @@ export async function listRatingBandStats(bandSize = 100): Promise<RatingBandSta
   return unwrap<RatingBandStatsResponse>(response);
 }
 
-export async function listInsights(): Promise<StatsRow[]> {
-  return getStats("/insights");
+export async function listInsights(): Promise<InsightRow[]> {
+  return getStats<InsightRow>("/insights");
 }
 
 export async function listReviewItems(): Promise<StatsRow[]> {

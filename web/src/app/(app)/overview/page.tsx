@@ -118,10 +118,10 @@ export default function OverviewPage() {
         {(runs?.runs.length ?? 0) === 0 ? <p>No analysis runs yet.</p> : null}
         <ul>
           {(runs?.runs ?? []).map((run) => (
-            <li key={run.job_id}>
-              <strong>{formatRunType(run.run_type)}</strong> · {run.state} · started {formatTs(run.started_at)}
+            <li key={run.run_id}>
+              <strong>{formatRunType(run.run_type)}</strong> · {run.status} · started {formatTs(run.started_at)}
               {run.finished_at ? ` · finished ${formatTs(run.finished_at)}` : ""}
-              {run.error ? ` · error: ${run.error}` : ""}
+              {run.error_reason ? ` · error: ${run.error_reason}` : ""}
             </li>
           ))}
         </ul>
