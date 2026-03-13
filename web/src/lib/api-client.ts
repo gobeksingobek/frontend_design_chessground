@@ -136,13 +136,13 @@ export async function validateApiToken(): Promise<{ ok: true; detail: string }> 
   return unwrap<{ ok: true; detail: string }>(response);
 }
 
-async function getStats(path: string): Promise<StatsRow[]> {
+async function getStats<T = StatsRow>(path: string): Promise<T[]> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
   });
-  return unwrap<StatsRow[]>(response);
+  return unwrap<T[]>(response);
 }
 
 export async function listSidelines(limit = 20): Promise<SidelineResponse[]> {

@@ -42,3 +42,11 @@ export default function GamesPage() {
     </div>
   );
 }
+
+export default function GamesPage() {
+  return (
+    <Suspense fallback={<p>Loading games…</p>}>
+      <GamesPageContent />
+    </Suspense>
+  );
+}
