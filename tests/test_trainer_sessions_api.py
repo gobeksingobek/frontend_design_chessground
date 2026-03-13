@@ -52,13 +52,12 @@ class _FakeConn:
             self.sessions[sid]["had_incorrect"] = int(args[2])
             self.sessions[sid]["completed"] = int(args[3])
             return "UPDATE 1"
-        if "SET learned = 1" in query and "times_correct" in query:
-            completed = bool(args[1])
-            self.state.learned = 1
+        if "times_correct = times_correct + 1" in query:
+            learned_value = args[1] if len(args) > 1 else None
+            self.state.learned = int(learned_value) if learned_value is not None else self.state.learned
             self.state.needs_review = 0
-            if completed:
-                self.state.correct_streak += 1
-                self.state.times_correct += 1
+            self.state.correct_streak = int(args[2]) if len(args) > 2 else self.state.correct_streak + 1
+            self.state.times_correct += 1
             return "UPDATE 1"
         if "SET needs_review = 1" in query:
             self.state.needs_review = 1
@@ -113,6 +112,15 @@ class _FakeConn:
             return {"remaining": 1 if self.state.learned == 0 else 0, "learned": self.state.learned, "needs_review": self.state.needs_review}
         if "SELECT learned, needs_review" in query:
             return {"learned": self.state.learned, "needs_review": self.state.needs_review}
+        if "SELECT line_id, learned, needs_review, correct_streak, times_correct, times_incorrect" in query:
+            return {
+                "line_id": args[0],
+                "learned": self.state.learned,
+                "needs_review": self.state.needs_review,
+                "correct_streak": self.state.correct_streak,
+                "times_correct": self.state.times_correct,
+                "times_incorrect": self.state.times_incorrect,
+            }
         return None
 
 
@@ -213,6 +221,11 @@ def test_trainer_session_incorrect_marks_review_and_remediation(monkeypatch) -> 
     assert wrong.grade == "again"
     assert wrong.item_state == "needs_review"
     assert wrong.remediation is not None
+    assert isinstance(wrong.remediation.best_move_uci, str)
+    assert isinstance(wrong.remediation.principal_variation, list)
+    assert all(isinstance(move, str) for move in wrong.remediation.principal_variation)
+    assert isinstance(wrong.remediation.explanation_markdown, str)
+    assert isinstance(wrong.remediation.retry_required, bool)
 
 
 def test_trainer_session_invalid_paths(monkeypatch) -> None:
@@ -267,3 +280,44 @@ def test_trainer_sessions_not_implemented_for_sqlite(monkeypatch) -> None:
         assert exc.detail["error_code"] == "NOT_IMPLEMENTED"
     else:
         raise AssertionError("Expected NOT_IMPLEMENTED for sqlite backend")
+
+
+def test_trainer_outcomes_legacy_semantics_mapping(monkeypatch) -> None:
+    class _Settings:
+        data_backend = "postgres"
+
+    monkeypatch.setattr(api_service, "SETTINGS", _Settings())
+    conn = _FakeConn()
+    request = _Request(conn)
+
+    by_outcome = asyncio.run(
+        api_service.post_trainer_outcome(
+            api_service.TrainerOutcomeRequest(line_id="line-1", outcome="incorrect", mode="review"),
+            request=request,
+            _="dev-user",
+        )
+    )
+    assert by_outcome.needs_review == 1
+
+    by_grade = asyncio.run(
+        api_service.post_trainer_outcome(
+            api_service.TrainerOutcomeRequest(line_id="line-1", grade="good", mode="review"),
+            request=request,
+            _="dev-user",
+        )
+    )
+    assert by_grade.times_correct >= 1
+
+    try:
+        asyncio.run(
+            api_service.post_trainer_outcome(
+                api_service.TrainerOutcomeRequest(line_id="line-1", is_correct=True, grade="again", mode="review"),
+                request=request,
+                _="dev-user",
+            )
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert exc.detail["error_code"] == "INVALID_INPUT"
+    else:
+        raise AssertionError("Expected INVALID_INPUT for conflicting grade/is_correct")

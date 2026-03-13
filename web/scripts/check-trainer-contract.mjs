@@ -38,6 +38,7 @@ function checkAnswerSessionResponseShape(payload) {
     assert(isObject(payload.remediation), "incorrect outcome must include remediation");
     assert(typeof payload.remediation.best_move_uci === "string", "remediation.best_move_uci must be string");
     assert(Array.isArray(payload.remediation.principal_variation), "remediation.principal_variation must be array");
+    assert(payload.remediation.principal_variation.every((move) => typeof move === "string"), "remediation.principal_variation entries must be strings");
     assert(typeof payload.remediation.explanation_markdown === "string", "remediation.explanation_markdown must be string");
     assert(typeof payload.remediation.retry_required === "boolean", "remediation.retry_required must be boolean");
   }
