@@ -295,6 +295,14 @@ export interface BranchQueueEntry {
   updated_at: string;
 }
 
+export interface ReviewQueueDelta {
+  proposition_id: number;
+  before_queue_status: string | null;
+  after_queue_status: string | null;
+  added_to_queue: boolean;
+  removed_from_queue: boolean;
+}
+
 export interface ReviewActionRequest {
   proposition_id: number;
   action: "done" | "defer" | "priority";
@@ -306,6 +314,7 @@ export interface ReviewActionResponse {
   proposition: ReviewPropositionDetail | null;
   status_change: { before: string | null; after: string | null } | null;
   queue_change: { before: BranchQueueEntry | null; after: BranchQueueEntry | null } | null;
+  queue_delta: ReviewQueueDelta | null;
   priority_change: { line_id: string | null; before: number | null; after: number | null } | null;
 }
 

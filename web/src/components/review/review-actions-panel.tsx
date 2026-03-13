@@ -20,7 +20,12 @@ export function summarizeReviewActionResult(result: ReviewActionResponse): strin
       ? "priority unchanged"
       : `priority ${priorityBefore}→${priorityAfter}`;
 
-  return `Status ${statusBefore}→${statusAfter}; queue ${queueBefore}→${queueAfter}; ${prioritySegment}.`;
+  const delta = result.queue_delta;
+  const queueDeltaSegment = delta
+    ? `queue Δ ${delta.before_queue_status ?? "none"}→${delta.after_queue_status ?? "none"} (added=${delta.added_to_queue}, removed=${delta.removed_from_queue})`
+    : "queue Δ unavailable";
+
+  return `Status ${statusBefore}→${statusAfter}; queue ${queueBefore}→${queueAfter}; ${prioritySegment}; ${queueDeltaSegment}.`;
 }
 
 export function buildQueueStatusMap(rows: { proposition_id: number; queue_status: string }[] | undefined): Map<number, string> {
@@ -35,7 +40,11 @@ export function deriveSelectedIdAfterAction(currentSelectedId: number | null, re
   return result.proposition?.id ?? currentSelectedId;
 }
 
-export function ReviewActionsPanel() {
+interface ReviewActionsPanelProps {
+  onActionCommitted?: () => Promise<void> | void;
+}
+
+export function ReviewActionsPanel({ onActionCommitted }: ReviewActionsPanelProps = {}) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<"pending" | "approved" | "disapproved" | "all">("pending");
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -51,15 +60,21 @@ export function ReviewActionsPanel() {
 
   const mutate = useMutation({
     mutationFn: executeReviewAction,
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setLastResult(result);
       const nextSelectedId = deriveSelectedIdAfterAction(selectedId, result);
       setSelectedId(nextSelectedId);
       if (result.proposition) {
         queryClient.setQueryData(["review-action-detail", result.proposition.id], result.proposition);
       }
-      queryClient.invalidateQueries({ queryKey: ["review-actions"] });
-      queryClient.invalidateQueries({ queryKey: ["review-branch-queue"] });
+      if (onActionCommitted) {
+        await onActionCommitted();
+      } else {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["review-actions"] }),
+          queryClient.invalidateQueries({ queryKey: ["review-branch-queue"] }),
+        ]);
+      }
     },
   });
 
@@ -117,7 +132,19 @@ export function ReviewActionsPanel() {
 
       <div className="card">
         <h4>Latest action result</h4>
-        {lastResult ? <p>{summarizeReviewActionResult(lastResult)}</p> : <p>No action taken in this session.</p>}
+        {lastResult ? (
+          <>
+            <p>{summarizeReviewActionResult(lastResult)}</p>
+            {lastResult.queue_delta ? (
+              <p>
+                Queue delta for #{lastResult.queue_delta.proposition_id}: {lastResult.queue_delta.before_queue_status ?? "none"} →{" "}
+                {lastResult.queue_delta.after_queue_status ?? "none"}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <p>No action taken in this session.</p>
+        )}
       </div>
 
       {actions.error || mutate.error || detail.error || branchQueue.error ? <p className="warn">Review action request failed.</p> : null}
