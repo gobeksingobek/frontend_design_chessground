@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { StatsRow } from "@/lib/types";
 
-type StatsPayload = StatsRow[] | { buckets: StatsRow[]; [key: string]: unknown };
+type StatsPayload = StatsRow[] | { buckets: StatsRow[] };
 
 export function normalizeStatsRows(data: StatsPayload | undefined): StatsRow[] {
   if (!data) return [];
