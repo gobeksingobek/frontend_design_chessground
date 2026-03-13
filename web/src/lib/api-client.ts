@@ -10,6 +10,7 @@ import type {
   SidelineCreateRequest,
   SidelineResponse,
   StatsRow,
+  InsightRow,
   TrainerAnswerRequest,
   TrainerAnswerResult,
   TrainerSessionAnswerRequest,
@@ -185,6 +186,7 @@ export interface ListGamesParams {
   offset?: number;
   result?: string;
   compliance?: string;
+  complianceMin?: string;
   lineId?: string;
   player?: string;
   dateFrom?: string;
@@ -199,6 +201,7 @@ export async function listGamesFiltered(params: ListGamesParams = {}): Promise<G
   search.set("offset", String(params.offset ?? 0));
   if (params.result) search.set("result", params.result);
   if (params.compliance) search.set("compliance", params.compliance);
+  if (params.complianceMin) search.set("compliance_min", params.complianceMin);
   if (params.lineId) search.set("line_id", params.lineId);
   if (params.player) search.set("player", params.player);
   if (params.dateFrom) search.set("date_from", params.dateFrom);
@@ -272,7 +275,7 @@ export async function listRatingBandStats(bandSize = 100): Promise<RatingBandSta
   return unwrap<RatingBandStatsResponse>(response);
 }
 
-export async function listInsights(): Promise<StatsRow[]> {
+export async function listInsights(): Promise<InsightRow[]> {
   return getStats("/insights");
 }
 

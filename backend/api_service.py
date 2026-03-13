@@ -21,7 +21,7 @@ import asyncpg
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from backend import db
 from backend import repertoire_import
@@ -224,12 +224,24 @@ class AnalysisProgressResponse(BaseModel):
 
 
 class AnalysisRunHistoryEntry(BaseModel):
-    job_id: str
+    run_id: str = Field(validation_alias=AliasChoices("run_id", "job_id"))
     run_type: str
-    state: Literal["running", "completed", "failed"]
+    status: Literal["running", "completed", "failed"] = Field(validation_alias=AliasChoices("status", "state"))
     started_at: str
     finished_at: str | None = None
-    error: str | None = None
+    error_reason: str | None = Field(default=None, validation_alias=AliasChoices("error_reason", "error"))
+
+    @property
+    def job_id(self) -> str:  # backwards compatibility
+        return self.run_id
+
+    @property
+    def state(self) -> str:  # backwards compatibility
+        return self.status
+
+    @property
+    def error(self) -> str | None:  # backwards compatibility
+        return self.error_reason
 
 
 class AnalysisRunHistoryResponse(BaseModel):
@@ -1241,9 +1253,9 @@ class AnalysisRuntimeManager:
             self._runs.insert(
                 0,
                 AnalysisRunHistoryEntry(
-                    job_id=job_id,
+                    run_id=job_id,
                     run_type=run_type,
-                    state="running",
+                    status="running",
                     started_at=started_at,
                 ),
             )
@@ -1264,12 +1276,12 @@ class AnalysisRuntimeManager:
                     for idx, run in enumerate(self._runs):
                         if run.job_id == job_id:
                             self._runs[idx] = AnalysisRunHistoryEntry(
-                                job_id=run.job_id,
+                                run_id=run.run_id,
                                 run_type=run.run_type,
-                                state="failed",
+                                status="failed",
                                 started_at=run.started_at,
                                 finished_at=datetime.now(timezone.utc).isoformat(),
-                                error=str(exc),
+                                error_reason=str(exc),
                             )
                             break
                     self._set_progress({"message": f"{run_type} failed", "error": str(exc)})
@@ -1283,12 +1295,12 @@ class AnalysisRuntimeManager:
                     for idx, run in enumerate(self._runs):
                         if run.job_id == job_id:
                             self._runs[idx] = AnalysisRunHistoryEntry(
-                                job_id=run.job_id,
+                                run_id=run.run_id,
                                 run_type=run.run_type,
-                                state="completed",
+                                status="completed",
                                 started_at=run.started_at,
                                 finished_at=datetime.now(timezone.utc).isoformat(),
-                                error=None,
+                                error_reason=None,
                             )
                             break
                     self._set_progress({"message": f"{run_type} completed", "done": 1, "total": 1})
@@ -1708,6 +1720,7 @@ async def list_games(
     compliance: str | None = None,
     line_id: str | None = None,
     player: str | None = None,
+    compliance_min: float | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     sort_by: str = "date",
@@ -1725,6 +1738,7 @@ async def list_games(
         compliance=compliance,
         line_id=line_id,
         player=player,
+        compliance_min=compliance_min,
         date_from=date_from,
         date_to=date_to,
         sort_by=normalized_sort_by,

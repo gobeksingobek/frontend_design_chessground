@@ -11,6 +11,15 @@ from analysis import statistics
 from storage import queries
 
 
+def _normalize_insight_row(data: dict[str, Any]) -> dict[str, Any]:
+    payload = data.get("data") if isinstance(data.get("data"), dict) else {}
+    refs = payload.get("source_refs") if isinstance(payload, dict) else None
+    data["priority_score"] = float(payload.get("priority_score") or 0) if isinstance(payload, dict) else 0.0
+    data["confidence"] = float(payload.get("confidence") or 0) if isinstance(payload, dict) else 0.0
+    data["source_refs"] = refs if isinstance(refs, list) else []
+    return data
+
+
 def _sqlite_backend_allowed() -> bool:
     return not SETTINGS.is_production_environment
 
@@ -30,6 +39,7 @@ def _apply_games_filters(
     player: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    compliance_min: float | None = None,
 ) -> list[dict[str, Any]]:
     filtered = rows
     if result:
@@ -49,6 +59,17 @@ def _apply_games_filters(
         filtered = [row for row in filtered if (row.get("date") or "") >= date_from]
     if date_to:
         filtered = [row for row in filtered if (row.get("date") or "") <= date_to]
+    if compliance_min is not None:
+        compliance_score = {
+            "FULLY_COMPLIANT": 1.0,
+            "PARTIALLY_COMPLIANT": 0.5,
+            "NON_COMPLIANT": 0.0,
+        }
+        filtered = [
+            row
+            for row in filtered
+            if compliance_score.get(str(row.get("compliance") or "").upper(), 0.0) >= compliance_min
+        ]
     return filtered
 
 
@@ -74,6 +95,7 @@ def _fetch_games_sqlite(
     player: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    compliance_min: float | None = None,
     sort_by: str = "date",
     sort_dir: str = "desc",
 ) -> list[dict[str, Any]]:
@@ -93,6 +115,7 @@ def _fetch_games_sqlite(
         player=player,
         date_from=date_from,
         date_to=date_to,
+        compliance_min=compliance_min,
     )
     sorted_rows = _sort_games(filtered, sort_by=sort_by, sort_dir=sort_dir)
     return sorted_rows[offset : offset + limit]
@@ -160,6 +183,7 @@ async def _fetch_games_postgres(
     player: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    compliance_min: float | None = None,
     sort_by: str = "date",
     sort_dir: str = "desc",
 ) -> list[dict[str, Any]]:
@@ -201,6 +225,7 @@ async def _fetch_games_postgres(
             player=player,
             date_from=date_from,
             date_to=date_to,
+            compliance_min=compliance_min,
         )
         sorted_rows = _sort_games(filtered, sort_by=sort_by, sort_dir=sort_dir)
         return sorted_rows[offset : offset + limit]
@@ -285,6 +310,7 @@ async def fetch_games(
     player: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    compliance_min: float | None = None,
     sort_by: str = "date",
     sort_dir: str = "desc",
 ) -> list[dict[str, Any]]:
@@ -298,6 +324,7 @@ async def fetch_games(
             player=player,
             date_from=date_from,
             date_to=date_to,
+            compliance_min=compliance_min,
             sort_by=sort_by,
             sort_dir=sort_dir,
         )
@@ -311,6 +338,7 @@ async def fetch_games(
         player=player,
         date_from=date_from,
         date_to=date_to,
+        compliance_min=compliance_min,
         sort_by=sort_by,
         sort_dir=sort_dir,
     )
@@ -576,8 +604,8 @@ async def _fetch_insights_postgres() -> list[dict[str, Any]]:
                 data["data"] = None
         else:
             data["data"] = None
-        results.append(data)
-    return results
+        results.append(_normalize_insight_row(data))
+    return sorted(results, key=lambda row: float(row.get("priority_score") or 0), reverse=True)
 
 
 async def _fetch_review_items_postgres() -> list[dict[str, Any]]:
@@ -628,7 +656,9 @@ def _fetch_insights_sqlite() -> list[dict[str, Any]]:
     import sqlite3
     with sqlite3.connect(SETTINGS.sqlite_path) as conn:
         conn.row_factory = sqlite3.Row
-        return queries.fetch_insights(conn)
+        rows = queries.fetch_insights(conn)
+    normalized = [_normalize_insight_row(dict(row)) for row in rows]
+    return sorted(normalized, key=lambda row: float(row.get("priority_score") or 0), reverse=True)
 
 
 def _fetch_review_items_sqlite() -> list[dict[str, Any]]:
