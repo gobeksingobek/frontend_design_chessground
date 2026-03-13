@@ -30,6 +30,9 @@ import type {
   ReviewActionResponse,
   BranchQueueEntry,
   RuntimeSettings,
+  TimeUsagePivot,
+  TimeUsageStatsResponse,
+  RatingBandStatsResponse,
   RuntimeSettingsUpdateRequest,
   RepertoireImportResponse,
   RepertoireImportJobResponse,
@@ -233,12 +236,40 @@ export async function listLineStats(): Promise<StatsRow[]> {
   return getStats("/lines/stats");
 }
 
-export async function listTimeUsageStats(): Promise<StatsRow[]> {
-  return getStats("/time-usage/stats");
+export async function getLineStatsDetail(lineId: string): Promise<StatsRow> {
+  const response = await fetch(`${API_BASE_URL}/lines/stats/${encodeURIComponent(lineId)}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<StatsRow>(response);
 }
 
-export async function listRatingBandStats(bandSize = 100): Promise<StatsRow[]> {
-  return getStats(`/rating-bands/stats?band_size=${bandSize}`);
+export async function getLineStatsHistory(lineId: string): Promise<{ line_id: string; buckets: StatsRow[]; totals: Record<string, number> }> {
+  const response = await fetch(`${API_BASE_URL}/lines/stats/${encodeURIComponent(lineId)}/history`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<{ line_id: string; buckets: StatsRow[]; totals: Record<string, number> }>(response);
+}
+
+export async function listTimeUsageStats(pivot: TimeUsagePivot = "month"): Promise<TimeUsageStatsResponse> {
+  const response = await fetch(`${API_BASE_URL}/time-usage/stats?pivot=${pivot}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<TimeUsageStatsResponse>(response);
+}
+
+export async function listRatingBandStats(bandSize = 100): Promise<RatingBandStatsResponse> {
+  const response = await fetch(`${API_BASE_URL}/rating-bands/stats?band_size=${bandSize}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<RatingBandStatsResponse>(response);
 }
 
 export async function listInsights(): Promise<StatsRow[]> {

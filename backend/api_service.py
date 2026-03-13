@@ -30,6 +30,8 @@ from backend.read_api import (
     fetch_game_detail,
     fetch_games,
     fetch_insights,
+    fetch_line_stats_detail,
+    fetch_line_stats_history,
     fetch_lines_stats,
     fetch_overview_summary,
     fetch_rating_band_stats,
@@ -164,6 +166,26 @@ class GameDetailResponse(BaseModel):
     moves: list[GameMoveResponse]
     prev_game_id: int | None = None
     next_game_id: int | None = None
+
+
+class TimeUsagePivot(str):
+    MONTH = "month"
+    RESULT = "result"
+    COMPLIANCE = "compliance"
+
+
+class TimeUsageStatsResponse(BaseModel):
+    pivot: Literal["month", "result", "compliance"]
+    buckets: list[dict[str, Any]]
+    totals: dict[str, Any]
+
+
+class RatingBandStatsResponse(BaseModel):
+    band_size: int
+    allowed_band_sizes: list[int]
+    percentiles: dict[str, float | None]
+    totals: dict[str, Any]
+    buckets: list[dict[str, Any]]
 
 
 class AnalysisRunResponse(BaseModel):
@@ -1736,15 +1758,50 @@ async def get_lines_stats(_: str = Depends(require_auth)) -> list[dict[str, Any]
     return await fetch_lines_stats()
 
 
-@app.get("/time-usage/stats", response_model=list[dict[str, Any]])
-async def get_time_usage_stats(_: str = Depends(require_auth)) -> list[dict[str, Any]]:
-    return await fetch_time_usage_stats()
+@app.get("/lines/stats/{line_id}", response_model=dict[str, Any])
+async def get_line_stats_detail(line_id: str, _: str = Depends(require_auth)) -> dict[str, Any]:
+    detail = await fetch_line_stats_detail(line_id)
+    if detail is None:
+        raise api_error(status_code=404, error_code="NOT_FOUND", detail="Line stats not found")
+    return detail
 
 
-@app.get("/rating-bands/stats", response_model=list[dict[str, Any]])
-async def get_rating_band_stats(band_size: int = 100, _: str = Depends(require_auth)) -> list[dict[str, Any]]:
-    bounded_band_size = min(max(band_size, 50), 400)
-    return await fetch_rating_band_stats(bounded_band_size)
+@app.get("/lines/stats/{line_id}/history", response_model=dict[str, Any])
+async def get_line_stats_history(line_id: str, _: str = Depends(require_auth)) -> dict[str, Any]:
+    return await fetch_line_stats_history(line_id)
+
+
+@app.get("/time-usage/stats", response_model=TimeUsageStatsResponse)
+async def get_time_usage_stats(
+    pivot: Literal["month", "result", "compliance"] = "month",
+    _: str = Depends(require_auth),
+) -> TimeUsageStatsResponse:
+    payload = await fetch_time_usage_stats(pivot)
+    return TimeUsageStatsResponse(**payload)
+
+
+@app.get("/rating-bands/stats", response_model=RatingBandStatsResponse)
+async def get_rating_band_stats(band_size: int = 100, _: str = Depends(require_auth)) -> RatingBandStatsResponse:
+    allowed_band_sizes = [50, 100, 150, 200, 250, 300, 350, 400]
+    normalized = band_size if band_size in allowed_band_sizes else 100
+    buckets = await fetch_rating_band_stats(normalized)
+
+    total_games = sum(int(row.get("total_games") or 0) for row in buckets)
+    compliance_rates = sorted([float(row["compliance_rate"]) for row in buckets if row.get("compliance_rate") is not None])
+
+    def pct(values: list[float], q: float) -> float | None:
+        if not values:
+            return None
+        idx = int((len(values) - 1) * q)
+        return values[idx]
+
+    return RatingBandStatsResponse(
+        band_size=normalized,
+        allowed_band_sizes=allowed_band_sizes,
+        percentiles={"p25_compliance_rate": pct(compliance_rates, 0.25), "p50_compliance_rate": pct(compliance_rates, 0.5), "p75_compliance_rate": pct(compliance_rates, 0.75)},
+        totals={"total_games": total_games, "bucket_count": len(buckets)},
+        buckets=buckets,
+    )
 
 
 @app.get("/insights", response_model=list[dict[str, Any]])
