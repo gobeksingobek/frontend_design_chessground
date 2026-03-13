@@ -90,12 +90,12 @@ export interface OverviewSummary {
 }
 
 export interface AnalysisRunHistoryEntry {
-  job_id: string;
+  run_id: string;
   run_type: AnalysisRunType;
-  state: "running" | "completed" | "failed";
+  status: "running" | "completed" | "failed";
   started_at: string;
   finished_at: string | null;
-  error: string | null;
+  error_reason: string | null;
 }
 
 export interface AnalysisRunHistoryResponse {
@@ -103,6 +103,24 @@ export interface AnalysisRunHistoryResponse {
 }
 
 export type StatsRow = Record<string, string | number | boolean | null>;
+
+export interface InsightSourceRef {
+  type: string;
+  id: string;
+  label: string;
+}
+
+export interface InsightRow extends StatsRow {
+  priority_score: number;
+  confidence: number;
+  source_refs: InsightSourceRef[];
+}
+
+export interface FieldValidationError {
+  field: string;
+  code: string;
+  message: string;
+}
 
 export type TimeUsagePivot = "month" | "result" | "compliance";
 
