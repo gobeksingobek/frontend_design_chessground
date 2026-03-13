@@ -104,6 +104,22 @@ export interface AnalysisRunHistoryResponse {
 
 export type StatsRow = Record<string, string | number | boolean | null>;
 
+export type TimeUsagePivot = "month" | "result" | "compliance";
+
+export interface TimeUsageStatsResponse {
+  pivot: TimeUsagePivot;
+  buckets: StatsRow[];
+  totals: Record<string, number>;
+}
+
+export interface RatingBandStatsResponse {
+  band_size: number;
+  allowed_band_sizes: number[];
+  percentiles: Record<string, number | null>;
+  totals: Record<string, number>;
+  buckets: StatsRow[];
+}
+
 export interface TreeNodeSummary {
   id: string;
   parent_id: string | null;

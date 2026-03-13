@@ -652,10 +652,161 @@ async def fetch_lines_stats() -> list[dict[str, Any]]:
     return await asyncio.to_thread(_fetch_lines_stats_sqlite)
 
 
-async def fetch_time_usage_stats() -> list[dict[str, Any]]:
+def _normalize_time_usage_payload(rows: list[dict[str, Any]], pivot: str) -> dict[str, Any]:
+    buckets: list[dict[str, Any]] = []
+    totals: dict[str, float | int] = {
+        "total_games": 0,
+        "wins": 0,
+        "losses": 0,
+        "draws": 0,
+    }
+    for row in rows:
+        bucket = dict(row)
+        bucket["bucket"] = bucket.pop("key", "Unknown")
+        buckets.append(bucket)
+        totals["total_games"] += int(bucket.get("total_games") or 0)
+        totals["wins"] += int(bucket.get("wins") or 0)
+        totals["losses"] += int(bucket.get("losses") or 0)
+        totals["draws"] += int(bucket.get("draws") or 0)
+    return {"pivot": pivot, "buckets": buckets, "totals": totals}
+
+
+def _build_time_usage_stats_payload(
+    games: list[dict[str, Any]],
+    eval_at_exit: dict[int, int | None],
+    time_rows: list[dict[str, Any]],
+    pivot: str,
+) -> dict[str, Any]:
+    time_by_game = statistics.time_analysis.compute_time_usage_by_game(time_rows)
+    stats: dict[str, dict[str, Any]] = {}
+    for game in games:
+        if pivot == "result":
+            key = game.get("result") or "Unknown"
+        elif pivot == "compliance":
+            key = game.get("compliance") or "Unknown"
+        else:
+            date = game.get("date") or ""
+            key = date[:7] if len(date) >= 7 else "Unknown"
+        entry = stats.setdefault(str(key), statistics._init_stat_entry())
+        statistics._accumulate_game(entry, game, eval_at_exit, time_by_game)
+    return _normalize_time_usage_payload(statistics._finalize_stats(stats), pivot)
+
+
+def _fetch_time_usage_stats_sqlite(pivot: str) -> dict[str, Any]:
+    if not _sqlite_backend_allowed():
+        _raise_sqlite_disabled()
+    import sqlite3
+
+    with sqlite3.connect(SETTINGS.sqlite_path) as conn:
+        conn.row_factory = sqlite3.Row
+        games = queries.fetch_game_summaries(conn)
+        eval_at_exit = queries.fetch_eval_at_exit(conn)
+        time_rows = queries.fetch_time_usage_rows(conn)
+
+    return _build_time_usage_stats_payload(games, eval_at_exit, time_rows, pivot)
+
+
+async def fetch_time_usage_stats(pivot: str) -> dict[str, Any]:
     if SETTINGS.data_backend == "postgres":
-        return await _fetch_time_usage_stats_postgres()
-    return await asyncio.to_thread(_fetch_time_usage_stats_sqlite)
+        conn = await asyncpg.connect(SETTINGS.postgres_dsn)
+        try:
+            games = await conn.fetch(
+                """
+                SELECT g.id, g.date, g.white, g.black, g.result, g.white_elo, g.black_elo,
+                       g.player_color, g.is_daily, g.time_control,
+                       m.matched_line_id AS line_id,
+                       m.max_matched_ply,
+                       m.deviation_ply_you,
+                       m.deviation_ply_opp,
+                       m.compliance,
+                       m.matching_mode,
+                       m.opponent_dev_to_known
+                FROM games g
+                LEFT JOIN matches m ON g.id = m.game_id
+                """
+            )
+            eval_rows = await conn.fetch(
+                """
+                SELECT ap.game_id, ap.post_eval_cp
+                FROM analysis_ply ap
+                JOIN matches m ON ap.game_id = m.game_id AND ap.ply = m.max_matched_ply
+                """
+            )
+            time_rows = await conn.fetch(
+                """
+                SELECT gp.game_id, gp.ply, gp.time_spent_seconds, gp.time_spent_fraction,
+                       gp.is_self, g.is_daily, gp.repertoire_class, m.max_matched_ply
+                FROM game_positions gp
+                JOIN games g ON gp.game_id = g.id
+                JOIN matches m ON gp.game_id = m.game_id
+                WHERE gp.time_spent_seconds IS NOT NULL
+                """
+            )
+        finally:
+            await conn.close()
+        eval_at_exit = {int(row["game_id"]): row["post_eval_cp"] for row in eval_rows}
+        return _build_time_usage_stats_payload([dict(row) for row in games], eval_at_exit, [dict(row) for row in time_rows], pivot)
+    return await asyncio.to_thread(_fetch_time_usage_stats_sqlite, pivot)
+
+
+async def fetch_line_stats_detail(line_id: str) -> dict[str, Any] | None:
+    rows = await fetch_lines_stats()
+    for row in rows:
+        if str(row.get("key") or "") == line_id:
+            detail = dict(row)
+            detail["line_id"] = detail.pop("key")
+            return detail
+    return None
+
+
+async def fetch_line_stats_history(line_id: str) -> dict[str, Any]:
+    if SETTINGS.data_backend == "postgres":
+        conn = await asyncpg.connect(SETTINGS.postgres_dsn)
+        try:
+            rows = await conn.fetch(
+                """
+                SELECT g.date
+                FROM games g
+                JOIN matches m ON g.id = m.game_id
+                WHERE m.matched_line_id = $1
+                """,
+                line_id,
+            )
+            games = [dict(row) for row in rows]
+        finally:
+            await conn.close()
+    else:
+        if not _sqlite_backend_allowed():
+            _raise_sqlite_disabled()
+        import sqlite3
+
+        with sqlite3.connect(SETTINGS.sqlite_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT g.date
+                FROM games g
+                JOIN matches m ON g.id = m.game_id
+                WHERE m.matched_line_id = ?
+                """,
+                (line_id,),
+            ).fetchall()
+            games = [dict(row) for row in rows]
+
+    buckets: dict[str, dict[str, int | str]] = {}
+    for game in games:
+        date = game.get("date") or ""
+        month = date[:7] if len(date) >= 7 else "Unknown"
+        entry = buckets.setdefault(month, {"bucket": month, "total_games": 0})
+        entry["total_games"] = int(entry.get("total_games") or 0) + 1
+
+    bucket_list = sorted(buckets.values(), key=lambda item: str(item["bucket"]))
+    total_games = sum(int(item["total_games"]) for item in bucket_list)
+    return {
+        "line_id": line_id,
+        "buckets": bucket_list,
+        "totals": {"total_games": total_games, "months": len(bucket_list)},
+    }
 
 
 async def fetch_rating_band_stats(band_size: int) -> list[dict[str, Any]]:

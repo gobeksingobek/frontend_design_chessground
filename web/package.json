@@ -10,7 +10,10 @@
     "test:ui-regression": "node ./scripts/run-ui-regression-tests.mjs",
     "check:stats-pages-client": "node scripts/check-stats-pages-client.mjs",
     "check:trainer-contract": "node scripts/check-trainer-contract.mjs",
-    "check:review-contract": "node scripts/check-review-contract.mjs"
+    "check:review-contract": "node scripts/check-review-contract.mjs",
+    "check:lines-contract": "node scripts/check-lines-contract.mjs",
+    "check:time-usage-contract": "node scripts/check-time-usage-contract.mjs",
+    "check:rating-bands-contract": "node scripts/check-rating-bands-contract.mjs"
   },
   "dependencies": {
     "next": "14.2.5",

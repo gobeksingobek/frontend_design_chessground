@@ -112,10 +112,11 @@ def test_postgres_stats_endpoints_return_expected_shapes(monkeypatch) -> None:
     assert line_stats
     assert {"key", "total_games", "compliance_rate", "in_rep_other_rate"}.issubset(line_stats[0].keys())
 
-    time_stats = asyncio.run(read_api.fetch_time_usage_stats())
-    assert isinstance(time_stats, list)
-    assert time_stats
-    assert {"key", "total_games", "avg_deviation_ply", "avg_eval_exit"}.issubset(time_stats[0].keys())
+    time_stats = asyncio.run(read_api.fetch_time_usage_stats("month"))
+    assert isinstance(time_stats, dict)
+    assert time_stats["pivot"] == "month"
+    assert isinstance(time_stats["buckets"], list)
+    assert {"total_games"}.issubset(time_stats["totals"].keys())
 
     rating_stats = asyncio.run(read_api.fetch_rating_band_stats(100))
     assert isinstance(rating_stats, list)
