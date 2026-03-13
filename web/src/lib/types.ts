@@ -110,8 +110,7 @@ export interface InsightSourceRef {
   label: string;
 }
 
-export interface InsightRow {
-  [key: string]: unknown;
+export interface InsightRow extends StatsRow {
   priority_score: number;
   confidence: number;
   source_refs: InsightSourceRef[];

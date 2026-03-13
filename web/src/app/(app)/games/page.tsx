@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { DEFAULT_GAMES_TABLE_STATE, GamesTable, type GamesTableState } from "@/components/games/games-table";
@@ -20,7 +20,7 @@ function parseState(params: URLSearchParams): GamesTableState {
   };
 }
 
-function GamesPageContent() {
+export default function GamesPage() {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();

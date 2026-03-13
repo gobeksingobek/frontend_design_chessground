@@ -276,7 +276,7 @@ export async function listRatingBandStats(bandSize = 100): Promise<RatingBandSta
 }
 
 export async function listInsights(): Promise<InsightRow[]> {
-  return getStats<InsightRow>("/insights");
+  return getStats("/insights");
 }
 
 export async function listReviewItems(): Promise<StatsRow[]> {
