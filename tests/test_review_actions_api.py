@@ -80,6 +80,9 @@ def test_review_done_action_updates_status_and_queue(monkeypatch, tmp_path: Path
     assert result.queue_change is not None
     assert result.queue_change.after is not None
     assert result.queue_change.after["queue_status"] == "QUEUED"
+    assert result.queue_delta is not None
+    assert result.queue_delta.after_queue_status == "QUEUED"
+    assert result.queue_delta.added_to_queue is True
 
     queue = asyncio.run(api_service.list_review_branch_queue(_="dev-user"))
     assert len(queue) == 1
@@ -109,12 +112,27 @@ def test_review_defer_action_removes_queue_and_disapproves(monkeypatch, tmp_path
     assert result.proposition.status == "DISAPPROVED"
     assert result.queue_change is not None
     assert result.queue_change.after is None
+    assert result.queue_delta is not None
+    assert result.queue_delta.removed_from_queue is True
 
     conn = sqlite3.connect(db_path)
     row = conn.execute("SELECT COUNT(*) FROM branch_queue WHERE proposition_id = 102").fetchone()
     conn.close()
     assert row is not None
     assert row[0] == 0
+
+
+
+
+def test_review_action_detail_and_queue_retrieval_endpoints(monkeypatch, tmp_path: Path) -> None:
+    _configure_sqlite_backend(monkeypatch, tmp_path)
+
+    detail = asyncio.run(api_service.get_review_action(101, _="dev-user"))
+    assert detail.id == 101
+    assert detail.proposition_key == "p-101"
+
+    queue = asyncio.run(api_service.list_review_branch_queue(_="dev-user"))
+    assert queue == []
 
 
 def test_review_priority_action_sets_override_and_detail_endpoint(monkeypatch, tmp_path: Path) -> None:
@@ -389,6 +407,8 @@ def test_review_actions_postgres_backend_paths(monkeypatch) -> None:
     assert done.success is True
     assert done.proposition is not None
     assert done.proposition.status == "APPROVED"
+    assert done.queue_delta is not None
+    assert done.queue_delta.added_to_queue is True
 
     queue = asyncio.run(api_service.list_review_branch_queue(request=request, _="dev-user"))
     assert len(queue) == 1

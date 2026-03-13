@@ -363,6 +363,14 @@ class BranchQueueEntryResponse(BaseModel):
     updated_at: str
 
 
+class ReviewQueueDelta(BaseModel):
+    proposition_id: int
+    before_queue_status: str | None = None
+    after_queue_status: str | None = None
+    added_to_queue: bool
+    removed_from_queue: bool
+
+
 class ReviewActionDelta(BaseModel):
     before: Any = None
     after: Any = None
@@ -385,6 +393,7 @@ class ReviewActionResponse(BaseModel):
     proposition: ReviewPropositionDetailResponse | None = None
     status_change: ReviewActionDelta | None = None
     queue_change: ReviewActionDelta | None = None
+    queue_delta: ReviewQueueDelta | None = None
     priority_change: ReviewPriorityDelta | None = None
 
 
@@ -954,6 +963,13 @@ async def _execute_review_action_backend(
         "queue_change": {
             "before": queue_before,
             "after": queue_after,
+        },
+        "queue_delta": {
+            "proposition_id": pid,
+            "before_queue_status": (queue_before or {}).get("queue_status") if queue_before else None,
+            "after_queue_status": (queue_after or {}).get("queue_status") if queue_after else None,
+            "added_to_queue": queue_before is None and queue_after is not None,
+            "removed_from_queue": queue_before is not None and queue_after is None,
         },
         "priority_change": {
             "line_id": line_id_hint,
@@ -2321,5 +2337,6 @@ async def execute_review_action(
         proposition=ReviewPropositionDetailResponse(**result["proposition"]) if result.get("proposition") else None,
         status_change=ReviewActionDelta(**result["status_change"]) if result.get("status_change") else None,
         queue_change=ReviewActionDelta(**result["queue_change"]) if result.get("queue_change") else None,
+        queue_delta=ReviewQueueDelta(**result["queue_delta"]) if result.get("queue_delta") else None,
         priority_change=ReviewPriorityDelta(**result["priority_change"]) if result.get("priority_change") else None,
     )

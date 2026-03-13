@@ -26,6 +26,7 @@ function sampleResult(overrides: Partial<ReviewActionResponse> = {}): ReviewActi
     },
     status_change: { before: "PENDING", after: "APPROVED" },
     queue_change: { before: null, after: { proposition_id: 12, queue_status: "QUEUED", queued_at: "now", proposition_status: "APPROVED", evidence_count: 8, threshold_count: 5, pos_id: 22, uci_move: "d2d4", line_id_hint: "line-1", updated_at: "now" } },
+    queue_delta: { proposition_id: 12, before_queue_status: null, after_queue_status: "QUEUED", added_to_queue: true, removed_from_queue: false },
     priority_change: { line_id: "line-1", before: 0, after: 1 },
     ...overrides,
   };
@@ -53,4 +54,22 @@ test("deriveSelectedIdAfterAction prefers action proposition id", () => {
 
   const unchanged = deriveSelectedIdAfterAction(3, sampleResult({ proposition: null }));
   assert.equal(unchanged, 3);
+});
+
+
+test("summarizeReviewActionResult renders queue delta segment", () => {
+  const summary = summarizeReviewActionResult(sampleResult());
+  assert.match(summary, /queue Δ none→QUEUED/);
+});
+
+test("inspect to apply loop updates selected proposition and queue map", () => {
+  const selectedAfterInspect = 101;
+  const selectedAfterApply = deriveSelectedIdAfterAction(
+    selectedAfterInspect,
+    sampleResult({ proposition: { ...sampleResult().proposition!, id: selectedAfterInspect } }),
+  );
+  assert.equal(selectedAfterApply, 101);
+
+  const queued = buildQueueStatusMap([{ proposition_id: 101, queue_status: "QUEUED" }]);
+  assert.equal(queued.get(101), "QUEUED");
 });

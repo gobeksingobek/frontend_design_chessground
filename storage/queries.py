@@ -564,6 +564,13 @@ def execute_review_action(
                 "before": queue_before,
                 "after": queue_after,
             },
+            "queue_delta": {
+                "proposition_id": pid,
+                "before_queue_status": (queue_before or {}).get("queue_status") if queue_before else None,
+                "after_queue_status": (queue_after or {}).get("queue_status") if queue_after else None,
+                "added_to_queue": queue_before is None and queue_after is not None,
+                "removed_from_queue": queue_before is not None and queue_after is None,
+            },
             "priority_change": {
                 "line_id": line_id_hint,
                 "before": priority_before,
