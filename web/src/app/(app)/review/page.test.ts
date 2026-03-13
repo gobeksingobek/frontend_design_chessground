@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { refreshReviewPageStateAtomically } from "@/app/(app)/review/page";
+import { refreshReviewPageStateAtomically } from "@/app/(app)/review/review-page-state";
 
 test("refreshReviewPageStateAtomically invalidates review items, actions, and queue", async () => {
   const calls: string[] = [];
