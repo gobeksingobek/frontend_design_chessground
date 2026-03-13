@@ -181,7 +181,9 @@ export interface TrainerQueueResponse {
 
 export interface TrainerOutcomeRequest {
   line_id: string;
-  is_correct: boolean;
+  is_correct?: boolean;
+  outcome?: "correct" | "incorrect";
+  grade?: "again" | "hard" | "good" | "easy";
   mode: "learn" | "review";
 }
 

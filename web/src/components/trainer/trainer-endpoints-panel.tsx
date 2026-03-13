@@ -55,6 +55,16 @@ export function TrainerEndpointsPanel() {
         <small>No selectable line in queue.</small>
       )}
       {outcome.error || priority.error || queue.error ? <p className="warn">Trainer endpoint action failed.</p> : null}
+      <div className="card" style={{ marginTop: 10 }}>
+        <strong>Remediation visibility</strong>
+        <p>
+          Incorrect session answers must include remediation with fields:
+          <code> best_move_uci</code>,
+          <code> principal_variation[]</code>,
+          <code> explanation_markdown</code>, and
+          <code> retry_required</code>.
+        </p>
+      </div>
     </div>
   );
 }

@@ -6,6 +6,14 @@ import type { TrainerSessionAnswerResponse, TrainerSessionItem } from "@/lib/typ
 
 export type TrainerPhase = "prompt" | "attempt" | "reveal" | "grade" | "next";
 
+export function shouldShowRemediation(result: TrainerSessionAnswerResponse | null): boolean {
+  return result?.outcome === "incorrect" && Boolean(result.remediation);
+}
+
+export function shouldShowRetryRequired(result: TrainerSessionAnswerResponse | null): boolean {
+  return shouldShowRemediation(result) && Boolean(result?.remediation?.retry_required);
+}
+
 export function resolveNextPhase(current: TrainerPhase, outcome: "correct" | "incorrect"): TrainerPhase {
   if (current === "prompt") return "attempt";
   if (current === "attempt") return outcome === "incorrect" ? "reveal" : "grade";
@@ -47,6 +55,8 @@ export function TrainerQueue({ mode, sessionId, item, onStart, onAnswer, onNext,
         return "Continue to the next training item.";
     }
   }, [phase]);
+
+  const remediation = result?.remediation ?? null;
 
   return (
     <div className="card">
@@ -113,12 +123,18 @@ export function TrainerQueue({ mode, sessionId, item, onStart, onAnswer, onNext,
         </div>
       ) : null}
 
-      {result?.remediation ? (
+      {shouldShowRemediation(result) && remediation ? (
         <div className="card" style={{ marginTop: 10 }}>
           <p>
-            <strong>Best move:</strong> {result.remediation.best_move_uci}
+            <strong>Best move:</strong> {remediation.best_move_uci}
           </p>
-          <p>{result.remediation.explanation_markdown}</p>
+          <p>
+            <strong>Principal variation:</strong> {remediation.principal_variation.join(" ")}
+          </p>
+          <p>{remediation.explanation_markdown}</p>
+          {shouldShowRetryRequired(result) ? (
+            <button type="button" onClick={() => { setPhase("attempt"); setPhaseStartedAt(Date.now()); }}>Retry required</button>
+          ) : null}
         </div>
       ) : null}
 

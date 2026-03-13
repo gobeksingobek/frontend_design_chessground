@@ -263,7 +263,9 @@ class TrainerQueueResponse(BaseModel):
 
 class TrainerOutcomeRequest(BaseModel):
     line_id: str = Field(min_length=1)
-    is_correct: bool
+    is_correct: bool | None = None
+    outcome: Literal["correct", "incorrect"] | None = None
+    grade: Literal["again", "hard", "good", "easy"] | None = None
     mode: Literal["learn", "review"] = "review"
 
 
@@ -2126,6 +2128,19 @@ async def post_trainer_outcome(
     request: Request,
     _: str = Depends(require_auth),
 ) -> TrainerOutcomeResponse:
+    resolved_is_correct = payload.is_correct
+    if resolved_is_correct is None and payload.outcome is not None:
+        resolved_is_correct = payload.outcome == "correct"
+    if resolved_is_correct is None and payload.grade is not None:
+        resolved_is_correct = payload.grade != "again"
+    if resolved_is_correct is None:
+        raise api_error(400, "INVALID_INPUT", "Expected is_correct, outcome, or grade")
+
+    if payload.outcome is not None and resolved_is_correct != (payload.outcome == "correct"):
+        raise api_error(400, "INVALID_INPUT", "outcome conflicts with is_correct")
+    if payload.grade is not None and (payload.grade == "again") != (resolved_is_correct is False):
+        raise api_error(400, "INVALID_INPUT", "grade conflicts with resolved correctness")
+
     if SETTINGS.data_backend == "postgres":
         async with request.app.state.db_pool.acquire() as conn:
             await _ensure_trainer_state_postgres(conn)
@@ -2135,7 +2150,7 @@ async def post_trainer_outcome(
 
             current_streak = int(info.get("correct_streak") or 0)
             now_iso = datetime.now(timezone.utc).isoformat()
-            if payload.is_correct:
+            if resolved_is_correct:
                 await conn.execute(
                     """
                     UPDATE trainer_line_state
@@ -2183,7 +2198,7 @@ async def post_trainer_outcome(
             raise ValueError("Line not found in trainer state")
 
         current_streak = int(info.get("correct_streak") or 0)
-        if payload.is_correct:
+        if resolved_is_correct:
             queries.update_trainer_state(
                 conn,
                 payload.line_id,
