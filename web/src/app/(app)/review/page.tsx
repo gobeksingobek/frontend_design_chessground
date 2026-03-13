@@ -6,13 +6,7 @@ import { ReviewActionsPanel } from "@/components/review/review-actions-panel";
 import { StatsTable } from "@/components/stats-table";
 import { listReviewItems } from "@/lib/api-client";
 
-export async function refreshReviewPageStateAtomically(queryClient: ReturnType<typeof useQueryClient>): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["review-items"] }),
-    queryClient.invalidateQueries({ queryKey: ["review-actions"] }),
-    queryClient.invalidateQueries({ queryKey: ["review-branch-queue"] }),
-  ]);
-}
+import { refreshReviewPageStateAtomically } from "./review-page-state";
 
 export default function ReviewPage() {
   const queryClient = useQueryClient();
