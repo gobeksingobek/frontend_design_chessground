@@ -102,7 +102,9 @@ export interface AnalysisRunHistoryResponse {
   runs: AnalysisRunHistoryEntry[];
 }
 
-export type StatsRow = Record<string, string | number | boolean | null>;
+export type StatsRowValue = string | number | boolean | null | InsightSourceRef[];
+
+export type StatsRow = Record<string, StatsRowValue>;
 
 export interface InsightSourceRef {
   type: string;
