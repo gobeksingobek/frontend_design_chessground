@@ -1,0 +1,218 @@
+{
+  "version": 1,
+  "source_checklist": "docs/web_desktop_parity_checklist.md",
+  "tasks": [
+    {
+      "id": "TRN-01",
+      "status": "Open",
+      "endpoint_contract_files": [
+        "backend/read_api.py",
+        "backend/api_service.py"
+      ],
+      "api_test_commands": [
+        "pytest tests/test_trainer_sessions_api.py"
+      ],
+      "ui_test_commands": [
+        "npm --prefix web run test:ui-regression -- trainer-queue"
+      ],
+      "contract_check_commands": [
+        "node web/scripts/check-trainer-contract.mjs"
+      ]
+    },
+    {
+      "id": "TRN-02",
+      "status": "Open",
+      "endpoint_contract_files": [
+        "backend/read_api.py",
+        "backend/api_service.py"
+      ],
+      "api_test_commands": [
+        "pytest tests/test_trainer_sessions_api.py"
+      ],
+      "ui_test_commands": [
+        "npm --prefix web run test:ui-regression -- trainer-queue remediation"
+      ],
+      "contract_check_commands": [
+        "node web/scripts/check-trainer-contract.mjs"
+      ]
+    },
+    {
+      "id": "REV-01",
+      "status": "Open",
+      "endpoint_contract_files": [
+        "backend/read_api.py",
+        "backend/api_service.py"
+      ],
+      "api_test_commands": [
+        "pytest tests/test_review_actions_api.py"
+      ],
+      "ui_test_commands": [
+        "npm --prefix web run test:ui-regression -- review-actions-panel"
+      ],
+      "contract_check_commands": [
+        "node web/scripts/check-review-contract.mjs"
+      ]
+    },
+    {
+      "id": "GMD-01",
+      "status": "In progress",
+      "endpoint_contract_files": [
+        "backend/read_api.py"
+      ],
+      "api_test_commands": [
+        "pytest tests/test_game_details_api_regression.py"
+      ],
+      "ui_test_commands": [
+        "npm --prefix web run test:ui-regression -- game-detail"
+      ],
+      "contract_check_commands": [
+        "node web/scripts/check-game-detail-contract.mjs"
+      ]
+    },
+    {
+      "id": "GMD-02",
+      "status": "Open",
+      "endpoint_contract_files": [
+        "backend/read_api.py"
+      ],
+      "api_test_commands": [
+        "pytest tests/test_game_details_api_regression.py"
+      ],
+      "ui_test_commands": [
+        "npm --prefix web run test:ui-regression -- game-detail"
+      ],
+      "contract_check_commands": [
+        "node web/scripts/check-game-detail-contract.mjs"
+      ]
+    },
+    {
+      "id": "STS-01",
+      "status": "In progress",
+      "endpoint_contract_files": [
+        "backend/read_api.py"
+      ],
+      "api_test_commands": [
+        "pytest tests/test_lines_stats_api.py"
+      ],
+      "ui_test_commands": [
+        "npm --prefix web run test:ui-regression -- stats-table"
+      ],
+      "contract_check_commands": [
+        "node web/scripts/check-lines-contract.mjs"
+      ]
+    },
+    {
+      "id": "STS-02",
+      "status": "In progress",
+      "endpoint_contract_files": [
+        "backend/read_api.py"
+      ],
+      "api_test_commands": [
+        "pytest tests/test_time_usage_api.py"
+      ],
+      "ui_test_commands": [
+        "npm --prefix web run test:ui-regression -- stats-table"
+      ],
+      "contract_check_commands": [
+        "node web/scripts/check-time-usage-contract.mjs"
+      ]
+    },
+    {
+      "id": "STS-03",
+      "status": "In progress",
+      "endpoint_contract_files": [
+        "backend/read_api.py"
+      ],
+      "api_test_commands": [
+        "pytest tests/test_rating_bands_api.py"
+      ],
+      "ui_test_commands": [
+        "npm --prefix web run test:ui-regression -- stats-table"
+      ],
+      "contract_check_commands": [
+        "node web/scripts/check-rating-bands-contract.mjs"
+      ]
+    },
+    {
+      "id": "OVR-01",
+      "status": "In progress",
+      "endpoint_contract_files": [
+        "backend/read_api.py"
+      ],
+      "api_test_commands": [
+        "pytest tests/test_analysis_runs_api.py"
+      ],
+      "ui_test_commands": [
+        "npm --prefix web run test:ui-regression -- overview"
+      ],
+      "contract_check_commands": [
+        "node web/scripts/check-analysis-runs-contract.mjs"
+      ]
+    },
+    {
+      "id": "GMS-01",
+      "status": "In progress",
+      "endpoint_contract_files": [
+        "backend/read_api.py"
+      ],
+      "api_test_commands": [
+        "pytest tests/test_games_list_filters_api.py"
+      ],
+      "ui_test_commands": [
+        "npm --prefix web run test:ui-regression -- games-table"
+      ],
+      "contract_check_commands": [
+        "node web/scripts/check-games-list-contract.mjs"
+      ]
+    },
+    {
+      "id": "INS-01",
+      "status": "In progress",
+      "endpoint_contract_files": [
+        "backend/read_api.py"
+      ],
+      "api_test_commands": [
+        "pytest tests/test_insights_api.py"
+      ],
+      "ui_test_commands": [
+        "npm --prefix web run test:ui-regression -- insights"
+      ],
+      "contract_check_commands": [
+        "node web/scripts/check-insights-contract.mjs"
+      ]
+    },
+    {
+      "id": "TRE-01",
+      "status": "In progress",
+      "endpoint_contract_files": [
+        "backend/read_api.py"
+      ],
+      "api_test_commands": [
+        "pytest tests/test_tree_contract_api.py"
+      ],
+      "ui_test_commands": [
+        "npm --prefix web run test:ui-regression -- tree-explorer"
+      ],
+      "contract_check_commands": [
+        "node web/scripts/check-tree-contract.mjs"
+      ]
+    },
+    {
+      "id": "SET-01",
+      "status": "In progress",
+      "endpoint_contract_files": [
+        "backend/read_api.py",
+        "backend/settings.py"
+      ],
+      "api_test_commands": [
+        "pytest tests/test_settings_runtime_api.py"
+      ],
+      "ui_test_commands": [
+        "npm --prefix web run test:ui-regression -- settings"
+      ],
+      "contract_check_commands": [
+        "node web/scripts/check-settings-contract.mjs"
+      ]
+    }
+  ]
+}
