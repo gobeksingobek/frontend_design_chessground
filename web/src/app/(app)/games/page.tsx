@@ -3,6 +3,7 @@
 import { Suspense, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { PageContainer, PageSection } from "@/components/app-shell";
 import { DEFAULT_GAMES_TABLE_STATE, GamesTable, type GamesTableState } from "@/components/games/games-table";
 import { SectionHeader } from "@/components/ui/section-header";
 
@@ -11,7 +12,7 @@ function parseState(params: URLSearchParams): GamesTableState { return { ...DEFA
 function GamesPageContent() {
   const params = useSearchParams(); const router = useRouter(); const pathname = usePathname(); const state = useMemo(() => parseState(new URLSearchParams(params.toString())), [params]);
   function onStateChange(next: GamesTableState) { const nextParams = new URLSearchParams(); Object.entries(next).forEach(([key, value]) => { if (value) nextParams.set(key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`), value); }); router.replace(`${pathname}?${nextParams.toString()}`); }
-  return <div className="grid gap-4"><SectionHeader title="Games" description="Filter and open recent games." /><GamesTable state={state} onStateChange={onStateChange} /></div>;
+  return <PageContainer title="Games" description="Filter recent games, review outcomes, and jump into detailed move inspection."><PageSection><SectionHeader title="Games" description="Filter and open recent games." /><GamesTable state={state} onStateChange={onStateChange} /></PageSection></PageContainer>;
 }
 
 export default function GamesPage() { return <Suspense fallback={<p className="text-sm text-text-muted">Loading games…</p>}><GamesPageContent /></Suspense>; }
