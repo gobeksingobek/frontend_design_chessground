@@ -1,3 +1,4 @@
+import { PageContainer, PageSection } from "@/components/app-shell";
 import { SidelineAnalysisForm } from "@/components/analysis/sideline-analysis-form";
 import { ChessBoard } from "@/components/chess/chess-board";
 import { Card } from "@/components/ui/card";
@@ -13,12 +14,14 @@ export default function AnalysisPage({ searchParams }: { searchParams: Record<st
   const initialBranchMoves = firstParam(searchParams.branch_moves);
 
   return (
-    <div className="grid gap-4">
-      <SectionHeader title="Analysis Board" description="Run a quick local WASM eval for your first custom move, then queue authoritative sideline analysis." />
-      <div className="grid gap-4 xl:grid-cols-board">
-        <Card><ChessBoard fen={initialFen} title="Live position" size="large" /></Card>
-        <Card className="xl:sticky xl:top-4 xl:self-start"><SidelineAnalysisForm title="Create sideline from custom position" initialGameId={initialGameId} initialMovePly={Number.isFinite(initialMovePly) ? initialMovePly : null} initialFen={initialFen} initialBranchMoves={initialBranchMoves} /></Card>
-      </div>
-    </div>
+    <PageContainer title="Board Analysis" description="Run a quick local WASM eval, inspect the current position, and queue authoritative sideline analysis.">
+      <PageSection>
+        <SectionHeader title="Analysis Board" description="Run a quick local WASM eval for your first custom move, then queue authoritative sideline analysis." />
+        <div className="grid gap-4 xl:grid-cols-board">
+          <Card><ChessBoard fen={initialFen} title="Live position" size="large" /></Card>
+          <Card className="xl:sticky xl:top-24 xl:self-start"><SidelineAnalysisForm title="Create sideline from custom position" initialGameId={initialGameId} initialMovePly={Number.isFinite(initialMovePly) ? initialMovePly : null} initialFen={initialFen} initialBranchMoves={initialBranchMoves} /></Card>
+        </div>
+      </PageSection>
+    </PageContainer>
   );
 }
