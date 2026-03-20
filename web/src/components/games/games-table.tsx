@@ -30,13 +30,13 @@ export function GamesTable({ state, onStateChange }: { state: GamesTableState; o
   useEffect(() => { localStorage.setItem("cg_games_table_state_v2", JSON.stringify(state)); }, [state]);
   const queryKey = useMemo(() => buildGamesQueryKey(state), [state]);
   const { data, isLoading, error } = useQuery({ queryKey, queryFn: () => listGamesFiltered({ limit: 200, result: state.result || undefined, compliance: state.compliance || undefined, complianceMin: state.complianceMin || undefined, lineId: state.lineId || undefined, player: state.player || undefined, dateFrom: state.dateFrom || undefined, dateTo: state.dateTo || undefined, sortBy: state.sortBy, sortDir: state.sortDir }) });
-  if (isLoading) return <p className="text-sm text-text-muted">Loading games...</p>;
+  if (isLoading) return <p className="text-sm text-muted-foreground">Loading games...</p>;
   if (error) return <p className="text-sm text-danger">Failed to load games: {(error as Error).message}</p>;
   const set = (patch: Partial<GamesTableState>) => onStateChange({ ...state, ...patch });
 
   return (
     <div className="grid gap-4">
-      <Card className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <Card className="grid gap-3 border-border/80 bg-elevated md:grid-cols-2 xl:grid-cols-5">
         <Input value={state.result} onChange={(e) => set({ result: e.target.value })} placeholder="result" />
         <Input value={state.compliance} onChange={(e) => set({ compliance: e.target.value })} placeholder="compliance" />
         <Input value={state.complianceMin} onChange={(e) => set({ complianceMin: e.target.value })} placeholder="compliance min 0..1" />
@@ -45,7 +45,7 @@ export function GamesTable({ state, onStateChange }: { state: GamesTableState; o
       </Card>
       <Table>
         <TableHead><tr><Th>ID</Th><Th>Action</Th></tr></TableHead>
-        <TableBody>{data?.map((game) => <tr key={game.id} className="hover:bg-panel-muted/70"><Td>{game.id}</Td><Td><Link href={`/games/${game.id}`}><Button variant="ghost">Open</Button></Link></Td></tr>)}</TableBody>
+        <TableBody>{data?.map((game) => <tr key={game.id} className="transition hover:bg-hover"><Td>{game.id}</Td><Td><Link href={`/games/${game.id}`}><Button variant="ghost">Open</Button></Link></Td></tr>)}</TableBody>
       </Table>
     </div>
   );

@@ -5,11 +5,11 @@ import { cn } from "@/lib/cn";
 type BadgeTone = "neutral" | "success" | "warning" | "danger" | "accent";
 
 const tones: Record<BadgeTone, string> = {
-  neutral: "border-border bg-panel-muted text-text-muted",
-  success: "border-success/40 bg-success/15 text-success",
-  warning: "border-warning/40 bg-warning/15 text-warning",
-  danger: "border-danger/40 bg-danger/15 text-danger",
-  accent: "border-accent/40 bg-accent/15 text-accent",
+  neutral: "border-border bg-muted text-muted-foreground",
+  success: "border-success/30 bg-success/15 text-success",
+  warning: "border-warning/30 bg-warning/15 text-warning",
+  danger: "border-danger/30 bg-danger/15 text-danger",
+  accent: "border-primary/30 bg-primary/15 text-primary",
 };
 
 export function Badge({ className, tone = "neutral", children }: { className?: string; tone?: BadgeTone; children: ReactNode }) {

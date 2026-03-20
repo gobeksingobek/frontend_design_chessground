@@ -3,15 +3,15 @@ import { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 export function Table({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className="overflow-hidden rounded-xl border border-border bg-panel shadow-soft"><table className={cn("min-w-full divide-y divide-border text-sm", className)}>{children}</table></div>;
+  return <div className="overflow-hidden rounded-xl border border-border bg-card shadow-soft"><table className={cn("min-w-full divide-y divide-border text-sm", className)}>{children}</table></div>;
 }
 
 export function TableHead({ children }: { children: ReactNode }) {
-  return <thead className="bg-panel-muted/80 text-text-subtle">{children}</thead>;
+  return <thead className="bg-muted/90 text-muted-foreground">{children}</thead>;
 }
 
 export function TableBody({ children }: { children: ReactNode }) {
-  return <tbody className="divide-y divide-border/80">{children}</tbody>;
+  return <tbody className="divide-y divide-border/80 bg-card">{children}</tbody>;
 }
 
 export function Th({ className, children }: { className?: string; children: ReactNode }) {
@@ -19,5 +19,5 @@ export function Th({ className, children }: { className?: string; children: Reac
 }
 
 export function Td({ className, children }: { className?: string; children: ReactNode }) {
-  return <td className={cn("px-4 py-3 align-top text-text", className)}>{children}</td>;
+  return <td className={cn("px-4 py-3 align-top text-foreground", className)}>{children}</td>;
 }
