@@ -1,6 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { CSSProperties, useMemo, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 
 const FILES = "abcdefgh";
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -103,9 +106,9 @@ export function ChessBoard({
   };
 
   return (
-    <div className={`board-wrap ${size === "large" ? "board-wrap-large" : ""}`.trim()} aria-label={title ?? "Chess board"}>
-      {title ? <h3>{title}</h3> : null}
-      <div className="board" role="img" aria-label={`Board position: ${safeFen}`} data-ply-index={currentPlyIndex ?? 0}>
+    <div className={cn("grid w-full gap-3", size === "large" ? "max-w-none" : "max-w-[420px]")} aria-label={title ?? "Chess board"}>
+      {title ? <h3 className="text-base font-semibold text-text">{title}</h3> : null}
+      <div className="grid aspect-square w-full grid-cols-8 overflow-hidden rounded-lg border border-border" role="img" aria-label={`Board position: ${safeFen}`} data-ply-index={currentPlyIndex ?? 0}>
         {board.map((rank, rankIndex) =>
           rank.map((piece, fileIndex) => {
             const isLight = (rankIndex + fileIndex) % 2 === 0;
@@ -115,15 +118,19 @@ export function ChessBoard({
               <button
                 key={`${rankIndex}-${fileIndex}`}
                 type="button"
-                className={`square ${isLight ? "light" : "dark"} ${selectedSquare === square ? "square-selected" : ""}`}
+                className={cn(
+                  "grid aspect-square w-full place-items-center p-0 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                  isLight ? "bg-board-light text-slate-900" : "bg-board-dark text-slate-900",
+                  selectedSquare === square && "shadow-[inset_0_0_0_3px_rgba(56,189,248,1)]",
+                )}
                 aria-label={`Square ${square}${piece ? ` with ${piece}` : ""}`}
                 onClick={() => handleSquareClick(rankIndex, fileIndex)}
               >
                 {imageCode ? (
                   <span
                     aria-hidden="true"
-                    className="piece-img"
-                    style={{ backgroundImage: `url(${PIECE_BASE_URL}/${imageCode}.png)` }}
+                    className={cn("block h-[88%] w-[88%] bg-contain bg-center bg-no-repeat", size === "large" && "h-[92%] w-[92%]")}
+                    style={{ backgroundImage: `url(${PIECE_BASE_URL}/${imageCode}.png)` } as CSSProperties}
                   />
                 ) : null}
               </button>
@@ -131,21 +138,13 @@ export function ChessBoard({
           }),
         )}
       </div>
-      <div className="board-controls" role="group" aria-label="Board navigation">
-        <button type="button" onClick={onNavigateStart} disabled={!onNavigateStart}>
-          ⏮
-        </button>
-        <button type="button" onClick={onNavigatePrev} disabled={!onNavigatePrev}>
-          ◀
-        </button>
-        <button type="button" onClick={onNavigateNext} disabled={!onNavigateNext}>
-          ▶
-        </button>
-        <button type="button" onClick={onNavigateEnd} disabled={!onNavigateEnd}>
-          ⏭
-        </button>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Board navigation">
+        <Button type="button" onClick={onNavigateStart} disabled={!onNavigateStart}>⏮</Button>
+        <Button type="button" onClick={onNavigatePrev} disabled={!onNavigatePrev}>◀</Button>
+        <Button type="button" onClick={onNavigateNext} disabled={!onNavigateNext}>▶</Button>
+        <Button type="button" onClick={onNavigateEnd} disabled={!onNavigateEnd}>⏭</Button>
       </div>
-      <small>FEN: {safeFen}</small>
+      <small className="text-xs text-text-muted">FEN: {safeFen}</small>
     </div>
   );
 }

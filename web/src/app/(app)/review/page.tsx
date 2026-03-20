@@ -10,16 +10,5 @@ import { refreshReviewPageStateAtomically } from "./review-page-state";
 
 export default function ReviewPage() {
   const queryClient = useQueryClient();
-
-  return (
-    <div className="stack">
-      <StatsTable
-        title="Review"
-        description="Review items generated from your deviations and coverage gaps."
-        queryKey={["review-items"]}
-        queryFn={listReviewItems}
-      />
-      <ReviewActionsPanel onActionCommitted={() => refreshReviewPageStateAtomically(queryClient)} />
-    </div>
-  );
+  return <div className="grid gap-4"><StatsTable title="Review" description="Review items generated from your deviations and coverage gaps." queryKey={["review-items"]} queryFn={listReviewItems} /><ReviewActionsPanel onActionCommitted={() => refreshReviewPageStateAtomically(queryClient)} /></div>;
 }
