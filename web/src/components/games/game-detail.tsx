@@ -8,7 +8,6 @@ import { SidelineAnalysisForm } from "@/components/analysis/sideline-analysis-fo
 import { ChessBoard } from "@/components/chess/chess-board";
 import { EvalBar } from "@/components/games/eval-bar";
 import { MoveQualityBadge } from "@/components/games/move-quality-badge";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Select } from "@/components/ui/select";
@@ -33,7 +32,7 @@ export function GameDetail({ gameId, initialPly }: { gameId: number; initialPly:
   const navigateStart = useCallback(() => { setCursorIndex(0); }, []);
   const navigateEnd = useCallback(() => { setCursorIndex(moves.length); }, [moves.length]);
   const onKeyNavigate = useCallback((event: KeyboardEvent | ReactKeyboardEvent) => { if (shouldIgnoreKeyboardEvent(event)) return; const nextCursor = applyCursorKey(event.key, cursorIndex, moves.length); if (nextCursor !== cursorIndex) { event.preventDefault(); setCursorIndex(nextCursor); } }, [cursorIndex, moves.length]);
-  if (isLoading) return <p className="text-sm text-text-muted">Loading game detail...</p>;
+  if (isLoading) return <p className="text-sm text-muted-foreground">Loading game detail...</p>;
   if (error) return <p className="text-sm text-danger">Failed to load game detail: {(error as Error).message}</p>;
 
   return (
@@ -42,27 +41,27 @@ export function GameDetail({ gameId, initialPly }: { gameId: number; initialPly:
         <div className="flex flex-wrap items-center justify-between gap-3">
           <SectionHeader title="Header" />
           <div className="flex flex-wrap gap-2">
-            {data?.prev_game_id ? <Link className="text-sm text-accent hover:text-accent-strong" href={{ pathname: `/games/${data.prev_game_id}`, query: selectedPly ? { ply: String(selectedPly) } : {} }}>← Previous game</Link> : <span className="text-sm text-text-muted/70">← Previous game</span>}
-            {data?.next_game_id ? <Link className="text-sm text-accent hover:text-accent-strong" href={{ pathname: `/games/${data.next_game_id}`, query: selectedPly ? { ply: String(selectedPly) } : {} }}>Next game →</Link> : <span className="text-sm text-text-muted/70">Next game →</span>}
+            {data?.prev_game_id ? <Link className="text-sm text-primary hover:text-secondary" href={{ pathname: `/games/${data.prev_game_id}`, query: selectedPly ? { ply: String(selectedPly) } : {} }}>← Previous game</Link> : <span className="text-sm text-muted-foreground/70">← Previous game</span>}
+            {data?.next_game_id ? <Link className="text-sm text-primary hover:text-secondary" href={{ pathname: `/games/${data.next_game_id}`, query: selectedPly ? { ply: String(selectedPly) } : {} }}>Next game →</Link> : <span className="text-sm text-muted-foreground/70">Next game →</span>}
           </div>
         </div>
-        <pre className="overflow-x-auto rounded-lg border border-border bg-panel-muted p-4 font-mono text-xs text-text-subtle">{JSON.stringify(data?.header, null, 2)}</pre>
+        <pre className="overflow-x-auto rounded-lg border border-border bg-muted p-4 font-mono text-xs text-muted-foreground">{JSON.stringify(data?.header, null, 2)}</pre>
       </Card>
 
       <Card>
         <SectionHeader title="Create sideline analysis job" />
         <ChessBoard fen={boardFen} title="Selected game position" currentPlyIndex={cursorIndex} onNavigateNext={navigateNext} onNavigatePrev={navigatePrev} onNavigateStart={navigateStart} onNavigateEnd={navigateEnd} onMoveAttempt={({ uci }) => { const nextMove = moves[cursorIndex]; if (nextMove?.uci_move === uci) navigateNext(); }} />
-        <label className="grid max-w-md gap-2 text-sm text-text-subtle">Move ply<Select value={selectedPly ?? ""} onChange={(event) => { const ply = event.target.value ? Number(event.target.value) : null; if (ply === null) { setCursorIndex(0); return; } const moveIndex = moves.findIndex((move) => move.ply === ply); setCursorIndex(moveIndex >= 0 ? moveIndex + 1 : 0); }}><option value="">Initial position</option>{moves.map((move) => <option key={move.ply} value={move.ply}>Ply {move.ply} - {move.san_move ?? move.uci_move ?? "-"}</option>)}</Select></label>
-        {selectedMove?.fen ? <p className="text-sm"><Link className="text-accent hover:text-accent-strong" href={{ pathname: "/analysis", query: { game_id: String(gameId), move_ply: String(selectedMove.ply), fen: selectedMove.fen } }}>Open in /analysis with this position</Link></p> : null}
-        {selectedMove?.fen ? <SidelineAnalysisForm key={`${selectedMove.ply}-${selectedMove.fen}`} title="Queue sideline from this game move" initialGameId={String(gameId)} initialMovePly={selectedMove.ply} initialFen={selectedMove.fen} lockedFields={{ gameId: true, movePly: true, fen: true }} /> : <small className="text-text-muted">Select a move with available FEN to run quick eval.</small>}
-        {selectedMove ? <div className="grid gap-3 xl:grid-cols-3"> <Card className="gap-2 bg-panel-muted"><h4 className="text-sm font-semibold">Selected ply details</h4><p>Ply {selectedMove.ply}: {selectedMove.san_move ?? selectedMove.uci_move ?? "-"}</p><p>Quality: <MoveQualityBadge label={selectedMove.quality_label} /></p><p className={cn("text-sm font-medium", selectedMove.your_cpl !== null && selectedMove.your_cpl > 120 ? "text-danger" : "text-success")}>Your CPL: {selectedMove.your_cpl ?? "-"}</p></Card>{hasEvalData ? <><EvalBar evalCp={selectedMove.pre_eval_cp} title="Before move" /><EvalBar evalCp={selectedMove.post_eval_cp} title="After move" /></> : <Card className="gap-2 bg-panel-muted"><h4 className="text-sm font-semibold">Eval panel</h4><small className="text-text-muted">No pre/post eval values are available for the selected move.</small></Card>}</div> : null}
+        <label className="grid max-w-md gap-2 text-sm text-muted-foreground">Move ply<Select value={selectedPly ?? ""} onChange={(event) => { const ply = event.target.value ? Number(event.target.value) : null; if (ply === null) { setCursorIndex(0); return; } const moveIndex = moves.findIndex((move) => move.ply === ply); setCursorIndex(moveIndex >= 0 ? moveIndex + 1 : 0); }}><option value="">Initial position</option>{moves.map((move) => <option key={move.ply} value={move.ply}>Ply {move.ply} - {move.san_move ?? move.uci_move ?? "-"}</option>)}</Select></label>
+        {selectedMove?.fen ? <p className="text-sm"><Link className="text-primary hover:text-secondary" href={{ pathname: "/analysis", query: { game_id: String(gameId), move_ply: String(selectedMove.ply), fen: selectedMove.fen } }}>Open in /analysis with this position</Link></p> : null}
+        {selectedMove?.fen ? <SidelineAnalysisForm key={`${selectedMove.ply}-${selectedMove.fen}`} title="Queue sideline from this game move" initialGameId={String(gameId)} initialMovePly={selectedMove.ply} initialFen={selectedMove.fen} lockedFields={{ gameId: true, movePly: true, fen: true }} /> : <small className="text-muted-foreground">Select a move with available FEN to run quick eval.</small>}
+        {selectedMove ? <div className="grid gap-3 xl:grid-cols-3"> <Card className="gap-2 border-border/80 bg-elevated"><h4 className="text-sm font-semibold text-foreground">Selected ply details</h4><p>Ply {selectedMove.ply}: {selectedMove.san_move ?? selectedMove.uci_move ?? "-"}</p><p>Quality: <MoveQualityBadge label={selectedMove.quality_label} /></p><p className={cn("text-sm font-medium", selectedMove.your_cpl !== null && selectedMove.your_cpl > 120 ? "text-danger" : "text-success")}>Your CPL: {selectedMove.your_cpl ?? "-"}</p></Card>{hasEvalData ? <><EvalBar evalCp={selectedMove.pre_eval_cp} title="Before move" /><EvalBar evalCp={selectedMove.post_eval_cp} title="After move" /></> : <Card className="gap-2 border-border/80 bg-elevated"><h4 className="text-sm font-semibold text-foreground">Eval panel</h4><small className="text-muted-foreground">No pre/post eval values are available for the selected move.</small></Card>}</div> : null}
       </Card>
 
       <Card>
         <SectionHeader title="Moves" description="Click a row or use arrow keys while focused to step through the game." />
         <Table>
           <TableHead><tr><Th>Ply</Th><Th>SAN</Th><Th>UCI</Th><Th>Class</Th><Th>Quality</Th><Th>Your CPL</Th></tr></TableHead>
-          <TableBody>{moves.map((move) => <tr key={move.ply} className={cn("cursor-pointer transition hover:bg-panel-muted/70", move.ply === selectedPly && "bg-accent/10")} onClick={() => { const moveIndex = moves.findIndex((candidate) => candidate.ply === move.ply); setCursorIndex(moveIndex + 1); }}><Td>{move.ply}</Td><Td>{move.san_move ?? "-"}</Td><Td>{move.uci_move ?? "-"}</Td><Td>{move.repertoire_class ?? "-"}</Td><Td><MoveQualityBadge label={move.quality_label} /></Td><Td className={cn(move.your_cpl !== null && move.your_cpl > 120 ? "text-danger" : "text-success")}>{move.your_cpl ?? "-"}</Td></tr>)}</TableBody>
+          <TableBody>{moves.map((move) => <tr key={move.ply} className={cn("cursor-pointer transition hover:bg-hover", move.ply === selectedPly && "bg-selection")} onClick={() => { const moveIndex = moves.findIndex((candidate) => candidate.ply === move.ply); setCursorIndex(moveIndex + 1); }}><Td className={move.ply === selectedPly ? "text-selection-foreground" : undefined}>{move.ply}</Td><Td className={move.ply === selectedPly ? "text-selection-foreground" : undefined}>{move.san_move ?? "-"}</Td><Td className={move.ply === selectedPly ? "text-selection-foreground" : undefined}>{move.uci_move ?? "-"}</Td><Td className={move.ply === selectedPly ? "text-selection-foreground" : undefined}>{move.repertoire_class ?? "-"}</Td><Td><MoveQualityBadge label={move.quality_label} /></Td><Td className={cn(move.ply === selectedPly && "text-selection-foreground", move.your_cpl !== null && move.your_cpl > 120 ? "text-danger" : "text-success")}>{move.your_cpl ?? "-"}</Td></tr>)}</TableBody>
         </Table>
       </Card>
     </div>

@@ -40,29 +40,29 @@ export function StatsTable({ title, description, queryKey, queryFn, drilldownLab
   return (
     <div className="grid gap-4">
       <SectionHeader title={title} description={description} />
-      {isLoading ? <p className="text-sm text-text-muted">Loading…</p> : null}
+      {isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
       {error ? <p className="text-sm text-danger">{String(error)}</p> : null}
-      {!isLoading && !error && rows.length === 0 ? <p className="text-sm text-text-muted">No data yet.</p> : null}
+      {!isLoading && !error && rows.length === 0 ? <p className="text-sm text-muted-foreground">No data yet.</p> : null}
       {!isLoading && !error && rows.length > 0 ? (
         <>
-          <Card className="flex flex-wrap items-center gap-3">
-            <label className="grid min-w-[220px] gap-2 text-sm text-text-subtle">Pivot column<Select aria-label="Pivot column" value={pivotColumn} onChange={(e) => setPivotColumn(e.target.value)}><option value="">None</option>{columns.map((column) => <option key={column} value={column}>{column}</option>)}</Select></label>
+          <Card className="flex flex-wrap items-center gap-3 border-border/80 bg-elevated">
+            <label className="grid min-w-[220px] gap-2 text-sm text-muted-foreground">Pivot column<Select aria-label="Pivot column" value={pivotColumn} onChange={(e) => setPivotColumn(e.target.value)}><option value="">None</option>{columns.map((column) => <option key={column} value={column}>{column}</option>)}</Select></label>
           </Card>
           <Table>
             <TableHead><tr>{columns.map((column) => <Th key={column}>{column}</Th>)}</tr></TableHead>
             <TableBody>
               {rows.map((row, index) => (
-                <tr key={index} className={cn("cursor-pointer transition hover:bg-panel-muted/70", selectedIndex === index && "bg-accent/10")} onClick={() => setSelectedIndex(index)}>
-                  {columns.map((column) => <Td key={column}>{String(row[column] ?? "")}</Td>)}
+                <tr key={index} className={cn("cursor-pointer transition hover:bg-hover", selectedIndex === index && "bg-selection text-selection-foreground") } onClick={() => setSelectedIndex(index)}>
+                  {columns.map((column) => <Td key={column} className={selectedIndex === index ? "text-selection-foreground" : undefined}>{String(row[column] ?? "")}</Td>)}
                 </tr>
               ))}
             </TableBody>
           </Table>
-          <Card>
-            <h3 className="text-base font-semibold">{drilldownLabel}</h3>
-            {!selected ? <p className="text-sm text-text-muted">No row selected.</p> : null}
-            {selected ? <ul className="grid gap-2 text-sm">{columns.map((column) => <li key={column}><strong>{column}:</strong> {String(selected[column] ?? "")}</li>)}</ul> : null}
-            {pivotColumn ? <><h4 className="text-sm font-semibold text-text">Pivot summary by {pivotColumn}</h4><ul className="grid gap-2 text-sm text-text-subtle">{pivot.slice(0, 10).map((entry) => <li key={entry.key}>{entry.key}: {entry.count}</li>)}</ul></> : null}
+          <Card className="bg-elevated">
+            <h3 className="text-base font-semibold text-foreground">{drilldownLabel}</h3>
+            {!selected ? <p className="text-sm text-muted-foreground">No row selected.</p> : null}
+            {selected ? <ul className="grid gap-2 text-sm text-foreground">{columns.map((column) => <li key={column}><strong>{column}:</strong> {String(selected[column] ?? "")}</li>)}</ul> : null}
+            {pivotColumn ? <><h4 className="text-sm font-semibold text-foreground">Pivot summary by {pivotColumn}</h4><ul className="grid gap-2 text-sm text-muted-foreground">{pivot.slice(0, 10).map((entry) => <li key={entry.key}>{entry.key}: {entry.count}</li>)}</ul></> : null}
           </Card>
         </>
       ) : null}

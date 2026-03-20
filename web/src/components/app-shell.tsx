@@ -142,7 +142,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 }
 
 export function DashboardShell({ children }: { children: ReactNode }) {
-  return <div className="min-h-screen bg-bg text-text lg:flex">{children}</div>;
+  return <div className="min-h-screen bg-background text-foreground lg:flex">{children}</div>;
 }
 
 export function DashboardSidebar({
@@ -160,26 +160,26 @@ export function DashboardSidebar({
   const sidebar = (
     <div
       className={cn(
-        "flex h-full flex-col border-border bg-[#08101f] text-text shadow-panel",
+        "flex h-full flex-col border-border bg-elevated text-foreground shadow-panel",
         collapsed ? "w-[5.5rem]" : "w-72",
       )}
     >
       <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-4">
         <Link href="/overview" className="flex min-w-0 items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent/15 text-accent ring-1 ring-inset ring-accent/25">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/15 text-primary ring-1 ring-inset ring-primary/25">
             <KnightIcon className="h-6 w-6" />
           </div>
           {!collapsed ? (
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold uppercase tracking-[0.2em] text-accent/80">ChessGround</p>
-              <p className="truncate text-xs text-text-muted">Analysis workspace</p>
+              <p className="truncate text-sm font-semibold uppercase tracking-[0.2em] text-primary/80">ChessGround</p>
+              <p className="truncate text-xs text-muted-foreground">Analysis workspace</p>
             </div>
           ) : null}
         </Link>
         <button
           type="button"
           onClick={onCollapseToggle}
-          className="hidden rounded-md border border-border/70 bg-panel/70 p-2 text-text-muted transition hover:bg-panel-elevated hover:text-text lg:inline-flex"
+          className="hidden rounded-md border border-border/70 bg-card/80 p-2 text-muted-foreground transition hover:bg-overlay hover:text-foreground lg:inline-flex"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           <PanelIcon className={cn("h-4 w-4 transition-transform", collapsed && "rotate-180")} />
@@ -189,7 +189,7 @@ export function DashboardSidebar({
         <nav className="grid gap-6">
           {navSections.map((section) => (
             <div key={section.label} className="grid gap-2">
-              <p className={cn("px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-text-muted/70", collapsed && "px-0 text-center")}>{collapsed ? section.label.slice(0, 1) : section.label}</p>
+              <p className={cn("px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70", collapsed && "px-0 text-center")}>{collapsed ? section.label.slice(0, 1) : section.label}</p>
               <div className="grid gap-1">
                 {section.items.map((item) => {
                   const active = item.match ? item.match(pathname) : pathname === item.href;
@@ -199,14 +199,14 @@ export function DashboardSidebar({
                       href={item.href}
                       onClick={onMobileClose}
                       className={cn(
-                        "group relative flex items-center gap-3 overflow-hidden rounded-xl border border-transparent px-3 py-2.5 text-sm font-medium text-text-muted transition hover:border-border/70 hover:bg-panel hover:text-text",
+                        "group relative flex items-center gap-3 overflow-hidden rounded-xl border border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border/70 hover:bg-hover hover:text-hover-foreground",
                         collapsed && "justify-center px-2",
-                        active && "border-accent/25 bg-accent/10 text-text shadow-soft",
+                        active && "border-primary/25 bg-selection text-selection-foreground shadow-soft",
                       )}
                       aria-current={active ? "page" : undefined}
                     >
-                      <span className={cn("absolute inset-y-2 left-0 w-1 rounded-r-full bg-accent opacity-0 transition", active && "opacity-100", collapsed && "inset-x-2 inset-y-auto bottom-0 left-2 h-1 w-auto rounded-t-full rounded-r-none")} />
-                      <span className={cn("text-text-muted transition group-hover:text-accent", active && "text-accent")}>
+                      <span className={cn("absolute inset-y-2 left-0 w-1 rounded-r-full bg-primary opacity-0 transition", active && "opacity-100", collapsed && "inset-x-2 inset-y-auto bottom-0 left-2 h-1 w-auto rounded-t-full rounded-r-none")} />
+                      <span className={cn("text-muted-foreground transition group-hover:text-primary", active && "text-primary")}>
                         {item.icon({ className: "h-5 w-5" })}
                       </span>
                       {!collapsed ? <span className="truncate">{item.label}</span> : null}
@@ -226,7 +226,7 @@ export function DashboardSidebar({
       <aside className="sticky top-0 hidden h-screen shrink-0 border-r border-border/80 lg:block">{sidebar}</aside>
       {mobileOpen ? (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <button type="button" className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" onClick={onMobileClose} aria-label="Close navigation" />
+          <button type="button" className="absolute inset-0 bg-background/70 backdrop-blur-sm" onClick={onMobileClose} aria-label="Close navigation" />
           <div className="absolute inset-y-0 left-0 max-w-[85vw]">{sidebar}</div>
         </div>
       ) : null}
@@ -248,28 +248,28 @@ export function DashboardHeader({
   onLogout: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-border/80 bg-bg/90 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-border/80 bg-background/90 backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
             <button
               type="button"
               onClick={onMobileMenuToggle}
-              className="inline-flex rounded-xl border border-border/80 bg-panel px-3 py-2 text-text-muted shadow-soft transition hover:bg-panel-elevated hover:text-text lg:hidden"
+              className="inline-flex rounded-xl border border-border/80 bg-card px-3 py-2 text-muted-foreground shadow-soft transition hover:bg-overlay hover:text-foreground lg:hidden"
               aria-label="Open navigation"
             >
               <MenuIcon className="h-5 w-5" />
             </button>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent/80">Dashboard</p>
-              <h1 className="truncate text-2xl font-semibold text-text sm:text-3xl">{title}</h1>
-              {description ? <p className="mt-1 max-w-3xl text-sm text-text-muted">{description}</p> : null}
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">Dashboard</p>
+              <h1 className="truncate text-2xl font-semibold text-foreground sm:text-3xl">{title}</h1>
+              {description ? <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p> : null}
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             {actions}
             <Link href="/login" onClick={onLogout}>
-              <Button variant="ghost" className="bg-panel/70">Log out</Button>
+              <Button variant="ghost" className="bg-card/80">Log out</Button>
             </Link>
           </div>
         </div>

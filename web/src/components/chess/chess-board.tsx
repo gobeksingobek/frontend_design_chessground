@@ -107,7 +107,7 @@ export function ChessBoard({
 
   return (
     <div className={cn("grid w-full gap-3", size === "large" ? "max-w-none" : "max-w-[420px]")} aria-label={title ?? "Chess board"}>
-      {title ? <h3 className="text-base font-semibold text-text">{title}</h3> : null}
+      {title ? <h3 className="text-base font-semibold text-foreground">{title}</h3> : null}
       <div className="grid aspect-square w-full grid-cols-8 overflow-hidden rounded-lg border border-border" role="img" aria-label={`Board position: ${safeFen}`} data-ply-index={currentPlyIndex ?? 0}>
         {board.map((rank, rankIndex) =>
           rank.map((piece, fileIndex) => {
@@ -119,9 +119,9 @@ export function ChessBoard({
                 key={`${rankIndex}-${fileIndex}`}
                 type="button"
                 className={cn(
-                  "grid aspect-square w-full place-items-center p-0 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-                  isLight ? "bg-board-light text-slate-900" : "bg-board-dark text-slate-900",
-                  selectedSquare === square && "shadow-[inset_0_0_0_3px_rgba(56,189,248,1)]",
+                  "grid aspect-square w-full place-items-center p-0 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
+                  isLight ? "bg-board-light text-board-light-piece" : "bg-board-dark text-board-dark-piece",
+                  selectedSquare === square && "shadow-[inset_0_0_0_3px_rgb(var(--focus))]",
                 )}
                 aria-label={`Square ${square}${piece ? ` with ${piece}` : ""}`}
                 onClick={() => handleSquareClick(rankIndex, fileIndex)}
@@ -144,7 +144,7 @@ export function ChessBoard({
         <Button type="button" onClick={onNavigateNext} disabled={!onNavigateNext}>▶</Button>
         <Button type="button" onClick={onNavigateEnd} disabled={!onNavigateEnd}>⏭</Button>
       </div>
-      <small className="text-xs text-text-muted">FEN: {safeFen}</small>
+      <small className="text-xs text-muted-foreground">FEN: {safeFen}</small>
     </div>
   );
 }

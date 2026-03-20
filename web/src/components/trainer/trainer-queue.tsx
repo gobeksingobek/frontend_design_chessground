@@ -29,16 +29,16 @@ export function TrainerQueue({ mode, sessionId, item, onStart, onAnswer, onNext,
     <Card>
       <h3 className="text-base font-semibold">Trainer queue flow</h3>
       <div className="flex flex-wrap gap-2"><Badge tone="accent">Mode: {mode}</Badge><Badge>Stage: {phase}</Badge></div>
-      <small className="text-text-muted">{phaseHelp}</small>
+      <small className="text-muted-foreground">{phaseHelp}</small>
 
       {!sessionId ? <div className="pt-2"><Button type="button" variant="primary" onClick={() => { setPhase("prompt"); setResult(null); setError(null); onStart(); }}>Create session</Button></div> : null}
 
       {sessionId && item ? (
-        <Card className="gap-3 border-border/80 bg-panel-muted">
-          <small className="text-text-muted">Session: {sessionId}</small>
-          <p className="text-sm text-text">{item.prompt}</p>
-          <p className="text-sm text-text-subtle"><strong>Branch:</strong> {item.branch_id} · <strong>Difficulty:</strong> {item.difficulty}</p>
-          <label className="grid gap-2 text-sm text-text-subtle">Attempt UCI<Input value={attemptUci} onChange={(event) => setAttemptUci(event.target.value)} placeholder="e2e4" /></label>
+        <Card className="gap-3 border-border/80 bg-muted">
+          <small className="text-muted-foreground">Session: {sessionId}</small>
+          <p className="text-sm text-foreground">{item.prompt}</p>
+          <p className="text-sm text-muted-foreground"><strong>Branch:</strong> {item.branch_id} · <strong>Difficulty:</strong> {item.difficulty}</p>
+          <label className="grid gap-2 text-sm text-muted-foreground">Attempt UCI<Input value={attemptUci} onChange={(event) => setAttemptUci(event.target.value)} placeholder="e2e4" /></label>
           <div className="flex flex-wrap gap-2 pt-1">
             <Button type="button" onClick={() => { setPhase("attempt"); setPhaseStartedAt(Date.now()); }}>Begin attempt</Button>
             <Button type="button" variant="primary" disabled={!canAnswer} onClick={async () => { if (!attemptUci.trim()) return; try { const response = await onAnswer(attemptUci.trim(), Date.now() - phaseStartedAt); setResult(response); setAttemptUci(""); setError(null); setPhase(resolveNextPhase("attempt", response.outcome)); } catch (submitError) { setError((submitError as Error).message); } }}>Submit attempt</Button>
@@ -50,16 +50,16 @@ export function TrainerQueue({ mode, sessionId, item, onStart, onAnswer, onNext,
       ) : null}
 
       {shouldShowRemediation(result) && remediation ? (
-        <Card className="gap-2 border-warning/30 bg-warning/10">
+        <Card className="gap-2 border-warning/35 bg-warning/12">
           <p><strong>Best move:</strong> {remediation.best_move_uci}</p>
           <p><strong>Principal variation:</strong> {remediation.principal_variation.join(" ")}</p>
-          <p className="text-sm text-text-subtle">{remediation.explanation_markdown}</p>
+          <p className="text-sm text-muted-foreground">{remediation.explanation_markdown}</p>
           {shouldShowRetryRequired(result) ? <Button type="button" onClick={() => { setPhase("attempt"); setPhaseStartedAt(Date.now()); }}>Retry required</Button> : null}
         </Card>
       ) : null}
 
-      {result ? <p className="text-sm text-text-subtle">Outcome: {result.outcome} · Grade: {result.grade} · State: {result.item_state}</p> : null}
-      {statusText ? <p className="text-sm text-text-muted">{statusText}</p> : null}
+      {result ? <p className="text-sm text-muted-foreground">Outcome: {result.outcome} · Grade: {result.grade} · State: {result.item_state}</p> : null}
+      {statusText ? <p className="text-sm text-muted-foreground">{statusText}</p> : null}
       {error ? <p className="text-sm text-danger">{error}</p> : null}
     </Card>
   );
