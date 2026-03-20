@@ -1,17 +1,18 @@
-interface MoveQualityBadgeProps {
-  label: string | null;
-}
+import { Badge } from "@/components/ui/badge";
 
-function qualityTone(label: string | null): string {
-  const normalized = label?.trim().toLowerCase();
-  if (!normalized) return "neutral";
-  if (["best", "excellent", "good", "book"].includes(normalized)) return "good";
-  if (["inaccuracy", "dubious"].includes(normalized)) return "warn";
-  if (["mistake", "blunder"].includes(normalized)) return "bad";
-  return "neutral";
-}
+const toneMap = {
+  best: "success",
+  excellent: "success",
+  good: "success",
+  inaccuracy: "warning",
+  mistake: "danger",
+  blunder: "danger",
+  book: "accent",
+} as const;
 
-export function MoveQualityBadge({ label }: MoveQualityBadgeProps) {
-  const tone = qualityTone(label);
-  return <span className={`quality-badge ${tone}`}>{label ?? "-"}</span>;
+export function MoveQualityBadge({ label }: { label: string | null }) {
+  const normalized = label?.toLowerCase() ?? "neutral";
+  const tone = toneMap[normalized as keyof typeof toneMap] ?? "neutral";
+
+  return <Badge tone={tone}>{label ?? "-"}</Badge>;
 }

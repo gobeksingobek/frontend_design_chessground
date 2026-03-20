@@ -8,248 +8,63 @@ import { SidelineAnalysisForm } from "@/components/analysis/sideline-analysis-fo
 import { ChessBoard } from "@/components/chess/chess-board";
 import { EvalBar } from "@/components/games/eval-bar";
 import { MoveQualityBadge } from "@/components/games/move-quality-badge";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { SectionHeader } from "@/components/ui/section-header";
+import { Select } from "@/components/ui/select";
+import { Table, TableBody, TableHead, Td, Th } from "@/components/ui/table";
+import { cn } from "@/lib/cn";
 import { getGame } from "@/lib/api-client";
 
-export function applyCursorKey(key: string, current: number, max: number): number {
-  if (key === "ArrowRight") return Math.min(max, current + 1);
-  if (key === "ArrowLeft") return Math.max(0, current - 1);
-  if (key === "ArrowUp" || key === "End") return max;
-  if (key === "ArrowDown" || key === "Home") return 0;
-  return current;
-}
-
-function shouldIgnoreKeyboardEvent(event: KeyboardEvent | ReactKeyboardEvent): boolean {
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) return false;
-  const tagName = target.tagName;
-  if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return true;
-  return target.isContentEditable;
-}
+export function applyCursorKey(key: string, current: number, max: number): number { if (key === "ArrowRight") return Math.min(max, current + 1); if (key === "ArrowLeft") return Math.max(0, current - 1); if (key === "ArrowUp" || key === "End") return max; if (key === "ArrowDown" || key === "Home") return 0; return current; }
+function shouldIgnoreKeyboardEvent(event: KeyboardEvent | ReactKeyboardEvent): boolean { const target = event.target; if (!(target instanceof HTMLElement)) return false; const tagName = target.tagName; if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return true; return target.isContentEditable; }
 
 export function GameDetail({ gameId, initialPly }: { gameId: number; initialPly: number | null }) {
   const [cursorIndex, setCursorIndex] = useState(0);
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["game", gameId],
-    queryFn: () => getGame(gameId),
-  });
-
+  const { data, isLoading, error } = useQuery({ queryKey: ["game", gameId], queryFn: () => getGame(gameId) });
   const moves = useMemo(() => data?.moves ?? [], [data]);
-
-  useEffect(() => {
-    if (!moves.length) {
-      setCursorIndex(0);
-      return;
-    }
-    if (initialPly !== null) {
-      const moveIndex = moves.findIndex((move) => move.ply === initialPly);
-      if (moveIndex >= 0) {
-        setCursorIndex(moveIndex + 1);
-        return;
-      }
-    }
-    setCursorIndex(0);
-  }, [gameId, initialPly, moves]);
-
-  const selectedMove = useMemo(() => {
-    if (cursorIndex === 0) return null;
-    return moves[cursorIndex - 1] ?? null;
-  }, [moves, cursorIndex]);
-
+  useEffect(() => { if (!moves.length) { setCursorIndex(0); return; } if (initialPly !== null) { const moveIndex = moves.findIndex((move) => move.ply === initialPly); if (moveIndex >= 0) { setCursorIndex(moveIndex + 1); return; } } setCursorIndex(0); }, [gameId, initialPly, moves]);
+  const selectedMove = useMemo(() => (cursorIndex === 0 ? null : moves[cursorIndex - 1] ?? null), [moves, cursorIndex]);
   const selectedPly = selectedMove?.ply ?? null;
-
-  const boardFen = useMemo(() => {
-    if (!moves.length) return undefined;
-    if (cursorIndex === 0) return undefined;
-    return selectedMove?.fen ?? undefined;
-  }, [moves.length, cursorIndex, selectedMove]);
-
+  const boardFen = useMemo(() => (!moves.length || cursorIndex === 0 ? undefined : selectedMove?.fen ?? undefined), [moves.length, cursorIndex, selectedMove]);
   const hasEvalData = selectedMove?.pre_eval_cp !== null || selectedMove?.post_eval_cp !== null;
-
-  const navigateNext = useCallback(() => {
-    setCursorIndex((current) => Math.min(moves.length, current + 1));
-  }, [moves.length]);
-
-  const navigatePrev = useCallback(() => {
-    setCursorIndex((current) => Math.max(0, current - 1));
-  }, []);
-
-  const navigateStart = useCallback(() => {
-    setCursorIndex(0);
-  }, []);
-
-  const navigateEnd = useCallback(() => {
-    setCursorIndex(moves.length);
-  }, [moves.length]);
-
-  const onKeyNavigate = useCallback(
-    (event: KeyboardEvent | ReactKeyboardEvent) => {
-      if (shouldIgnoreKeyboardEvent(event)) return;
-      const nextCursor = applyCursorKey(event.key, cursorIndex, moves.length);
-      if (nextCursor !== cursorIndex) {
-        event.preventDefault();
-        setCursorIndex(nextCursor);
-      }
-    },
-    [cursorIndex, moves.length],
-  );
-
-  if (isLoading) return <p>Loading game detail...</p>;
-  if (error) return <p>Failed to load game detail: {(error as Error).message}</p>;
+  const navigateNext = useCallback(() => { setCursorIndex((current) => Math.min(moves.length, current + 1)); }, [moves.length]);
+  const navigatePrev = useCallback(() => { setCursorIndex((current) => Math.max(0, current - 1)); }, []);
+  const navigateStart = useCallback(() => { setCursorIndex(0); }, []);
+  const navigateEnd = useCallback(() => { setCursorIndex(moves.length); }, [moves.length]);
+  const onKeyNavigate = useCallback((event: KeyboardEvent | ReactKeyboardEvent) => { if (shouldIgnoreKeyboardEvent(event)) return; const nextCursor = applyCursorKey(event.key, cursorIndex, moves.length); if (nextCursor !== cursorIndex) { event.preventDefault(); setCursorIndex(nextCursor); } }, [cursorIndex, moves.length]);
+  if (isLoading) return <p className="text-sm text-text-muted">Loading game detail...</p>;
+  if (error) return <p className="text-sm text-danger">Failed to load game detail: {(error as Error).message}</p>;
 
   return (
-    <div className="stack" onKeyDown={onKeyNavigate} tabIndex={0}>
-      <div className="card">
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-          <h3>Header</h3>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            {data?.prev_game_id ? (
-              <Link href={{ pathname: `/games/${data.prev_game_id}`, query: selectedPly ? { ply: String(selectedPly) } : {} }}>← Previous game</Link>
-            ) : (
-              <span style={{ opacity: 0.6 }}>← Previous game</span>
-            )}
-            {data?.next_game_id ? (
-              <Link href={{ pathname: `/games/${data.next_game_id}`, query: selectedPly ? { ply: String(selectedPly) } : {} }}>Next game →</Link>
-            ) : (
-              <span style={{ opacity: 0.6 }}>Next game →</span>
-            )}
+    <div className="grid gap-4" onKeyDown={onKeyNavigate} tabIndex={0}>
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <SectionHeader title="Header" />
+          <div className="flex flex-wrap gap-2">
+            {data?.prev_game_id ? <Link className="text-sm text-accent hover:text-accent-strong" href={{ pathname: `/games/${data.prev_game_id}`, query: selectedPly ? { ply: String(selectedPly) } : {} }}>← Previous game</Link> : <span className="text-sm text-text-muted/70">← Previous game</span>}
+            {data?.next_game_id ? <Link className="text-sm text-accent hover:text-accent-strong" href={{ pathname: `/games/${data.next_game_id}`, query: selectedPly ? { ply: String(selectedPly) } : {} }}>Next game →</Link> : <span className="text-sm text-text-muted/70">Next game →</span>}
           </div>
         </div>
-        <pre className="code">{JSON.stringify(data?.header, null, 2)}</pre>
-      </div>
+        <pre className="overflow-x-auto rounded-lg border border-border bg-panel-muted p-4 font-mono text-xs text-text-subtle">{JSON.stringify(data?.header, null, 2)}</pre>
+      </Card>
 
-      <div className="card">
-        <h3>Create sideline analysis job</h3>
-        <ChessBoard
-          fen={boardFen}
-          title="Selected game position"
-          currentPlyIndex={cursorIndex}
-          onNavigateNext={navigateNext}
-          onNavigatePrev={navigatePrev}
-          onNavigateStart={navigateStart}
-          onNavigateEnd={navigateEnd}
-          onMoveAttempt={({ uci }) => {
-            const nextMove = moves[cursorIndex];
-            if (nextMove?.uci_move === uci) {
-              navigateNext();
-            }
-          }}
-        />
-        <label>
-          Move ply
-          <select
-            value={selectedPly ?? ""}
-            onChange={(event) => {
-              const ply = event.target.value ? Number(event.target.value) : null;
-              if (ply === null) {
-                setCursorIndex(0);
-                return;
-              }
-              const moveIndex = moves.findIndex((move) => move.ply === ply);
-              setCursorIndex(moveIndex >= 0 ? moveIndex + 1 : 0);
-            }}
-          >
-            <option value="">Initial position</option>
-            {moves.map((move) => (
-              <option key={move.ply} value={move.ply}>
-                Ply {move.ply} - {move.san_move ?? move.uci_move ?? "-"}
-              </option>
-            ))}
-          </select>
-        </label>
+      <Card>
+        <SectionHeader title="Create sideline analysis job" />
+        <ChessBoard fen={boardFen} title="Selected game position" currentPlyIndex={cursorIndex} onNavigateNext={navigateNext} onNavigatePrev={navigatePrev} onNavigateStart={navigateStart} onNavigateEnd={navigateEnd} onMoveAttempt={({ uci }) => { const nextMove = moves[cursorIndex]; if (nextMove?.uci_move === uci) navigateNext(); }} />
+        <label className="grid max-w-md gap-2 text-sm text-text-subtle">Move ply<Select value={selectedPly ?? ""} onChange={(event) => { const ply = event.target.value ? Number(event.target.value) : null; if (ply === null) { setCursorIndex(0); return; } const moveIndex = moves.findIndex((move) => move.ply === ply); setCursorIndex(moveIndex >= 0 ? moveIndex + 1 : 0); }}><option value="">Initial position</option>{moves.map((move) => <option key={move.ply} value={move.ply}>Ply {move.ply} - {move.san_move ?? move.uci_move ?? "-"}</option>)}</Select></label>
+        {selectedMove?.fen ? <p className="text-sm"><Link className="text-accent hover:text-accent-strong" href={{ pathname: "/analysis", query: { game_id: String(gameId), move_ply: String(selectedMove.ply), fen: selectedMove.fen } }}>Open in /analysis with this position</Link></p> : null}
+        {selectedMove?.fen ? <SidelineAnalysisForm key={`${selectedMove.ply}-${selectedMove.fen}`} title="Queue sideline from this game move" initialGameId={String(gameId)} initialMovePly={selectedMove.ply} initialFen={selectedMove.fen} lockedFields={{ gameId: true, movePly: true, fen: true }} /> : <small className="text-text-muted">Select a move with available FEN to run quick eval.</small>}
+        {selectedMove ? <div className="grid gap-3 xl:grid-cols-3"> <Card className="gap-2 bg-panel-muted"><h4 className="text-sm font-semibold">Selected ply details</h4><p>Ply {selectedMove.ply}: {selectedMove.san_move ?? selectedMove.uci_move ?? "-"}</p><p>Quality: <MoveQualityBadge label={selectedMove.quality_label} /></p><p className={cn("text-sm font-medium", selectedMove.your_cpl !== null && selectedMove.your_cpl > 120 ? "text-danger" : "text-success")}>Your CPL: {selectedMove.your_cpl ?? "-"}</p></Card>{hasEvalData ? <><EvalBar evalCp={selectedMove.pre_eval_cp} title="Before move" /><EvalBar evalCp={selectedMove.post_eval_cp} title="After move" /></> : <Card className="gap-2 bg-panel-muted"><h4 className="text-sm font-semibold">Eval panel</h4><small className="text-text-muted">No pre/post eval values are available for the selected move.</small></Card>}</div> : null}
+      </Card>
 
-        {selectedMove?.fen ? (
-          <p>
-            <Link
-              href={{
-                pathname: "/analysis",
-                query: { game_id: String(gameId), move_ply: String(selectedMove.ply), fen: selectedMove.fen },
-              }}
-            >
-              Open in /analysis with this position
-            </Link>
-          </p>
-        ) : null}
-
-        {selectedMove?.fen ? (
-          <SidelineAnalysisForm
-            key={`${selectedMove.ply}-${selectedMove.fen}`}
-            title="Queue sideline from this game move"
-            initialGameId={String(gameId)}
-            initialMovePly={selectedMove.ply}
-            initialFen={selectedMove.fen}
-            lockedFields={{ gameId: true, movePly: true, fen: true }}
-          />
-        ) : (
-          <small>Select a move with available FEN to run quick eval.</small>
-        )}
-
-        {selectedMove ? (
-          <div className="eval-grid">
-            <div className="card eval-trend-card">
-              <h4>Selected ply details</h4>
-              <p>
-                Ply {selectedMove.ply}: {selectedMove.san_move ?? selectedMove.uci_move ?? "-"}
-              </p>
-              <p>
-                Quality: <MoveQualityBadge label={selectedMove.quality_label} />
-              </p>
-              <p className={selectedMove.your_cpl !== null && selectedMove.your_cpl > 120 ? "cpl-high" : "cpl-low"}>
-                Your CPL: {selectedMove.your_cpl ?? "-"}
-              </p>
-            </div>
-
-            {hasEvalData ? (
-              <>
-                <EvalBar evalCp={selectedMove.pre_eval_cp} title="Before move" />
-                <EvalBar evalCp={selectedMove.post_eval_cp} title="After move" />
-              </>
-            ) : (
-              <div className="card">
-                <h4>Eval panel</h4>
-                <small>No pre/post eval values are available for the selected move.</small>
-              </div>
-            )}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="card">
-        <h3>Moves</h3>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Ply</th>
-              <th>SAN</th>
-              <th>UCI</th>
-              <th>Class</th>
-              <th>Quality</th>
-              <th>Your CPL</th>
-            </tr>
-          </thead>
-          <tbody>
-            {moves.map((move) => (
-              <tr
-                key={move.ply}
-                className={move.ply === selectedPly ? "move-row-selected" : "move-row"}
-                onClick={() => {
-                  const moveIndex = moves.findIndex((candidate) => candidate.ply === move.ply);
-                  setCursorIndex(moveIndex + 1);
-                }}
-              >
-                <td>{move.ply}</td>
-                <td>{move.san_move ?? "-"}</td>
-                <td>{move.uci_move ?? "-"}</td>
-                <td>{move.repertoire_class ?? "-"}</td>
-                <td>
-                  <MoveQualityBadge label={move.quality_label} />
-                </td>
-                <td className={move.your_cpl !== null && move.your_cpl > 120 ? "cpl-high" : "cpl-low"}>{move.your_cpl ?? "-"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Card>
+        <SectionHeader title="Moves" description="Click a row or use arrow keys while focused to step through the game." />
+        <Table>
+          <TableHead><tr><Th>Ply</Th><Th>SAN</Th><Th>UCI</Th><Th>Class</Th><Th>Quality</Th><Th>Your CPL</Th></tr></TableHead>
+          <TableBody>{moves.map((move) => <tr key={move.ply} className={cn("cursor-pointer transition hover:bg-panel-muted/70", move.ply === selectedPly && "bg-accent/10")} onClick={() => { const moveIndex = moves.findIndex((candidate) => candidate.ply === move.ply); setCursorIndex(moveIndex + 1); }}><Td>{move.ply}</Td><Td>{move.san_move ?? "-"}</Td><Td>{move.uci_move ?? "-"}</Td><Td>{move.repertoire_class ?? "-"}</Td><Td><MoveQualityBadge label={move.quality_label} /></Td><Td className={cn(move.your_cpl !== null && move.your_cpl > 120 ? "text-danger" : "text-success")}>{move.your_cpl ?? "-"}</Td></tr>)}</TableBody>
+        </Table>
+      </Card>
     </div>
   );
 }

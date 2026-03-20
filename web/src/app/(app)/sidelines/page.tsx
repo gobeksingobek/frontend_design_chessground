@@ -1,11 +1,6 @@
 import { SidelineTable } from "@/components/sideline-table";
+import { SectionHeader } from "@/components/ui/section-header";
 
 export default function SidelinesPage() {
-  return (
-    <div className="stack">
-      <h2>Sidelines</h2>
-      <p>Async sideline jobs from FastAPI backend.</p>
-      <SidelineTable />
-    </div>
-  );
+  return <div className="grid gap-4"><SectionHeader title="Sidelines" description="Async sideline jobs from the FastAPI backend." /><SidelineTable /></div>;
 }

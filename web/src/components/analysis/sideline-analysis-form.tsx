@@ -3,6 +3,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { createSideline } from "@/lib/api-client";
 import { buildUnavailableMetadata, estimateQuickEvalMetadata, isGoodCandidate } from "@/lib/engine/quick-eval";
 import type { SidelineEvalMetadata } from "@/lib/types";
@@ -23,10 +26,7 @@ interface SidelineAnalysisFormProps {
 }
 
 function parseBranchMoves(input: string): string[] {
-  return input
-    .split(/[\s,]+/)
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
+  return input.split(/[\s,]+/).map((item) => item.trim().toLowerCase()).filter(Boolean);
 }
 
 function parseMovePly(input: string): number | null {
@@ -38,15 +38,9 @@ function parseMovePly(input: string): number | null {
 
 function evalSummary(metadata: SidelineEvalMetadata | null): string | null {
   if (!metadata) return null;
-  if (metadata.confidence_tag === "unavailable") {
-    return "Quick eval unavailable. Queue submission is still allowed.";
-  }
-  if (metadata.cpl_estimate === null) {
-    return "Quick eval incomplete. Queue submission is still allowed.";
-  }
-  if (metadata.cpl_estimate <= 30) {
-    return `Good candidate (estimated CPL ${Math.round(metadata.cpl_estimate)}).`;
-  }
+  if (metadata.confidence_tag === "unavailable") return "Quick eval unavailable. Queue submission is still allowed.";
+  if (metadata.cpl_estimate === null) return "Quick eval incomplete. Queue submission is still allowed.";
+  if (metadata.cpl_estimate <= 30) return `Good candidate (estimated CPL ${Math.round(metadata.cpl_estimate)}).`;
   return `Warning: estimated CPL ${Math.round(metadata.cpl_estimate)} (>30). You can still queue this move.`;
 }
 
@@ -71,12 +65,10 @@ export function SidelineAnalysisForm({
     if (!lockedFields.gameId) return;
     setGameId(initialGameId);
   }, [initialGameId, lockedFields.gameId]);
-
   useEffect(() => {
     if (!lockedFields.movePly) return;
     setMovePlyInput(initialMovePly ? String(initialMovePly) : "");
   }, [initialMovePly, lockedFields.movePly]);
-
   useEffect(() => {
     if (!lockedFields.fen) return;
     setFen(initialFen);
@@ -94,7 +86,6 @@ export function SidelineAnalysisForm({
       setQuickEvalLoading(false);
       return;
     }
-
     setQuickEvalLoading(true);
     const timer = window.setTimeout(async () => {
       const metadata = await estimateQuickEvalMetadata({ fen, candidateMoveUci: candidateMove });
@@ -102,7 +93,6 @@ export function SidelineAnalysisForm({
       setQuickEval(metadata);
       setQuickEvalLoading(false);
     }, 300);
-
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
@@ -111,26 +101,10 @@ export function SidelineAnalysisForm({
 
   const createSidelineMutation = useMutation({
     mutationFn: async () => {
-      if (!baseFieldsValid || movePly === null) {
-        throw new Error("Enter game id, move ply, FEN, and at least one UCI move");
-      }
-
+      if (!baseFieldsValid || movePly === null) throw new Error("Enter game id, move ply, FEN, and at least one UCI move");
       const idempotencyKey = `game-${gameId}-ply-${movePly}-${Date.now()}`;
-      const metadata =
-        quickEval && quickEval.candidate_move_uci === candidateMove
-          ? quickEval
-          : buildUnavailableMetadata(candidateMove ?? null);
-
-      return createSideline(
-        {
-          game_id: gameId.trim(),
-          move_ply: movePly,
-          fen: fen.trim(),
-          branch_moves: branchMoves,
-          eval_metadata: metadata,
-        },
-        idempotencyKey,
-      );
+      const metadata = quickEval && quickEval.candidate_move_uci === candidateMove ? quickEval : buildUnavailableMetadata(candidateMove ?? null);
+      return createSideline({ game_id: gameId.trim(), move_ply: movePly, fen: fen.trim(), branch_moves: branchMoves, eval_metadata: metadata }, idempotencyKey);
     },
     onSuccess: (result) => {
       setCreatedSideline(result.id);
@@ -139,64 +113,18 @@ export function SidelineAnalysisForm({
   });
 
   return (
-    <div className="stack">
-      <h4>{title}</h4>
-
-      <label>
-        Game id
-        <input
-          value={gameId}
-          onChange={(event) => setGameId(event.target.value)}
-          disabled={Boolean(lockedFields.gameId)}
-          placeholder="game-12345"
-        />
-      </label>
-
-      <label>
-        Move ply
-        <input
-          value={movePlyInput}
-          onChange={(event) => setMovePlyInput(event.target.value)}
-          disabled={Boolean(lockedFields.movePly)}
-          inputMode="numeric"
-          placeholder="12"
-        />
-      </label>
-
-      <label>
-        Starting FEN
-        <input
-          value={fen}
-          onChange={(event) => setFen(event.target.value)}
-          disabled={Boolean(lockedFields.fen)}
-          placeholder="rnbqkbnr/pppppppp/8/8/..."
-        />
-      </label>
-
-      <label>
-        Branch moves (UCI, comma or whitespace separated)
-        <input
-          value={branchMovesInput}
-          onChange={(event) => setBranchMovesInput(event.target.value)}
-          placeholder="e2e4 e7e5 g1f3"
-        />
-      </label>
-
-      {quickEvalLoading ? <small>Running quick Stockfish eval...</small> : null}
-      {!quickEvalLoading && quickEval ? <p className={isGoodCandidate(quickEval) ? "ok" : "warn"}>{evalSummary(quickEval)}</p> : null}
-      {!quickEvalLoading && quickEval ? (
-        <small>
-          Candidate: {quickEval.candidate_move_uci ?? "-"} | Depth used: {quickEval.eval_depth ?? "-"} | Time used:{" "}
-          {quickEval.eval_time_ms ?? "-"} ms | Confidence: {quickEval.confidence_tag}
-        </small>
-      ) : null}
-
-      <button type="button" onClick={() => createSidelineMutation.mutate()} disabled={createSidelineMutation.isPending || !baseFieldsValid}>
-        {createSidelineMutation.isPending ? "Queueing..." : "Queue sideline"}
-      </button>
-
-      {createSidelineMutation.isError ? <p>Failed: {(createSidelineMutation.error as Error).message}</p> : null}
-      {createdSideline ? <p>Queued sideline request: {createdSideline}</p> : null}
+    <div className="grid gap-4">
+      <h4 className="text-base font-semibold text-text">{title}</h4>
+      <label className="grid gap-2 text-sm text-text-subtle">Game id<Input value={gameId} onChange={(event) => setGameId(event.target.value)} disabled={Boolean(lockedFields.gameId)} placeholder="game-12345" /></label>
+      <label className="grid gap-2 text-sm text-text-subtle">Move ply<Input value={movePlyInput} onChange={(event) => setMovePlyInput(event.target.value)} disabled={Boolean(lockedFields.movePly)} inputMode="numeric" placeholder="12" /></label>
+      <label className="grid gap-2 text-sm text-text-subtle">Starting FEN<Input value={fen} onChange={(event) => setFen(event.target.value)} disabled={Boolean(lockedFields.fen)} placeholder="rnbqkbnr/pppppppp/8/8/..." /></label>
+      <label className="grid gap-2 text-sm text-text-subtle">Branch moves (UCI, comma or whitespace separated)<Input value={branchMovesInput} onChange={(event) => setBranchMovesInput(event.target.value)} placeholder="e2e4 e7e5 g1f3" /></label>
+      {quickEvalLoading ? <small className="text-text-muted">Running quick Stockfish eval...</small> : null}
+      {!quickEvalLoading && quickEval ? <Badge tone={isGoodCandidate(quickEval) ? "success" : "warning"}>{evalSummary(quickEval)}</Badge> : null}
+      {!quickEvalLoading && quickEval ? <small className="text-text-muted">Candidate: {quickEval.candidate_move_uci ?? "-"} · Depth used: {quickEval.eval_depth ?? "-"} · Time used: {quickEval.eval_time_ms ?? "-"} ms · Confidence: {quickEval.confidence_tag}</small> : null}
+      <Button type="button" variant="primary" onClick={() => createSidelineMutation.mutate()} disabled={createSidelineMutation.isPending || !baseFieldsValid}>{createSidelineMutation.isPending ? "Queueing..." : "Queue sideline"}</Button>
+      {createSidelineMutation.isError ? <p className="text-sm text-danger">Failed: {(createSidelineMutation.error as Error).message}</p> : null}
+      {createdSideline ? <p className="text-sm text-success">Queued sideline request: {createdSideline}</p> : null}
     </div>
   );
 }
