@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 
+import { useTheme } from "@/components/theme-provider";
+
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { setWebAuth } from "@/lib/auth";
@@ -268,6 +270,7 @@ export function DashboardHeader({
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             {actions}
+            <ThemeToggle />
             <Link href="/login" onClick={onLogout}>
               <Button variant="ghost" className="bg-card/80">Log out</Button>
             </Link>
@@ -275,6 +278,26 @@ export function DashboardHeader({
         </div>
       </div>
     </header>
+  );
+}
+
+
+function ThemeToggle() {
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      className="bg-card/80"
+      onClick={toggleTheme}
+      aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
+      aria-pressed={isDark}
+    >
+      <span aria-hidden="true">{isDark ? "☀️" : "🌙"}</span>
+      {isDark ? "Light mode" : "Dark mode"}
+    </Button>
   );
 }
 

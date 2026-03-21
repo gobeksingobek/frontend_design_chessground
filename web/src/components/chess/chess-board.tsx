@@ -260,7 +260,7 @@ export function ChessBoard({
 
       <div className={cn("relative mx-auto w-full", size === "large" ? "max-w-[min(72vh,760px)]" : "max-w-[min(88vw,460px)]")}>
         <div
-          className="chess-board-shell relative aspect-square w-full rounded-[1.25rem] border border-border/80 bg-[rgb(var(--board-frame))] p-3 shadow-[0_24px_80px_rgba(15,23,42,0.18)]"
+          className="chess-board-shell relative aspect-square w-full rounded-[1.25rem] border border-border/80 bg-[rgb(var(--board-frame))] p-3 shadow-board"
           role="img"
           aria-label={`Board position: ${safeFen}`}
           data-ply-index={currentPlyIndex ?? 0}
@@ -278,7 +278,7 @@ export function ChessBoard({
             {showCoordinates ? Array.from({ length: 8 }, (_, index) => <span key={`right-${8 - index}`}>{8 - index}</span>) : null}
           </div>
 
-          <div className="grid aspect-square w-full grid-cols-8 overflow-hidden rounded-[0.95rem] border border-black/10 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+          <div className="grid aspect-square w-full grid-cols-8 overflow-hidden rounded-[0.95rem] border border-[rgb(var(--board-grid-border))] shadow-[inset_0_0_0_1px_rgba(var(--board-grid-shadow))]">
             {board.map((rank, rankIndex) =>
               rank.map((piece, fileIndex) => {
                 const isLight = (rankIndex + fileIndex) % 2 === 0;
@@ -310,8 +310,8 @@ export function ChessBoard({
                     {isLegalTarget ? (
                       piece ? <span className="absolute inset-[20%] rounded-full border-4 border-[rgb(var(--board-legal-target))] opacity-80" aria-hidden="true" /> : <span className="absolute h-[22%] w-[22%] rounded-full bg-[rgb(var(--board-legal-target))] opacity-80" aria-hidden="true" />
                     ) : null}
-                    {showCoordinates && fileIndex === 0 ? <span className={cn("pointer-events-none absolute left-1 top-1 text-[9px] font-semibold", isLight ? "text-black/45" : "text-white/65")}>{8 - rankIndex}</span> : null}
-                    {showCoordinates && rankIndex === 7 ? <span className={cn("pointer-events-none absolute bottom-1 right-1 text-[9px] font-semibold lowercase", isLight ? "text-black/45" : "text-white/65")}>{FILES[fileIndex]}</span> : null}
+                    {showCoordinates && fileIndex === 0 ? <span className={cn("pointer-events-none absolute left-1 top-1 text-[9px] font-semibold", isLight ? "text-[rgb(var(--board-coordinate-light))]" : "text-[rgb(var(--board-coordinate-dark))]")}>{8 - rankIndex}</span> : null}
+                    {showCoordinates && rankIndex === 7 ? <span className={cn("pointer-events-none absolute bottom-1 right-1 text-[9px] font-semibold lowercase", isLight ? "text-[rgb(var(--board-coordinate-light))]" : "text-[rgb(var(--board-coordinate-dark))]")}>{FILES[fileIndex]}</span> : null}
                     {imageCode ? (
                       <span
                         aria-hidden="true"
