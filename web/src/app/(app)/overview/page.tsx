@@ -7,7 +7,7 @@ import { PageContainer, PageSection } from "@/components/app-shell";
 import { SidelineTable } from "@/components/sideline-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { DenseControlRow, DetailPane, EmptyState, KpiSummary } from "@/components/ui/page-patterns";
 import { SectionHeader } from "@/components/ui/section-header";
 import { getAnalysisProgress, getAnalysisRuns, getAnalysisStatus, getOverviewSummary, runEngineOnlyAnalysis, runFetchGames, runFullAnalysis, runSmokeTest } from "@/lib/api-client";
 
@@ -31,21 +31,37 @@ export default function OverviewPage() {
         <SectionHeader title="Overview" description="Status, runs, and quick analysis actions for the backend pipeline." />
         {isLoading ? <p className="text-sm text-text-muted">Loading summary…</p> : null}
         {error ? <p className="text-sm text-danger">{String(error)}</p> : null}
-        {data ? <Card><div className="flex flex-wrap gap-2">{[["Lines", data.lines],["Manual priority", data.manual_priority],["Auto-priority", data.auto_priority],["Games", data.games],["Matched", data.matched],["Fully compliant", data.fully_compliant]].map(([label, value]) => <Badge key={String(label)} tone="accent">{label}: {value}</Badge>)}</div></Card> : null}
-        <Card>
-          <SectionHeader title="Analysis actions" />
-          <div className="flex flex-wrap gap-2">
+        {data ? <KpiSummary><div className="flex flex-wrap gap-sm">{[["Lines", data.lines],["Manual priority", data.manual_priority],["Auto-priority", data.auto_priority],["Games", data.games],["Matched", data.matched],["Fully compliant", data.fully_compliant]].map(([label, value]) => <Badge key={String(label)} tone="accent">{label}: {value}</Badge>)}</div></KpiSummary> : null}
+        <DetailPane title="Analysis actions" description="Launch a new run, trigger fetches, or refresh the current status snapshot.">
+          <DenseControlRow>
             <Button variant="primary" disabled={isRunning || runMutation.isPending} onClick={() => runMutation.mutate("full")}>Run full analysis</Button>
             <Button disabled={isRunning || runMutation.isPending} onClick={() => runMutation.mutate("engine")}>Run engine-only</Button>
             <Button disabled={isRunning || runMutation.isPending} onClick={() => runMutation.mutate("fetch")}>Fetch games</Button>
             <Button disabled={isRunning || runMutation.isPending} onClick={() => runMutation.mutate("smoke")}>Run smoke test</Button>
             <Button variant="ghost" onClick={() => { queryClient.invalidateQueries({ queryKey: ["analysis-status"] }); queryClient.invalidateQueries({ queryKey: ["analysis-progress"] }); queryClient.invalidateQueries({ queryKey: ["analysis-runs", 10] }); }}>Refresh status</Button>
-          </div>
+          </DenseControlRow>
           {actionMessage ? <Badge tone={actionMessage.includes("already running") ? "warning" : "success"}>{actionMessage}</Badge> : null}
-        </Card>
-        <Card><SectionHeader title="Job status" /><p>State: <strong>{status?.state ?? "unknown"}</strong></p><p>Active job: {status?.active_job_id ? `${status.active_job_id.slice(0, 8)}… (${formatRunType(status.active_run_type)})` : "None"}</p><p>Last job: {status?.last_completed_job_id ? `${status.last_completed_job_id.slice(0, 8)}… (${formatRunType(status.last_run_type)})` : "None"}</p>{status?.last_error ? <p className="text-sm text-warning">Last failure: {status.last_error}</p> : null}</Card>
-        <Card><SectionHeader title="Run timeline" />{(runs?.runs.length ?? 0) === 0 ? <p className="text-sm text-text-muted">No analysis runs yet.</p> : null}<ul className="grid gap-2 text-sm text-text-subtle">{(runs?.runs ?? []).map((run) => <li key={run.run_id}><strong>{formatRunType(run.run_type)}</strong> · {run.status} · started {formatTs(run.started_at)}{run.finished_at ? ` · finished ${formatTs(run.finished_at)}` : ""}{run.error_reason ? ` · error: ${run.error_reason}` : ""}</li>)}</ul></Card>
-        <Card><SectionHeader title="Progress" /><p>{String(progress?.progress?.message ?? "No progress yet")}</p>{progressPercent !== null ? <div className="grid gap-2"><progress className="w-full" max={100} value={Math.max(0, Math.min(100, progressPercent))} /><small className="text-text-muted">{progressPercent}%</small></div> : null}</Card>
+        </DetailPane>
+        <div className="grid gap-grid-gap xl:grid-cols-2">
+          <DetailPane title="Job status">
+            <div className="grid gap-sm text-sm text-foreground">
+              <p>State: <strong>{status?.state ?? "unknown"}</strong></p>
+              <p>Active job: {status?.active_job_id ? `${status.active_job_id.slice(0, 8)}… (${formatRunType(status.active_run_type)})` : "None"}</p>
+              <p>Last job: {status?.last_completed_job_id ? `${status.last_completed_job_id.slice(0, 8)}… (${formatRunType(status.last_run_type)})` : "None"}</p>
+              {status?.last_error ? <p className="text-sm text-warning">Last failure: {status.last_error}</p> : null}
+            </div>
+          </DetailPane>
+          <DetailPane title="Progress">
+            <div className="grid gap-control-gap">
+              <p>{String(progress?.progress?.message ?? "No progress yet")}</p>
+              {progressPercent !== null ? <div className="grid gap-sm"><progress className="w-full" max={100} value={Math.max(0, Math.min(100, progressPercent))} /><small className="text-text-muted">{progressPercent}%</small></div> : null}
+            </div>
+          </DetailPane>
+        </div>
+        <DetailPane title="Run timeline" description="Recent analysis runs, timestamps, and failure reasons if any.">
+          {(runs?.runs.length ?? 0) === 0 ? <EmptyState title="No analysis runs yet" description="Start a job to populate the timeline and monitor pipeline history from this page." /> : null}
+          {(runs?.runs.length ?? 0) > 0 ? <ul className="grid gap-control-gap text-sm text-text-subtle">{(runs?.runs ?? []).map((run) => <li key={run.run_id}><strong>{formatRunType(run.run_type)}</strong> · {run.status} · started {formatTs(run.started_at)}{run.finished_at ? ` · finished ${formatTs(run.finished_at)}` : ""}{run.error_reason ? ` · error: ${run.error_reason}` : ""}</li>)}</ul> : null}
+        </DetailPane>
       </PageSection>
       <PageSection>
         <SidelineTable />

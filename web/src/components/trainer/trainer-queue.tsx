@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { DenseControlRow, DetailPane, EmptyState, FilterPanel } from "@/components/ui/page-patterns";
 import { Input } from "@/components/ui/input";
 import type { TrainerSessionAnswerResponse, TrainerSessionItem } from "@/lib/types";
 
@@ -26,41 +26,48 @@ export function TrainerQueue({ mode, sessionId, item, onStart, onAnswer, onNext,
   const remediation = result?.remediation ?? null;
 
   return (
-    <Card>
-      <h3 className="text-base font-semibold">Trainer queue flow</h3>
-      <div className="flex flex-wrap gap-2"><Badge tone="accent">Mode: {mode}</Badge><Badge>Stage: {phase}</Badge></div>
+    <DetailPane title="Trainer queue flow" description="Keep the page rhythm spacious while the answer controls remain compact and task-focused.">
+      <DenseControlRow><Badge tone="accent">Mode: {mode}</Badge><Badge>Stage: {phase}</Badge></DenseControlRow>
       <small className="text-muted-foreground">{phaseHelp}</small>
 
-      {!sessionId ? <div className="pt-2"><Button type="button" variant="primary" onClick={() => { setPhase("prompt"); setResult(null); setError(null); onStart(); }}>Create session</Button></div> : null}
+      {!sessionId ? <EmptyState title="No active training session" description="Create a session to start stepping through the queue." action={<Button type="button" variant="primary" onClick={() => { setPhase("prompt"); setResult(null); setError(null); onStart(); }}>Create session</Button>} /> : null}
 
       {sessionId && item ? (
-        <Card className="gap-3 border-border/80 bg-muted">
-          <small className="text-muted-foreground">Session: {sessionId}</small>
-          <p className="text-sm text-foreground">{item.prompt}</p>
-          <p className="text-sm text-muted-foreground"><strong>Branch:</strong> {item.branch_id} · <strong>Difficulty:</strong> {item.difficulty}</p>
-          <label className="grid gap-2 text-sm text-muted-foreground">Attempt UCI<Input value={attemptUci} onChange={(event) => setAttemptUci(event.target.value)} placeholder="e2e4" /></label>
-          <div className="flex flex-wrap gap-2 pt-1">
-            <Button type="button" onClick={() => { setPhase("attempt"); setPhaseStartedAt(Date.now()); }}>Begin attempt</Button>
-            <Button type="button" variant="primary" disabled={!canAnswer} onClick={async () => { if (!attemptUci.trim()) return; try { const response = await onAnswer(attemptUci.trim(), Date.now() - phaseStartedAt); setResult(response); setAttemptUci(""); setError(null); setPhase(resolveNextPhase("attempt", response.outcome)); } catch (submitError) { setError((submitError as Error).message); } }}>Submit attempt</Button>
-            {phase === "reveal" ? <Button type="button" onClick={() => setPhase("grade")}>Continue to grade</Button> : null}
-            {phase === "grade" ? <Button type="button" onClick={() => setPhase("next")}>Show next action</Button> : null}
-            {phase === "next" ? <Button type="button" onClick={() => { setPhase("prompt"); setResult(null); onNext(); }}>Next item</Button> : null}
+        <DetailPane title="Current prompt" description="Work through the prompt, submit an answer, and move to the next training item.">
+          <div className="grid gap-control-gap text-sm">
+            <small className="text-muted-foreground">Session: {sessionId}</small>
+            <p className="text-foreground">{item.prompt}</p>
+            <p className="text-muted-foreground"><strong>Branch:</strong> {item.branch_id} · <strong>Difficulty:</strong> {item.difficulty}</p>
           </div>
-        </Card>
+          <FilterPanel title="Answer controls" description="Dense inputs are tightened here without compressing the surrounding page sections.">
+            <div className="grid gap-control-gap">
+              <label className="grid gap-xs text-sm text-muted-foreground">Attempt UCI<Input value={attemptUci} onChange={(event) => setAttemptUci(event.target.value)} placeholder="e2e4" /></label>
+              <DenseControlRow>
+                <Button type="button" onClick={() => { setPhase("attempt"); setPhaseStartedAt(Date.now()); }}>Begin attempt</Button>
+                <Button type="button" variant="primary" disabled={!canAnswer} onClick={async () => { if (!attemptUci.trim()) return; try { const response = await onAnswer(attemptUci.trim(), Date.now() - phaseStartedAt); setResult(response); setAttemptUci(""); setError(null); setPhase(resolveNextPhase("attempt", response.outcome)); } catch (submitError) { setError((submitError as Error).message); } }}>Submit attempt</Button>
+                {phase === "reveal" ? <Button type="button" onClick={() => setPhase("grade")}>Continue to grade</Button> : null}
+                {phase === "grade" ? <Button type="button" onClick={() => setPhase("next")}>Show next action</Button> : null}
+                {phase === "next" ? <Button type="button" onClick={() => { setPhase("prompt"); setResult(null); onNext(); }}>Next item</Button> : null}
+              </DenseControlRow>
+            </div>
+          </FilterPanel>
+        </DetailPane>
       ) : null}
 
       {shouldShowRemediation(result) && remediation ? (
-        <Card className="gap-2 border-warning/35 bg-warning/12">
-          <p><strong>Best move:</strong> {remediation.best_move_uci}</p>
-          <p><strong>Principal variation:</strong> {remediation.principal_variation.join(" ")}</p>
-          <p className="text-sm text-muted-foreground">{remediation.explanation_markdown}</p>
+        <DetailPane title="Remediation" description="Review the best move and principal variation before trying again or continuing.">
+          <div className="grid gap-control-gap text-sm">
+            <p><strong>Best move:</strong> {remediation.best_move_uci}</p>
+            <p><strong>Principal variation:</strong> {remediation.principal_variation.join(" ")}</p>
+            <p className="text-muted-foreground">{remediation.explanation_markdown}</p>
+          </div>
           {shouldShowRetryRequired(result) ? <Button type="button" onClick={() => { setPhase("attempt"); setPhaseStartedAt(Date.now()); }}>Retry required</Button> : null}
-        </Card>
+        </DetailPane>
       ) : null}
 
       {result ? <p className="text-sm text-muted-foreground">Outcome: {result.outcome} · Grade: {result.grade} · State: {result.item_state}</p> : null}
       {statusText ? <p className="text-sm text-muted-foreground">{statusText}</p> : null}
       {error ? <p className="text-sm text-danger">{error}</p> : null}
-    </Card>
+    </DetailPane>
   );
 }
