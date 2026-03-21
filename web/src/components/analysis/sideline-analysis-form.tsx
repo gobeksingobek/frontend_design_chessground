@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { createSideline } from "@/lib/api-client";
 import { buildUnavailableMetadata, estimateQuickEvalMetadata, isGoodCandidate } from "@/lib/engine/quick-eval";
@@ -78,6 +79,8 @@ export function SidelineAnalysisForm({
   const candidateMove = branchMoves[0] ?? null;
   const movePly = parseMovePly(movePlyInput);
   const baseFieldsValid = Boolean(gameId.trim() && fen.trim() && movePly !== null && branchMoves.length > 0);
+  const movePlyError = movePlyInput && movePly === null ? "Move ply must be a positive whole number." : null;
+  const branchMovesError = branchMovesInput.trim() && branchMoves.length === 0 ? "Enter at least one valid UCI move." : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -115,14 +118,14 @@ export function SidelineAnalysisForm({
   return (
     <div className="grid gap-4">
       <h4 className="text-base font-semibold text-text">{title}</h4>
-      <label className="grid gap-2 text-sm text-text-subtle">Game id<Input value={gameId} onChange={(event) => setGameId(event.target.value)} disabled={Boolean(lockedFields.gameId)} placeholder="game-12345" /></label>
-      <label className="grid gap-2 text-sm text-text-subtle">Move ply<Input value={movePlyInput} onChange={(event) => setMovePlyInput(event.target.value)} disabled={Boolean(lockedFields.movePly)} inputMode="numeric" placeholder="12" /></label>
-      <label className="grid gap-2 text-sm text-text-subtle">Starting FEN<Input value={fen} onChange={(event) => setFen(event.target.value)} disabled={Boolean(lockedFields.fen)} placeholder="rnbqkbnr/pppppppp/8/8/..." /></label>
-      <label className="grid gap-2 text-sm text-text-subtle">Branch moves (UCI, comma or whitespace separated)<Input value={branchMovesInput} onChange={(event) => setBranchMovesInput(event.target.value)} placeholder="e2e4 e7e5 g1f3" /></label>
+      <FormField label="Game id" helpText="Use the source game identifier to link this sideline back to the original record."><Input value={gameId} onChange={(event) => setGameId(event.target.value)} disabled={Boolean(lockedFields.gameId)} placeholder="game-12345" aria-invalid={!gameId.trim() && createSidelineMutation.isError} /></FormField>
+      <FormField label="Move ply" helpText="This must be the ply number of the source position." error={movePlyError}><Input value={movePlyInput} onChange={(event) => setMovePlyInput(event.target.value)} disabled={Boolean(lockedFields.movePly)} inputMode="numeric" placeholder="12" aria-invalid={Boolean(movePlyError)} /></FormField>
+      <FormField label="Starting FEN" helpText="Paste the exact board state that should seed the variation search."><Input value={fen} onChange={(event) => setFen(event.target.value)} disabled={Boolean(lockedFields.fen)} placeholder="rnbqkbnr/pppppppp/8/8/..." aria-invalid={!fen.trim() && createSidelineMutation.isError} /></FormField>
+      <FormField label="Branch moves" helpText="Enter candidate UCI moves separated by commas or spaces. The first move is used for quick evaluation." error={branchMovesError}><Input value={branchMovesInput} onChange={(event) => setBranchMovesInput(event.target.value)} placeholder="e2e4 e7e5 g1f3" aria-invalid={Boolean(branchMovesError)} /></FormField>
       {quickEvalLoading ? <small className="text-text-muted">Running quick Stockfish eval...</small> : null}
       {!quickEvalLoading && quickEval ? <Badge tone={isGoodCandidate(quickEval) ? "success" : "warning"}>{evalSummary(quickEval)}</Badge> : null}
       {!quickEvalLoading && quickEval ? <small className="text-text-muted">Candidate: {quickEval.candidate_move_uci ?? "-"} · Depth used: {quickEval.eval_depth ?? "-"} · Time used: {quickEval.eval_time_ms ?? "-"} ms · Confidence: {quickEval.confidence_tag}</small> : null}
-      <Button type="button" variant="primary" onClick={() => createSidelineMutation.mutate()} disabled={createSidelineMutation.isPending || !baseFieldsValid}>{createSidelineMutation.isPending ? "Queueing..." : "Queue sideline"}</Button>
+      <div className="flex flex-wrap gap-2"><Button type="button" size="lg" variant="primary" onClick={() => createSidelineMutation.mutate()} disabled={createSidelineMutation.isPending || !baseFieldsValid}>{createSidelineMutation.isPending ? "Queueing..." : "Queue sideline"}</Button><Button type="button" variant="ghost" onClick={() => { setBranchMovesInput(initialBranchMoves); setCreatedSideline(null); }}>Reset moves</Button></div>
       {createSidelineMutation.isError ? <p className="text-sm text-danger">Failed: {(createSidelineMutation.error as Error).message}</p> : null}
       {createdSideline ? <p className="text-sm text-success">Queued sideline request: {createdSideline}</p> : null}
     </div>

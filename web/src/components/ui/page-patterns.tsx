@@ -2,8 +2,11 @@ import { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { SectionHeader } from "@/components/ui/section-header";
 import { CardTitle, MutedText } from "@/components/ui/typography";
+
+export { EmptyState };
 
 export function KpiSummary({ children, className }: { children: ReactNode; className?: string }) {
   return <Card className={cn("gap-grid-gap", className)}>{children}</Card>;
@@ -36,18 +39,10 @@ export function DetailPane({ title, description, children, className }: { title?
   );
 }
 
-export function EmptyState({ title = "Nothing to show", description, action, className }: { title?: string; description?: string; action?: ReactNode; className?: string }) {
-  return (
-    <Card className={cn("place-items-center gap-control-gap border-dashed border-border/70 bg-card px-6 py-10 text-center", className)}>
-      <div className="grid gap-2">
-        <CardTitle>{title}</CardTitle>
-        {description ? <MutedText>{description}</MutedText> : null}
-      </div>
-      {action}
-    </Card>
-  );
-}
-
 export function DenseControlRow({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("flex flex-wrap items-center gap-sm", className)}>{children}</div>;
+}
+
+export function InsightCallout({ title, description }: { title: string; description: string }) {
+  return <div className="rounded-xl border border-border/70 bg-card px-4 py-4"><CardTitle className="text-base">{title}</CardTitle><MutedText className="mt-2">{description}</MutedText></div>;
 }
