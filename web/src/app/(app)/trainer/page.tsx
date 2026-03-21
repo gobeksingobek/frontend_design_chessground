@@ -34,7 +34,7 @@ export default function TrainerPage() {
                 <option value="review">Review</option>
               </Select>
             </FormField>
-            <ChessBoard size="large" title="Training board" />
+            <ChessBoard size="large" title="Training board" subtitle="Responsive board chrome stays balanced while you work through queued positions." />
             <div className="grid gap-3 md:grid-cols-2">
               <StatCard label="Session" value={sessionId ? "Active" : "Idle"} detail={sessionId ? `Session id ${sessionId}` : "Start a trainer run to receive the next queued position."} />
               <StatCard label="Current item" value={item?.branch_id ?? "None"} detail={statusText ?? "No queue updates yet."} />

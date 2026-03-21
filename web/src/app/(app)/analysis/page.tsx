@@ -17,8 +17,8 @@ export default function AnalysisPage({ searchParams }: { searchParams: Record<st
     <PageContainer title="Board Analysis" description="Run a quick local WASM eval, inspect the current position, and queue authoritative sideline analysis.">
       <PageSection>
         <SectionHeader title="Analysis Board" description="Run a quick local WASM eval for your first custom move, then queue authoritative sideline analysis." />
-        <div className="grid gap-4 xl:grid-cols-board">
-          <Card><ChessBoard fen={initialFen} title="Live position" size="large" /></Card>
+        <div className="grid gap-4 xl:grid-cols-board xl:items-start">
+          <ChessBoard fen={initialFen} title="Live position" subtitle="Explore a position with the same presentation used in game review and training workflows." size="large" />
           <Card className="xl:sticky xl:top-24 xl:self-start"><SidelineAnalysisForm title="Create sideline from custom position" initialGameId={initialGameId} initialMovePly={Number.isFinite(initialMovePly) ? initialMovePly : null} initialFen={initialFen} initialBranchMoves={initialBranchMoves} /></Card>
         </div>
       </PageSection>

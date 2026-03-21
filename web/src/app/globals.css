@@ -88,3 +88,37 @@ a {
   color: inherit;
   text-decoration: none;
 }
+
+:root {
+  --board-frame: 252 248 240;
+  --board-selected-ring: 59 130 246;
+  --board-selected-fill: 96 165 250 / 0.22;
+  --board-last-move-from: 251 191 36 / 0.18;
+  --board-last-move-to: 34 197 94 / 0.2;
+  --board-last-move-border: 255 255 255 / 0.52;
+  --board-legal-target: 15 23 42 / 0.45;
+}
+
+.dark {
+  --board-frame: 34 26 18;
+  --board-selected-ring: 125 211 252;
+  --board-selected-fill: 56 189 248 / 0.18;
+  --board-last-move-from: 251 191 36 / 0.18;
+  --board-last-move-to: 74 222 128 / 0.18;
+  --board-last-move-border: 255 255 255 / 0.28;
+  --board-legal-target: 248 250 252 / 0.34;
+}
+
+.chess-board-shell {
+  backdrop-filter: saturate(1.05);
+}
+
+.chess-piece {
+  transform-origin: center center;
+  animation: chess-piece-settle 180ms ease-out;
+}
+
+@keyframes chess-piece-settle {
+  0% { transform: scale(0.94); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
