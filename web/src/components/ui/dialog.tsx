@@ -17,7 +17,7 @@ export function Dialog({ open, onClose, title, description, children, footer, cl
             <CardTitle>{title}</CardTitle>
             {description ? <MutedText>{description}</MutedText> : null}
           </div>
-          <Button type="button" size="icon" variant="ghost" onClick={onClose} aria-label="Close dialog">×</Button>
+          <Button type="button" size="icon" variant="ghost" onClick={onClose} aria-label="Close dialog"><span className="text-lg leading-none">×</span></Button>
         </div>
         <div>{children}</div>
         {footer ? <div className="flex flex-wrap justify-end gap-2">{footer}</div> : null}
