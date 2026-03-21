@@ -33,6 +33,14 @@ type DashboardPageConfig = {
   actions?: ReactNode;
 };
 
+type DashboardContentGridProps = {
+  children: ReactNode;
+  utility?: ReactNode;
+  className?: string;
+  workspaceClassName?: string;
+  utilityClassName?: string;
+};
+
 type DashboardPageContextValue = {
   page: DashboardPageConfig;
   setPage: (next: DashboardPageConfig) => void;
@@ -339,12 +347,45 @@ function ThemeToggle() {
   );
 }
 
+export function DashboardContentGrid({
+  children,
+  utility,
+  className,
+  workspaceClassName,
+  utilityClassName,
+}: DashboardContentGridProps) {
+  return (
+    <div
+      className={cn(
+        "grid gap-page-gap",
+        utility ? "xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start" : undefined,
+        className,
+      )}
+    >
+      <div className={cn("min-w-0 grid gap-page-gap", workspaceClassName)}>{children}</div>
+      {utility ? <aside className={cn("min-w-0 grid gap-page-gap", utilityClassName)}>{utility}</aside> : null}
+    </div>
+  );
+}
+
 export function PageContainer({
   title,
   description,
   actions,
   children,
-}: DashboardPageConfig & { children: ReactNode }) {
+  rightRail,
+  className,
+  contentGridClassName,
+  workspaceClassName,
+  rightRailClassName,
+}: DashboardPageConfig & {
+  children: ReactNode;
+  rightRail?: ReactNode;
+  className?: string;
+  contentGridClassName?: string;
+  workspaceClassName?: string;
+  rightRailClassName?: string;
+}) {
   const context = useContext(DashboardPageContext);
 
   useEffect(() => {
@@ -352,7 +393,18 @@ export function PageContainer({
     return () => context?.setPage({});
   }, [actions, context, description, title]);
 
-  return <div className="grid gap-page-gap">{children}</div>;
+  return (
+    <div className={cn("grid gap-page-gap", className)}>
+      <DashboardContentGrid
+        utility={rightRail}
+        className={contentGridClassName}
+        workspaceClassName={workspaceClassName}
+        utilityClassName={rightRailClassName}
+      >
+        {children}
+      </DashboardContentGrid>
+    </div>
+  );
 }
 
 export function PageSection({ children, className }: { children: ReactNode; className?: string }) {
