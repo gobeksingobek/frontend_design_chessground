@@ -3,7 +3,7 @@ import { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 export function Table({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className="overflow-hidden rounded-xl border border-border bg-card shadow-soft"><table className={cn("min-w-full divide-y divide-border text-sm", className)}>{children}</table></div>;
+  return <div className="overflow-hidden rounded-xl border border-border bg-card shadow-soft"><table className={cn("min-w-full divide-y divide-border text-body leading-7", className)}>{children}</table></div>;
 }
 
 export function TableHead({ children }: { children: ReactNode }) {
@@ -15,9 +15,9 @@ export function TableBody({ children }: { children: ReactNode }) {
 }
 
 export function Th({ className, children }: { className?: string; children: ReactNode }) {
-  return <th className={cn("px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em]", className)}>{children}</th>;
+  return <th className={cn("px-4 py-3 text-left text-caption font-semibold uppercase tracking-[0.12em]", className)}>{children}</th>;
 }
 
 export function Td({ className, children }: { className?: string; children: ReactNode }) {
-  return <td className={cn("px-4 py-3 align-top text-foreground", className)}>{children}</td>;
+  return <td className={cn("px-4 py-3.5 align-top text-body leading-7 text-foreground", className)}>{children}</td>;
 }

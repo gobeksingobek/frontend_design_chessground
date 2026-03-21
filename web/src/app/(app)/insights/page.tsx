@@ -6,12 +6,13 @@ import { useQuery } from "@tanstack/react-query";
 import { PageContainer, PageSection } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { DataTableSection, DetailPane, EmptyState } from "@/components/ui/page-patterns";
+import { BodyText, CardTitle, CaptionText, MutedText } from "@/components/ui/typography";
 import { listInsights } from "@/lib/api-client";
 
 export default function InsightsPage() {
   const [active, setActive] = useState<number | null>(null);
   const { data = [], isLoading } = useQuery({ queryKey: ["insights"], queryFn: listInsights });
-  if (isLoading) return <p className="text-sm text-text-muted">Loading insights…</p>;
+  if (isLoading) return <MutedText>Loading insights…</MutedText>;
 
   return (
     <PageContainer title="Insights" description="Review generated observations, confidence levels, and supporting evidence references.">
@@ -21,15 +22,16 @@ export default function InsightsPage() {
           {data.length > 0 ? (
             <DetailPane className="gap-section-gap">
               {data.map((row, index) => (
-                <div key={`${String(row.title)}-${index}`} className="grid gap-control-gap border-b border-border/60 pb-lg last:border-b-0 last:pb-0">
-                  <div className="flex flex-wrap items-center justify-between gap-sm">
-                    <div className="flex min-w-0 flex-wrap items-center gap-sm text-sm text-foreground">
-                      <strong>#{index + 1}</strong>
-                      <span>{String(row.title ?? "Untitled")} · confidence {Number(row.confidence ?? 0).toFixed(2)}</span>
+                <div key={`${String(row.title)}-${index}`} className="grid gap-4 border-b border-border/60 pb-lg last:border-b-0 last:pb-0">
+                  <div className="flex flex-wrap items-start justify-between gap-sm">
+                    <div className="grid gap-2">
+                      <CaptionText>Insight #{index + 1}</CaptionText>
+                      <CardTitle>{String(row.title ?? "Untitled")}</CardTitle>
+                      <BodyText className="text-muted-foreground">Confidence score {Number(row.confidence ?? 0).toFixed(2)}</BodyText>
                     </div>
-                    <Button variant="ghost" onClick={() => setActive(active === index ? null : index)}>Evidence</Button>
+                    <Button variant="ghost" onClick={() => setActive(active === index ? null : index)}>{active === index ? "Hide evidence" : "Show evidence"}</Button>
                   </div>
-                  {active === index ? <ul className="grid gap-xs text-sm text-text-subtle">{(row.source_refs ?? []).map((ref) => <li key={`${ref.type}-${ref.id}`}>{ref.label} ({ref.type}:{ref.id})</li>)}</ul> : null}
+                  {active === index ? <div className="grid gap-3 rounded-xl border border-border/70 bg-card px-4 py-4"><CaptionText>Supporting evidence</CaptionText>{(row.source_refs ?? []).length === 0 ? <MutedText>No evidence references were attached to this insight.</MutedText> : <ul className="grid gap-2">{(row.source_refs ?? []).map((ref) => <li key={`${ref.type}-${ref.id}`} className="rounded-lg bg-muted/60 px-3 py-2"><BodyText className="leading-6"><span className="font-medium text-foreground">{ref.label}</span> <span className="text-muted-foreground">({ref.type}:{ref.id})</span></BodyText></li>)}</ul>}</div> : null}
                 </div>
               ))}
             </DetailPane>

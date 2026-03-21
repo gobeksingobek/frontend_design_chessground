@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DenseControlRow, DetailPane, EmptyState, KpiSummary } from "@/components/ui/page-patterns";
 import { SectionHeader } from "@/components/ui/section-header";
+import { BodyText, CaptionText, CardTitle, FieldLabel, MutedText } from "@/components/ui/typography";
 import { getAnalysisProgress, getAnalysisRuns, getAnalysisStatus, getOverviewSummary, runEngineOnlyAnalysis, runFetchGames, runFullAnalysis, runSmokeTest } from "@/lib/api-client";
 
 function formatRunType(value: string | null | undefined): string { if (!value) return "N/A"; return value.replaceAll("-", " "); }
@@ -29,9 +30,9 @@ export default function OverviewPage() {
     <PageContainer title="Overview" description="Monitor backend pipeline health, launch analysis jobs, and review recent progress.">
       <PageSection>
         <SectionHeader title="Overview" description="Status, runs, and quick analysis actions for the backend pipeline." />
-        {isLoading ? <p className="text-sm text-text-muted">Loading summary…</p> : null}
-        {error ? <p className="text-sm text-danger">{String(error)}</p> : null}
-        {data ? <KpiSummary><div className="flex flex-wrap gap-sm">{[["Lines", data.lines],["Manual priority", data.manual_priority],["Auto-priority", data.auto_priority],["Games", data.games],["Matched", data.matched],["Fully compliant", data.fully_compliant]].map(([label, value]) => <Badge key={String(label)} tone="accent">{label}: {value}</Badge>)}</div></KpiSummary> : null}
+        {isLoading ? <MutedText>Loading summary…</MutedText> : null}
+        {error ? <BodyText className="font-medium text-danger">{String(error)}</BodyText> : null}
+        {data ? <KpiSummary><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[["Lines", data.lines],["Manual priority", data.manual_priority],["Auto-priority", data.auto_priority],["Games", data.games],["Matched", data.matched],["Fully compliant", data.fully_compliant]].map(([label, value]) => <div key={String(label)} className="rounded-xl border border-border/70 bg-card px-4 py-4"><CaptionText>{String(label)}</CaptionText><p className="mt-2 text-page-title font-semibold tracking-tight text-foreground">{String(value)}</p></div>)}</div></KpiSummary> : null}
         <DetailPane title="Analysis actions" description="Launch a new run, trigger fetches, or refresh the current status snapshot.">
           <DenseControlRow>
             <Button variant="primary" disabled={isRunning || runMutation.isPending} onClick={() => runMutation.mutate("full")}>Run full analysis</Button>
@@ -44,23 +45,23 @@ export default function OverviewPage() {
         </DetailPane>
         <div className="grid gap-grid-gap xl:grid-cols-2">
           <DetailPane title="Job status">
-            <div className="grid gap-sm text-sm text-foreground">
-              <p>State: <strong>{status?.state ?? "unknown"}</strong></p>
-              <p>Active job: {status?.active_job_id ? `${status.active_job_id.slice(0, 8)}… (${formatRunType(status.active_run_type)})` : "None"}</p>
-              <p>Last job: {status?.last_completed_job_id ? `${status.last_completed_job_id.slice(0, 8)}… (${formatRunType(status.last_run_type)})` : "None"}</p>
-              {status?.last_error ? <p className="text-sm text-warning">Last failure: {status.last_error}</p> : null}
+            <div className="grid gap-4">
+              <div className="grid gap-1"><FieldLabel as="span">State</FieldLabel><CardTitle>{status?.state ?? "unknown"}</CardTitle></div>
+              <div className="grid gap-1"><FieldLabel as="span">Active job</FieldLabel><BodyText>{status?.active_job_id ? `${status.active_job_id.slice(0, 8)}… (${formatRunType(status.active_run_type)})` : "None"}</BodyText></div>
+              <div className="grid gap-1"><FieldLabel as="span">Last job</FieldLabel><BodyText>{status?.last_completed_job_id ? `${status.last_completed_job_id.slice(0, 8)}… (${formatRunType(status.last_run_type)})` : "None"}</BodyText></div>
+              {status?.last_error ? <BodyText className="font-medium text-warning">Last failure: {status.last_error}</BodyText> : null}
             </div>
           </DetailPane>
           <DetailPane title="Progress">
             <div className="grid gap-control-gap">
-              <p>{String(progress?.progress?.message ?? "No progress yet")}</p>
-              {progressPercent !== null ? <div className="grid gap-sm"><progress className="w-full" max={100} value={Math.max(0, Math.min(100, progressPercent))} /><small className="text-text-muted">{progressPercent}%</small></div> : null}
+              <BodyText>{String(progress?.progress?.message ?? "No progress yet")}</BodyText>
+              {progressPercent !== null ? <div className="grid gap-sm"><progress className="w-full" max={100} value={Math.max(0, Math.min(100, progressPercent))} /><MutedText>{progressPercent}% complete</MutedText></div> : null}
             </div>
           </DetailPane>
         </div>
         <DetailPane title="Run timeline" description="Recent analysis runs, timestamps, and failure reasons if any.">
           {(runs?.runs.length ?? 0) === 0 ? <EmptyState title="No analysis runs yet" description="Start a job to populate the timeline and monitor pipeline history from this page." /> : null}
-          {(runs?.runs.length ?? 0) > 0 ? <ul className="grid gap-control-gap text-sm text-text-subtle">{(runs?.runs ?? []).map((run) => <li key={run.run_id}><strong>{formatRunType(run.run_type)}</strong> · {run.status} · started {formatTs(run.started_at)}{run.finished_at ? ` · finished ${formatTs(run.finished_at)}` : ""}{run.error_reason ? ` · error: ${run.error_reason}` : ""}</li>)}</ul> : null}
+          {(runs?.runs.length ?? 0) > 0 ? <ul className="grid gap-3">{(runs?.runs ?? []).map((run) => <li key={run.run_id} className="rounded-xl border border-border/70 bg-card px-4 py-4"><CaptionText>{formatRunType(run.run_type)}</CaptionText><BodyText className="mt-2 leading-7 text-muted-foreground">{run.status} · started {formatTs(run.started_at)}{run.finished_at ? ` · finished ${formatTs(run.finished_at)}` : ""}{run.error_reason ? ` · error: ${run.error_reason}` : ""}</BodyText></li>)}</ul> : null}
         </DetailPane>
       </PageSection>
       <PageSection>
