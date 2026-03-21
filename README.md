@@ -45,6 +45,10 @@ These are current defaults or architectural preferences. They are useful guidanc
 - Prefer incremental or additive schema and UI changes over disruptive rewrites.
 - Use the parity docs to plan tests and release readiness, but do not treat them as mandatory completion gates for unrelated implementation tasks.
 
+### Web frontend UI architecture
+
+The Next.js frontend in `web/` should follow the shared UI architecture documented in `web/README.md`. Treat that guidance as the baseline for new frontend work so shared primitives, theming, layouts, and responsive behavior stay consistent across pages.
+
 ## Setup
 
 1. Create and activate a virtual environment (optional).
