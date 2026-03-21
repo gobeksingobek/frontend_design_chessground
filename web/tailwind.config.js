@@ -72,7 +72,7 @@ module.exports = {
       },
       spacing: { xs: "0.25rem", sm: "0.5rem", md: "0.75rem", lg: "1rem", xl: "1.5rem", "2xl": "2rem", "3xl": "3rem", "control-gap": "0.75rem", "card-pad": "1.5rem", "grid-gap": "1.5rem", "section-gap": "2rem", "page-gap": "3rem", "page-pad": "1rem", "page-pad-lg": "2rem" },
       borderRadius: { sm: "0.5rem", md: "0.75rem", lg: "1rem", xl: "1.25rem", pill: "9999px" },
-      boxShadow: { soft: "0 12px 30px -18px rgb(15 23 42 / 0.18)", panel: "0 18px 40px -24px rgb(15 23 42 / 0.22)", focus: "0 0 0 3px rgb(var(--focus) / 0.35)" },
+      boxShadow: { soft: "var(--shadow-soft)", panel: "var(--shadow-panel)", board: "var(--shadow-board)", focus: "0 0 0 3px rgb(var(--focus) / 0.35)" },
       fontFamily: { sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"], mono: ["ui-monospace", "SFMono-Regular", "monospace"] },
       fontSize: {
         display: ["2.25rem", { lineHeight: "2.75rem", fontWeight: "700" }],
