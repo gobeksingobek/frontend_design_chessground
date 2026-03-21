@@ -39,6 +39,70 @@ export function DetailPane({ title, description, children, className }: { title?
   );
 }
 
+export function HeroWorkspaceSection({
+  title,
+  description,
+  actions,
+  hero,
+  support,
+  children,
+  className,
+  heroClassName,
+  contentClassName,
+  supportClassName,
+}: {
+  title?: string;
+  description?: ReactNode;
+  actions?: ReactNode;
+  hero?: ReactNode;
+  support?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  heroClassName?: string;
+  contentClassName?: string;
+  supportClassName?: string;
+}) {
+  return (
+    <section className={cn("grid gap-grid-gap", className)}>
+      {title ? <SectionHeader title={title} description={description} actions={actions} /> : description || actions ? <div className="grid gap-sm">{description ? <MutedText as="div">{description}</MutedText> : null}{actions ? <div className="flex flex-wrap items-center gap-sm">{actions}</div> : null}</div> : null}
+      <div className={cn("grid gap-grid-gap xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.9fr)] xl:items-start", contentClassName)}>
+        <div className="grid gap-grid-gap">
+          {hero ? <Card variant="workspace" className={cn("gap-grid-gap overflow-hidden", heroClassName)}>{hero}</Card> : null}
+          {children}
+        </div>
+        {support ? <SupportRail className={supportClassName}>{support}</SupportRail> : null}
+      </div>
+    </section>
+  );
+}
+
+export function SupportRail({ children, className }: { children: ReactNode; className?: string }) {
+  return <aside className={cn("grid gap-grid-gap xl:sticky xl:top-6 xl:self-start", className)}>{children}</aside>;
+}
+
+export function SecondaryModuleStack({
+  title,
+  description,
+  actions,
+  children,
+  className,
+  contentClassName,
+}: {
+  title?: string;
+  description?: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  contentClassName?: string;
+}) {
+  return (
+    <Card variant="soft" className={cn("gap-grid-gap", className)}>
+      {title ? <SectionHeader title={title} description={description} actions={actions} /> : description || actions ? <div className="grid gap-sm">{description ? <MutedText as="div">{description}</MutedText> : null}{actions ? <div className="flex flex-wrap items-center gap-sm">{actions}</div> : null}</div> : null}
+      <div className={cn("grid gap-control-gap", contentClassName)}>{children}</div>
+    </Card>
+  );
+}
+
 export function DenseControlRow({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("flex flex-wrap items-center gap-sm", className)}>{children}</div>;
 }
