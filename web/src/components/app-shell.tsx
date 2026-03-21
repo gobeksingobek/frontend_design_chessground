@@ -22,6 +22,11 @@ type NavSection = {
   items: NavItem[];
 };
 
+type QuickStat = {
+  label: string;
+  value: string;
+};
+
 type DashboardPageConfig = {
   title?: string;
   description?: string;
@@ -85,6 +90,13 @@ const pageFallbacks = new Map<string, DashboardPageConfig>([
   ["/tree", { title: "Tree Explorer", description: "Navigate branch structure, coverage, and move metrics." }],
 ]);
 
+
+const quickStats: QuickStat[] = [
+  { label: "Workspace", value: "Web" },
+  { label: "Theme", value: "Adaptive" },
+  { label: "Focus", value: "Analysis" },
+];
+
 function getFallbackPage(pathname: string): DashboardPageConfig {
   if (pathname.startsWith("/games/")) {
     const gameId = pathname.split("/").filter(Boolean).at(-1);
@@ -144,7 +156,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 }
 
 export function DashboardShell({ children }: { children: ReactNode }) {
-  return <div className="min-h-screen bg-background text-foreground lg:flex">{children}</div>;
+  return <div className="min-h-screen bg-background text-foreground lg:flex lg:bg-transparent">{children}</div>;
 }
 
 export function DashboardSidebar({
@@ -162,30 +174,53 @@ export function DashboardSidebar({
   const sidebar = (
     <div
       className={cn(
-        "flex h-full flex-col border-border bg-elevated text-foreground shadow-panel",
+        "flex h-full flex-col rounded-[1.75rem] border border-border/80 bg-elevated/95 text-foreground shadow-panel backdrop-blur-sm",
         collapsed ? "w-[5.5rem]" : "w-72",
       )}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-4">
-        <Link href="/overview" className="flex min-w-0 items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/15 text-primary ring-1 ring-inset ring-primary/25">
-            <KnightIcon className="h-6 w-6" />
-          </div>
-          {!collapsed ? (
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold uppercase tracking-[0.2em] text-primary/80">ChessGround</p>
-              <p className="truncate text-xs text-muted-foreground">Analysis workspace</p>
+      <div className="border-b border-border/70 px-4 py-4">
+        <div className="flex items-center justify-between gap-3">
+          <Link href="/overview" className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/20 bg-primary/12 text-primary shadow-soft ring-1 ring-inset ring-primary/20">
+              <KnightIcon className="h-[1.15rem] w-[1.15rem]" />
             </div>
-          ) : null}
-        </Link>
-        <button
-          type="button"
-          onClick={onCollapseToggle}
-          className="hidden rounded-md border border-border/70 bg-card/80 p-2 text-muted-foreground transition hover:bg-overlay hover:text-foreground lg:inline-flex"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            {!collapsed ? (
+              <div className="min-w-0">
+                <p className="truncate text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-primary/75">ChessGround</p>
+                <p className="truncate text-sm font-semibold text-foreground">Analysis workspace</p>
+              </div>
+            ) : null}
+          </Link>
+          <button
+            type="button"
+            onClick={onCollapseToggle}
+            className="hidden rounded-xl border border-border/70 bg-card/80 p-2 text-muted-foreground shadow-soft transition hover:bg-overlay hover:text-foreground lg:inline-flex"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          <PanelIcon className={cn("h-4 w-4 transition-transform", collapsed && "rotate-180")} />
-        </button>
+            <PanelIcon className={cn("h-4 w-4 transition-transform", collapsed && "rotate-180")} />
+          </button>
+        </div>
+        {!collapsed ? (
+          <div className="mt-4 grid gap-3 rounded-2xl border border-border/70 bg-card/80 p-3 shadow-soft">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground/75">Control center</p>
+                <p className="mt-1 text-sm font-medium text-foreground">Move faster across analysis, review, and training.</p>
+              </div>
+              <div className="rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-success">
+                Live
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {quickStats.map((stat) => (
+                <div key={stat.label} className="rounded-xl border border-border/60 bg-elevated/80 px-2.5 py-2">
+                  <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground/75">{stat.label}</p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">{stat.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-4">
         <nav className="grid gap-6">
@@ -201,15 +236,15 @@ export function DashboardSidebar({
                       href={item.href}
                       onClick={onMobileClose}
                       className={cn(
-                        "group relative flex items-center gap-3 overflow-hidden rounded-xl border border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition hover:border-border/70 hover:bg-hover hover:text-hover-foreground",
+                        "group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition duration-200 hover:-translate-y-px hover:border-border/70 hover:bg-hover hover:text-hover-foreground",
                         collapsed && "justify-center px-2",
                         active && "border-primary/25 bg-selection text-selection-foreground shadow-soft",
                       )}
                       aria-current={active ? "page" : undefined}
                     >
                       <span className={cn("absolute inset-y-2 left-0 w-1 rounded-r-full bg-primary opacity-0 transition", active && "opacity-100", collapsed && "inset-x-2 inset-y-auto bottom-0 left-2 h-1 w-auto rounded-t-full rounded-r-none")} />
-                      <span className={cn("text-muted-foreground transition group-hover:text-primary", active && "text-primary")}>
-                        {item.icon({ className: "h-5 w-5" })}
+                      <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl border border-transparent bg-transparent text-muted-foreground transition group-hover:border-primary/10 group-hover:bg-primary/5 group-hover:text-primary", active && "border-primary/15 bg-primary/10 text-primary")}>
+                        {item.icon({ className: "h-4 w-4" })}
                       </span>
                       {!collapsed ? <span className="truncate">{item.label}</span> : null}
                     </Link>
@@ -225,7 +260,7 @@ export function DashboardSidebar({
 
   return (
     <>
-      <aside className="sticky top-0 hidden h-screen shrink-0 border-r border-border/80 lg:block">{sidebar}</aside>
+      <aside className="sticky top-0 hidden h-screen shrink-0 border-r border-border/70 bg-sidebar/60 p-3 lg:block">{sidebar}</aside>
       {mobileOpen ? (
         <div className="fixed inset-0 z-50 lg:hidden">
           <button type="button" className="absolute inset-0 bg-background/70 backdrop-blur-sm" onClick={onMobileClose} aria-label="Close navigation" />
@@ -250,22 +285,25 @@ export function DashboardHeader({
   onLogout: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-border/80 bg-background/90 backdrop-blur-xl">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/78 backdrop-blur-2xl">
+      <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
             <button
               type="button"
               onClick={onMobileMenuToggle}
-              className="inline-flex rounded-xl border border-border/80 bg-card px-3 py-2 text-muted-foreground shadow-soft transition hover:bg-overlay hover:text-foreground lg:hidden"
+              className="inline-flex rounded-2xl border border-border/70 bg-card/90 px-3 py-2 text-muted-foreground shadow-soft transition hover:bg-overlay hover:text-foreground lg:hidden"
               aria-label="Open navigation"
             >
               <MenuIcon className="h-5 w-5" />
             </button>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">Dashboard</p>
-              <h1 className="truncate text-2xl font-semibold text-foreground sm:text-3xl">{title}</h1>
-              {description ? <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p> : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-primary/15 bg-primary/10 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-primary">Dashboard</span>
+                <span className="rounded-full border border-border/70 bg-card/80 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">UI refresh</span>
+              </div>
+              <h1 className="mt-3 truncate text-2xl font-semibold tracking-tight text-foreground sm:text-[2rem]">{title}</h1>
+              {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -295,7 +333,7 @@ function ThemeToggle() {
       aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
       aria-pressed={isDark}
     >
-      <span aria-hidden="true">{isDark ? "☀️" : "🌙"}</span>
+      <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center">{isDark ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}</span>
       {isDark ? "Light mode" : "Dark mode"}
     </Button>
   );
@@ -341,3 +379,5 @@ function SettingsIcon({ className }: { className?: string }) { return <IconWrapp
 function KnightIcon({ className }: { className?: string }) { return <IconWrapper className={className}><path d="M8 19h9" /><path d="M8 19c.3-3.2 1.5-5 4-6l1-4-2-2c1.2-1.8 3.3-2.7 5.5-2.5-.8 1-1 2.4-.5 3.6 1.4.8 2.2 2.2 2 3.9-.2 2.7-2.7 4.3-5.2 5.2" /><circle cx="14.5" cy="8.5" r=".75" /></IconWrapper>; }
 function PanelIcon({ className }: { className?: string }) { return <IconWrapper className={className}><path d="M4 5h16v14H4z" /><path d="M9 5v14" /></IconWrapper>; }
 function MenuIcon({ className }: { className?: string }) { return <IconWrapper className={className}><path d="M4 7h16M4 12h16M4 17h16" /></IconWrapper>; }
+function SunIcon({ className }: { className?: string }) { return <IconWrapper className={className}><circle cx="12" cy="12" r="4" /><path d="M12 2v2.5M12 19.5V22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M2 12h2.5M19.5 12H22M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" /></IconWrapper>; }
+function MoonIcon({ className }: { className?: string }) { return <IconWrapper className={className}><path d="M20 14.5A7.5 7.5 0 1 1 9.5 4 6.2 6.2 0 0 0 20 14.5Z" /></IconWrapper>; }

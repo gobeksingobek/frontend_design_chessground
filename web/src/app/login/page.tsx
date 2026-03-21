@@ -51,11 +51,14 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-bg px-6 py-10 text-text">
-      <form onSubmit={onSubmit} className="w-full max-w-2xl">
-        <Card className="gap-6">
+    <main className="grid min-h-screen place-items-center px-6 py-10">
+      <form onSubmit={onSubmit} className="w-full max-w-3xl">
+        <Card className="gap-6 overflow-hidden border-border/70 bg-card/95">
           <div className="grid gap-3">
-            <CaptionText>ChessGround Web</CaptionText>
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-primary">
+              <span className="h-2 w-2 rounded-full bg-primary" />
+              ChessGround Web
+            </div>
             <PageTitle>Sign in to the analysis workspace</PageTitle>
             <MutedText>Enter your backend API bearer token to validate access and continue into the dashboard.</MutedText>
           </div>
@@ -66,7 +69,7 @@ export default function LoginPage() {
           <Suspense fallback={null}><LoginReasonNotice /></Suspense>
           {message ? <BodyText className="font-medium text-success">{message}</BodyText> : null}
           {error ? <BodyText className="font-medium text-warning">{error}</BodyText> : null}
-          <Card className="gap-4 border-border/80 bg-panel-muted">
+          <Card className="gap-4 border-border/80 bg-elevated/80">
             <div className="grid gap-1">
               <CardTitle>Current API diagnostics</CardTitle>
               <MutedText>Use these values to confirm which backend endpoint and token source the browser is using.</MutedText>
