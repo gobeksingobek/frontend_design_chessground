@@ -2,7 +2,48 @@
 
 ## Overview
 
-This desktop app analyzes your Chess.com games against your memorized repertoire and stores all results in PostgreSQL. The GUI only reads from the database; all parsing and analysis happens in the backend.
+This project analyzes your Chess.com games against your memorized repertoire and stores results in PostgreSQL. The current desktop app reads from the database for presentation, while parsing and analysis are primarily handled in the backend pipeline.
+
+## Guidance for coding agents and contributors
+
+This repository includes workflow and parity docs intended to **guide implementation** and make release decisions auditable. Unless a task explicitly says otherwise, treat the following as **release-time guidance**, not as hard blockers for every code change:
+
+- `docs/web_desktop_parity_checklist.md`
+- `docs/release_cutover_checklist.md`
+- `suggestions.txt`
+
+For implementation tasks, prefer the smallest change that solves the user request cleanly. Use the parity and cutover docs to understand longer-term direction, testing expectations, and release readiness.
+
+## Architecture notes
+
+### Current architecture
+
+These points describe how the project works today:
+
+- The desktop app loads runtime settings from `config/settings.ini`.
+- Repertoire and game PGNs are parsed by the analysis pipeline.
+- Parsed data, matches, and derived analysis are stored in PostgreSQL.
+- The desktop GUI and web surfaces primarily read precomputed data rather than recomputing heavy analysis inline.
+- Server deployments can use the backend services in `backend/` for API and worker processes.
+
+### Hard invariants
+
+These are the behaviors to preserve unless a task explicitly asks to change them:
+
+- PostgreSQL is the source of truth for persisted analysis data.
+- Runtime features that depend on stored analysis should continue to work from persisted data, not only transient in-memory state.
+- Repertoire import through the current web/API path accepts `.zip` archives containing PGNs or single `.pgn` files; `.db` and `.sql` snapshots are not accepted there.
+- Redis Streams are used as transient queue transport for sideline/background job workflows; request state and results belong in Postgres.
+
+### Preferred but changeable behavior
+
+These are current defaults or architectural preferences. They are useful guidance, but they may be changed when a task benefits from doing so safely:
+
+- Keep heavy computation in the analysis/backend path instead of the UI when practical.
+- Keep the GUI and web UI focused on reading and displaying persisted results.
+- Preserve existing matching/compliance behavior unless a task explicitly extends or replaces it.
+- Prefer incremental or additive schema and UI changes over disruptive rewrites.
+- Use the parity docs to plan tests and release readiness, but do not treat them as mandatory completion gates for unrelated implementation tasks.
 
 ## Setup
 
@@ -53,25 +94,25 @@ Key analysis options:
 2) Repertoire loading
 - All PGN files under the repertoire directory are scanned.
 - Each PGN game is treated as a separate repertoire line.
-- The line ID is taken from the PGN [Event] tag and must be unique and non-empty.
-- Optional priority tag: `[RepertoirePriority "1"]` marks a line as priority (only value `1` is recognized).
-- Move order is strict: the same position via a different move order is a different line.
+- The line ID is taken from the PGN [Event] tag and should remain unique and non-empty for predictable analysis results.
+- Optional priority tag: `[RepertoirePriority "1"]` marks a line as priority (only value `1` is currently recognized).
+- In the current strict model, the same position via a different move order is treated as a different line.
 
 3) Game loading
 - All PGN files under the Chess.com games directory are scanned.
 - Only games where White or Black matches your player name(s) (case-insensitive) are kept.
 - Moves are parsed in order, and clock comments like `[%clk 0:02:59.9]` are read.
 - Time control like `600+5` is parsed; daily/correspondence games are excluded from time stats.
- - Trainer auto-priority: the app increases trainer priority scores for lines that appear in your games, and auto-marks mainline at your deviation if you stayed in book to at least ply 10.
+- Trainer auto-priority currently increases trainer priority scores for lines that appear in your games, and auto-marks mainline at your deviation if you stayed in book to at least ply 10.
 
 4) Matching and compliance
-- Each game is matched against the repertoire line with the longest UCI move-prefix match.
+- Each game is currently matched against the repertoire line with the longest UCI move-prefix match.
 - Ties are used only at analysis time; tie line IDs are not persisted in the database.
-- `matched_line_id` is stored only for `FULLY_COMPLIANT` games.
-- The app tracks max_matched_ply plus the first opponent and self deviation ply.
-- Compliance is labeled as: FULLY_COMPLIANT, INCOMPLETE, OPPONENT_DEVIATED, YOU_DEVIATED, or BOTH_DEVIATED.
-- `FULLY_COMPLIANT` requires completing the matched line; short prefix-only games are labeled `INCOMPLETE`.
-- Tags are added to matches (e.g., TRANSPOSITION, NOVELTY, BLUNDER_LIKE) when applicable.
+- `matched_line_id` is currently stored only for `FULLY_COMPLIANT` games.
+- The app tracks `max_matched_ply` plus the first opponent and self deviation ply.
+- Compliance is labeled as: `FULLY_COMPLIANT`, `INCOMPLETE`, `OPPONENT_DEVIATED`, `YOU_DEVIATED`, or `BOTH_DEVIATED`.
+- `FULLY_COMPLIANT` currently requires completing the matched line; short prefix-only games are labeled `INCOMPLETE`.
+- Tags are added to matches (for example `TRANSPOSITION`, `NOVELTY`, `BLUNDER_LIKE`) when applicable.
 
 5) Engine analysis
 - Stockfish can run in `adaptive` mode (depth target with per-position time cap) or `fixed` depth mode.
@@ -85,7 +126,7 @@ Key analysis options:
 
 7) Storage
 - All parsed data, matches, and analysis results are stored in PostgreSQL.
-- The GUI reads from PostgreSQL only; it does not compute analysis directly.
+- The GUI currently reads from PostgreSQL and does not compute the full analysis pipeline directly.
 - Insights and review items are stored in PostgreSQL and displayed in their tabs.
 - Repertoire lines are stored in compact JSON form (`repertoire_compact`) and exposed through a compatibility `line_positions` view.
 
@@ -100,7 +141,7 @@ Key analysis options:
 - Use Run Smoke Test to generate a small sampled repertoire/games dataset and run full analysis in a separate smoke DB.
 - Analysis status shows live phase/progress/ETA during engine computation.
 - Use Full reanalysis (overwrite DB) for a clean rebuild.
-- Use Refresh to reload summary counters from PostgreSQL
+- Use Refresh to reload summary counters from PostgreSQL.
 - Use Fetch Games to download the last 180 days of games for selected variants into:
   - `games_dir/chesscom/` for Chess.com
   - `games_dir/lichess/` for Lichess
@@ -115,7 +156,7 @@ Key analysis options:
 - Select a game to view a live board, eval bar, and per-move table with quality colors.
 - Arrow keys: Right/Left to step moves, Up/Down to jump to end/start.
 - The repertoire prompt shows the line up to your deviation and the expected move at that ply.
-- Use Create sideline at deviation for YOU_DEVIATED games (currently a placeholder; persistence is coming next).
+- Use Create sideline at deviation for `YOU_DEVIATED` games (currently a placeholder; persistence is coming next).
 - Use Reanalyze game to rematch the game (no engine) after repertoire changes.
 
 ### Lines
@@ -142,7 +183,7 @@ Key analysis options:
 - Use Mark Priority to set a trainer-only priority override (stored in PostgreSQL).
 
 ### Review
-- Review items (line ID + reason + detail) based on:
+- Review items (line ID + reason + detail) currently include signals such as:
   - early self-deviation
   - repeated opponent deviation
   - poor performance (losses > wins)
@@ -155,7 +196,6 @@ Key analysis options:
 2) Click Run Analysis on the Overview tab.
 3) Review results across Games, Lines, Time usage, Rating bands, and Review.
 4) After updating PGNs or settings, run analysis again.
-
 
 ## Repertoire upload format (web/API)
 
@@ -171,7 +211,7 @@ Import safety checks include:
 
 ## Async backend services (API + Worker)
 
-For server deployments, use the new backend processes in `backend/`:
+For server deployments, use the backend processes in `backend/`:
 
 - API (`backend.api_service:app`): FastAPI validation/auth + sideline request creation + queue enqueue + read APIs.
 - Worker (`backend.worker_service`): Redis Stream consumer-group worker that runs Stockfish branch analysis with retry and dead-letter behavior.
@@ -185,7 +225,7 @@ Desktop/web parity tracking checklist:
 
 Render/Neon migration path:
 - Deploy `web/` (Next.js), `backend.api_service`, and `backend.worker_service` as separate Render services.
-- Configure Render env vars exactly as follows:
+- Configure Render env vars as follows:
   - Web: `NEXT_PUBLIC_API_BASE_URL` (API URL, not web URL), `NEXT_PUBLIC_API_TOKEN`
   - API: `POSTGRES_DSN`, `REDIS_URL`, `API_AUTH_TOKEN`, `API_CORS_ORIGINS`, `DATA_BACKEND=postgres`, `ENFORCE_POSTGRES_ON_RENDER=1`
   - Worker: `POSTGRES_DSN`, `REDIS_URL`, `STOCKFISH_PATH`
@@ -194,8 +234,6 @@ Render/Neon migration path:
 - Bootstrap Postgres schema before API startup:
   - `python -m backend.bootstrap_postgres_schema`
 - A Render blueprint is included at `render.yaml`.
-
-
 
 ## PostgreSQL graph schema (optional)
 
