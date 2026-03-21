@@ -16,5 +16,5 @@ test("isKingInCheck returns the checked king square for side to move", () => {
 });
 
 test("isKingInCheck returns null when side to move is not in check", () => {
-  assert.equal(isKingInCheck("4k3/8/8/8/8/8/4r3/4K3 w - - 0 1"), null);
+  assert.equal(isKingInCheck("4k3/8/8/8/8/8/3r4/4K3 w - - 0 1"), null);
 });
