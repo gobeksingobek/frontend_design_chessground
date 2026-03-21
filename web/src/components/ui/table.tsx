@@ -10,8 +10,8 @@ export function TableContainer({ className, children }: { className?: string; ch
   return <div className={cn("overflow-x-auto rounded-xl border border-border bg-card shadow-soft", className)}>{children}</div>;
 }
 
-export function TableHead({ children }: { children: ReactNode }) {
-  return <thead className="bg-muted/90 text-muted-foreground">{children}</thead>;
+export function TableHead({ className, children }: { className?: string; children: ReactNode }) {
+  return <thead className={cn("bg-muted/90 text-muted-foreground", className)}>{children}</thead>;
 }
 
 export function TableBody({ children }: { children: ReactNode }) {

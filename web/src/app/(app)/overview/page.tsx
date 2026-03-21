@@ -7,13 +7,32 @@ import { PageContainer, PageSection } from "@/components/app-shell";
 import { SidelineTable } from "@/components/sideline-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DenseControlRow, DetailPane, EmptyState, KpiSummary } from "@/components/ui/page-patterns";
+import { DenseControlRow, DetailPane, EmptyState } from "@/components/ui/page-patterns";
 import { SectionHeader } from "@/components/ui/section-header";
 import { BodyText, CaptionText, CardTitle, FieldLabel, MutedText } from "@/components/ui/typography";
+import { cn } from "@/lib/cn";
 import { getAnalysisProgress, getAnalysisRuns, getAnalysisStatus, getOverviewSummary, runEngineOnlyAnalysis, runFetchGames, runFullAnalysis, runSmokeTest } from "@/lib/api-client";
 
-function formatRunType(value: string | null | undefined): string { if (!value) return "N/A"; return value.replaceAll("-", " "); }
-function formatTs(value: string | null | undefined): string { if (!value) return "N/A"; const date = new Date(value); if (Number.isNaN(date.getTime())) return value; return date.toLocaleString(); }
+function formatRunType(value: string | null | undefined): string {
+  if (!value) return "N/A";
+  return value.replaceAll("-", " ");
+}
+
+function formatTs(value: string | null | undefined): string {
+  if (!value) return "N/A";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+const KPI_CONFIG = [
+  ["Lines", "Tracked repertoire branches", "lines"],
+  ["Manual priority", "Manually queued review items", "manual_priority"],
+  ["Auto-priority", "Automatically surfaced branches", "auto_priority"],
+  ["Games", "Imported games available for review", "games"],
+  ["Matched", "Games matched to repertoire lines", "matched"],
+  ["Fully compliant", "Games that stayed fully in-book", "fully_compliant"],
+] as const;
 
 export default function OverviewPage() {
   const queryClient = useQueryClient();
@@ -23,48 +42,162 @@ export default function OverviewPage() {
   const { data: progress } = useQuery({ queryKey: ["analysis-progress"], queryFn: getAnalysisProgress, refetchInterval: 2000 });
   const { data: runs } = useQuery({ queryKey: ["analysis-runs", 10], queryFn: () => getAnalysisRuns(10), refetchInterval: 2000 });
   const isRunning = status?.state === "running";
-  const runMutation = useMutation({ mutationFn: async (action: "full" | "engine" | "fetch" | "smoke") => { if (action === "full") return runFullAnalysis(); if (action === "engine") return runEngineOnlyAnalysis(); if (action === "fetch") return runFetchGames(); return runSmokeTest(); }, onSuccess: (result) => { setActionMessage(`Started ${formatRunType(result.run_type)} (${result.job_id.slice(0, 8)}…).`); queryClient.invalidateQueries({ queryKey: ["analysis-status"] }); queryClient.invalidateQueries({ queryKey: ["analysis-progress"] }); queryClient.invalidateQueries({ queryKey: ["analysis-runs", 10] }); }, onError: (err) => { setActionMessage((err as Error).message); } });
-  const progressPercent = useMemo(() => { const done = Number(progress?.progress?.done ?? 0); const total = Number(progress?.progress?.total ?? 0); if (!total || Number.isNaN(done) || Number.isNaN(total)) return null; return Math.round((done / total) * 100); }, [progress]);
+
+  const refreshStatus = () => {
+    queryClient.invalidateQueries({ queryKey: ["analysis-status"] });
+    queryClient.invalidateQueries({ queryKey: ["analysis-progress"] });
+    queryClient.invalidateQueries({ queryKey: ["analysis-runs", 10] });
+  };
+
+  const runMutation = useMutation({
+    mutationFn: async (action: "full" | "engine" | "fetch" | "smoke") => {
+      if (action === "full") return runFullAnalysis();
+      if (action === "engine") return runEngineOnlyAnalysis();
+      if (action === "fetch") return runFetchGames();
+      return runSmokeTest();
+    },
+    onSuccess: (result) => {
+      setActionMessage(`Started ${formatRunType(result.run_type)} (${result.job_id.slice(0, 8)}…).`);
+      refreshStatus();
+    },
+    onError: (err) => {
+      setActionMessage((err as Error).message);
+    },
+  });
+
+  const progressPercent = useMemo(() => {
+    const done = Number(progress?.progress?.done ?? 0);
+    const total = Number(progress?.progress?.total ?? 0);
+    if (!total || Number.isNaN(done) || Number.isNaN(total)) return null;
+    return Math.round((done / total) * 100);
+  }, [progress]);
+
+  const completedRuns = runs?.runs?.filter((run) => run.status === "completed").length ?? 0;
+  const failedRuns = runs?.runs?.filter((run) => run.status === "failed").length ?? 0;
 
   return (
-    <PageContainer title="Overview" description="Monitor backend pipeline health, launch analysis jobs, and review recent progress.">
+    <PageContainer title="Overview" description="Monitor pipeline health, launch analysis runs, and keep sideline work grouped in one dashboard.">
       <PageSection>
-        <SectionHeader title="Overview" description="Status, runs, and quick analysis actions for the backend pipeline." />
-        {isLoading ? <MutedText>Loading summary…</MutedText> : null}
+        <SectionHeader
+          title="Operations dashboard"
+          description="Track the current pipeline, kick off the next run, and review recent analysis activity without bouncing between pages."
+          actions={<Button variant="ghost" onClick={refreshStatus}>Refresh status</Button>}
+        />
+
         {error ? <BodyText className="font-medium text-danger">{String(error)}</BodyText> : null}
-        {data ? <KpiSummary><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[["Lines", data.lines],["Manual priority", data.manual_priority],["Auto-priority", data.auto_priority],["Games", data.games],["Matched", data.matched],["Fully compliant", data.fully_compliant]].map(([label, value]) => <div key={String(label)} className="rounded-xl border border-border/70 bg-card px-4 py-4"><CaptionText>{String(label)}</CaptionText><p className="mt-2 text-page-title font-semibold tracking-tight text-foreground">{String(value)}</p></div>)}</div></KpiSummary> : null}
-        <DetailPane title="Analysis actions" description="Launch a new run, trigger fetches, or refresh the current status snapshot.">
-          <DenseControlRow>
-            <Button variant="primary" disabled={isRunning || runMutation.isPending} onClick={() => runMutation.mutate("full")}>Run full analysis</Button>
-            <Button disabled={isRunning || runMutation.isPending} onClick={() => runMutation.mutate("engine")}>Run engine-only</Button>
-            <Button disabled={isRunning || runMutation.isPending} onClick={() => runMutation.mutate("fetch")}>Fetch games</Button>
-            <Button disabled={isRunning || runMutation.isPending} onClick={() => runMutation.mutate("smoke")}>Run smoke test</Button>
-            <Button variant="ghost" onClick={() => { queryClient.invalidateQueries({ queryKey: ["analysis-status"] }); queryClient.invalidateQueries({ queryKey: ["analysis-progress"] }); queryClient.invalidateQueries({ queryKey: ["analysis-runs", 10] }); }}>Refresh status</Button>
-          </DenseControlRow>
-          {actionMessage ? <Badge tone={actionMessage.includes("already running") ? "warning" : "success"}>{actionMessage}</Badge> : null}
-        </DetailPane>
-        <div className="grid gap-grid-gap xl:grid-cols-2">
-          <DetailPane title="Job status">
-            <div className="grid gap-4">
-              <div className="grid gap-1"><FieldLabel as="span">State</FieldLabel><CardTitle>{status?.state ?? "unknown"}</CardTitle></div>
-              <div className="grid gap-1"><FieldLabel as="span">Active job</FieldLabel><BodyText>{status?.active_job_id ? `${status.active_job_id.slice(0, 8)}… (${formatRunType(status.active_run_type)})` : "None"}</BodyText></div>
-              <div className="grid gap-1"><FieldLabel as="span">Last job</FieldLabel><BodyText>{status?.last_completed_job_id ? `${status.last_completed_job_id.slice(0, 8)}… (${formatRunType(status.last_run_type)})` : "None"}</BodyText></div>
-              {status?.last_error ? <BodyText className="font-medium text-warning">Last failure: {status.last_error}</BodyText> : null}
+
+        <div className="grid gap-grid-gap xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)] xl:items-start">
+          <div className="grid gap-grid-gap">
+            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+              {KPI_CONFIG.map(([label, detail, key]) => (
+                <DetailPane key={label} className="gap-3 bg-card">
+                  <CaptionText>{label}</CaptionText>
+                  {isLoading ? <MutedText>Loading…</MutedText> : <p className="text-page-title font-semibold tracking-tight text-foreground">{String(data?.[key] ?? "—")}</p>}
+                  <MutedText>{detail}</MutedText>
+                </DetailPane>
+              ))}
             </div>
-          </DetailPane>
-          <DetailPane title="Progress">
-            <div className="grid gap-control-gap">
-              <BodyText>{String(progress?.progress?.message ?? "No progress yet")}</BodyText>
-              {progressPercent !== null ? <div className="grid gap-sm"><progress className="w-full" max={100} value={Math.max(0, Math.min(100, progressPercent))} /><MutedText>{progressPercent}% complete</MutedText></div> : null}
+
+            <DetailPane
+              title="Primary actions"
+              description="Use the main pipeline entry points here. Actions stay together so the current run context is always visible next to them."
+            >
+              <DenseControlRow className="items-stretch gap-3">
+                <Button variant="primary" disabled={isRunning || runMutation.isPending} onClick={() => runMutation.mutate("full")}>Run full analysis</Button>
+                <Button disabled={isRunning || runMutation.isPending} onClick={() => runMutation.mutate("engine")}>Run engine-only</Button>
+                <Button disabled={isRunning || runMutation.isPending} onClick={() => runMutation.mutate("fetch")}>Fetch games</Button>
+                <Button disabled={isRunning || runMutation.isPending} onClick={() => runMutation.mutate("smoke")}>Run smoke test</Button>
+              </DenseControlRow>
+              {actionMessage ? <Badge tone={actionMessage.includes("already running") ? "warning" : "success"}>{actionMessage}</Badge> : null}
+            </DetailPane>
+
+            <div className="grid gap-grid-gap lg:grid-cols-2">
+              <DetailPane title="Progress panel" description="Read the current message, completion state, and recent throughput at a glance.">
+                <div className="grid gap-4">
+                  <div className="grid gap-1">
+                    <FieldLabel as="span">Current message</FieldLabel>
+                    <BodyText>{String(progress?.progress?.message ?? "No progress reported yet.")}</BodyText>
+                  </div>
+                  {progressPercent !== null ? (
+                    <div className="grid gap-2">
+                      <div className="h-3 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.max(0, Math.min(100, progressPercent))}%` }} />
+                      </div>
+                      <MutedText>{progressPercent}% complete · {Number(progress?.progress?.done ?? 0)} of {Number(progress?.progress?.total ?? 0)} steps</MutedText>
+                    </div>
+                  ) : (
+                    <MutedText>Progress details will appear when a run emits step counts.</MutedText>
+                  )}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
+                      <CaptionText>Completed runs</CaptionText>
+                      <CardTitle className="mt-2">{completedRuns}</CardTitle>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
+                      <CaptionText>Failed runs</CaptionText>
+                      <CardTitle className="mt-2">{failedRuns}</CardTitle>
+                    </div>
+                  </div>
+                </div>
+              </DetailPane>
+
+              <DetailPane title="Run timeline" description="Recent jobs are ordered as an operational timeline so you can spot interruptions, finishes, and follow-up work quickly.">
+                {(runs?.runs.length ?? 0) === 0 ? (
+                  <EmptyState title="No analysis runs yet" description="Start a pipeline action to populate the timeline and monitor recent job history here." />
+                ) : (
+                  <ul className="grid gap-3">
+                    {(runs?.runs ?? []).map((run, index) => (
+                      <li key={run.run_id} className="grid gap-3 rounded-xl border border-border/70 bg-card px-4 py-4 sm:grid-cols-[auto_1fr]">
+                        <div className="flex items-start justify-center">
+                          <div className={cn("mt-1 h-3 w-3 rounded-full", run.status === "completed" ? "bg-success" : run.status === "failed" ? "bg-danger" : "bg-primary")} />
+                        </div>
+                        <div className="grid gap-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <CardTitle className="text-base">{formatRunType(run.run_type)}</CardTitle>
+                            <Badge variant="outline">{run.status}</Badge>
+                            <CaptionText>Run #{(runs?.runs.length ?? 0) - index}</CaptionText>
+                          </div>
+                          <BodyText className="text-muted-foreground">Started {formatTs(run.started_at)}{run.finished_at ? ` · Finished ${formatTs(run.finished_at)}` : " · In progress"}</BodyText>
+                          {run.error_reason ? <BodyText className="font-medium text-warning">Issue: {run.error_reason}</BodyText> : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </DetailPane>
             </div>
-          </DetailPane>
+          </div>
+
+          <div className="grid gap-grid-gap xl:sticky xl:top-24">
+            <DetailPane title="Analysis status" description="A compact operations summary for the currently active job and the last completed backend run.">
+              <div className="grid gap-4">
+                <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
+                  <FieldLabel as="span">Pipeline state</FieldLabel>
+                  <CardTitle className="mt-2">{status?.state ?? "unknown"}</CardTitle>
+                </div>
+                <div className="grid gap-3">
+                  <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
+                    <CaptionText>Active job</CaptionText>
+                    <BodyText className="mt-2">{status?.active_job_id ? `${status.active_job_id.slice(0, 8)}… (${formatRunType(status.active_run_type)})` : "No active job"}</BodyText>
+                  </div>
+                  <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
+                    <CaptionText>Last completed job</CaptionText>
+                    <BodyText className="mt-2">{status?.last_completed_job_id ? `${status.last_completed_job_id.slice(0, 8)}… (${formatRunType(status.last_run_type)})` : "No completed jobs yet"}</BodyText>
+                  </div>
+                </div>
+                {status?.last_error ? <BodyText className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 font-medium text-warning">Last failure: {status.last_error}</BodyText> : <MutedText>No recent pipeline errors reported.</MutedText>}
+              </div>
+            </DetailPane>
+
+            <DetailPane title="Sideline workspace" description="Sideline-related content is grouped separately so queue review stays distinct from pipeline controls.">
+              <MutedText>Use the table below to review async sideline jobs, prioritize follow-up work, and inspect generated branches once analysis completes.</MutedText>
+            </DetailPane>
+          </div>
         </div>
-        <DetailPane title="Run timeline" description="Recent analysis runs, timestamps, and failure reasons if any.">
-          {(runs?.runs.length ?? 0) === 0 ? <EmptyState title="No analysis runs yet" description="Start a job to populate the timeline and monitor pipeline history from this page." /> : null}
-          {(runs?.runs.length ?? 0) > 0 ? <ul className="grid gap-3">{(runs?.runs ?? []).map((run) => <li key={run.run_id} className="rounded-xl border border-border/70 bg-card px-4 py-4"><CaptionText>{formatRunType(run.run_type)}</CaptionText><BodyText className="mt-2 leading-7 text-muted-foreground">{run.status} · started {formatTs(run.started_at)}{run.finished_at ? ` · finished ${formatTs(run.finished_at)}` : ""}{run.error_reason ? ` · error: ${run.error_reason}` : ""}</BodyText></li>)}</ul> : null}
-        </DetailPane>
       </PageSection>
+
       <PageSection>
+        <SectionHeader title="Sideline jobs" description="Async sideline generation work is grouped below the operational dashboard so branch review remains easy to scan." />
         <SidelineTable />
       </PageSection>
     </PageContainer>
