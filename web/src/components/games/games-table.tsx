@@ -5,9 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { FormField } from "@/components/ui/form-field";
 import { DenseControlRow, EmptyState, FilterPanel } from "@/components/ui/page-patterns";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableHead, Td, Th } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableContainer, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { listGamesFiltered } from "@/lib/api-client";
 
 export interface GamesTableState {
@@ -30,26 +32,72 @@ export function GamesTable({ state, onStateChange }: { state: GamesTableState; o
   useEffect(() => { localStorage.setItem("cg_games_table_state_v2", JSON.stringify(state)); }, [state]);
   const queryKey = useMemo(() => buildGamesQueryKey(state), [state]);
   const { data, isLoading, error } = useQuery({ queryKey, queryFn: () => listGamesFiltered({ limit: 200, result: state.result || undefined, compliance: state.compliance || undefined, complianceMin: state.complianceMin || undefined, lineId: state.lineId || undefined, player: state.player || undefined, dateFrom: state.dateFrom || undefined, dateTo: state.dateTo || undefined, sortBy: state.sortBy, sortDir: state.sortDir }) });
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading games...</p>;
-  if (error) return <p className="text-sm text-danger">Failed to load games: {(error as Error).message}</p>;
   const set = (patch: Partial<GamesTableState>) => onStateChange({ ...state, ...patch });
 
   return (
     <div className="grid gap-section-gap">
-      <FilterPanel title="Game filters" description="Keep filter controls tight while leaving more breathing room around the broader dashboard layout.">
-        <DenseControlRow className="grid w-full gap-control-gap md:grid-cols-2 xl:grid-cols-5">
-          <Input value={state.result} onChange={(e) => set({ result: e.target.value })} placeholder="result" />
-          <Input value={state.compliance} onChange={(e) => set({ compliance: e.target.value })} placeholder="compliance" />
-          <Input value={state.complianceMin} onChange={(e) => set({ complianceMin: e.target.value })} placeholder="compliance min 0..1" />
-          <Input value={state.lineId} onChange={(e) => set({ lineId: e.target.value })} placeholder="line id" />
-          <Input value={state.player} onChange={(e) => set({ player: e.target.value })} placeholder="player" />
+      <FilterPanel title="Game filters" description="Tighten the search criteria, then scan the richer table below for matchup and repertoire details.">
+        <DenseControlRow className="grid w-full gap-control-gap md:grid-cols-2 xl:grid-cols-4">
+          <FormField label="Result" helpText="Filter by result such as 1-0, 0-1, or 1/2-1/2."><Input value={state.result} onChange={(e) => set({ result: e.target.value })} placeholder="1-0" /></FormField>
+          <FormField label="Compliance" helpText="Match a backend compliance bucket or label."><Input value={state.compliance} onChange={(e) => set({ compliance: e.target.value })} placeholder="in_book" /></FormField>
+          <FormField label="Minimum compliance" helpText="Use a decimal from 0 to 1."><Input value={state.complianceMin} onChange={(e) => set({ complianceMin: e.target.value })} placeholder="0.75" inputMode="decimal" /></FormField>
+          <FormField label="Line ID" helpText="Limit results to a single repertoire line."><Input value={state.lineId} onChange={(e) => set({ lineId: e.target.value })} placeholder="sicilian-main" /></FormField>
+          <FormField label="Player" helpText="Matches either white or black player names."><Input value={state.player} onChange={(e) => set({ player: e.target.value })} placeholder="Carlsen" /></FormField>
+          <FormField label="Date from" helpText="Start date for the search window."><Input type="date" value={state.dateFrom} onChange={(e) => set({ dateFrom: e.target.value })} /></FormField>
+          <FormField label="Date to" helpText="End date for the search window."><Input type="date" value={state.dateTo} onChange={(e) => set({ dateTo: e.target.value })} /></FormField>
         </DenseControlRow>
       </FilterPanel>
-      {(data?.length ?? 0) === 0 ? <EmptyState title="No games match these filters" description="Adjust the filter panel or broaden the date and compliance constraints to see results." /> : null}
-      {(data?.length ?? 0) > 0 ? <Table>
-        <TableHead><tr><Th>ID</Th><Th>Action</Th></tr></TableHead>
-        <TableBody>{data?.map((game) => <tr key={game.id} className="transition hover:bg-hover"><Td>{game.id}</Td><Td><Link href={`/games/${game.id}`}><Button variant="ghost">Open</Button></Link></Td></tr>)}</TableBody>
-      </Table> : null}
+
+      {error ? <p className="text-sm text-danger">Failed to load games: {(error as Error).message}</p> : null}
+      {isLoading ? <GamesTableLoading /> : null}
+      {!isLoading && !error && (data?.length ?? 0) === 0 ? <EmptyState title="No games match these filters" description="Adjust the result, player, or compliance filters to broaden the list." /> : null}
+      {!isLoading && !error && (data?.length ?? 0) > 0 ? (
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <tr>
+                <Th>ID</Th><Th>Date</Th><Th>Players</Th><Th>Result</Th><Th>Line</Th><Th>Compliance</Th><Th>Matched ply</Th><Th className="text-right">Action</Th>
+              </tr>
+            </TableHead>
+            <TableBody>
+              {data?.map((game) => (
+                <TableRow key={game.id} className="hover:bg-hover">
+                  <Td className="font-medium">{game.id}</Td>
+                  <Td>{game.date ?? "—"}</Td>
+                  <Td>
+                    <div className="grid gap-1 leading-6">
+                      <span>{game.white ?? "Unknown white"}</span>
+                      <span className="text-sm text-muted-foreground">vs {game.black ?? "Unknown black"}</span>
+                    </div>
+                  </Td>
+                  <Td>{game.result ?? "—"}</Td>
+                  <Td className="max-w-[12rem] truncate">{game.line_id ?? "—"}</Td>
+                  <Td>{game.compliance ?? "—"}</Td>
+                  <Td>{game.max_matched_ply ?? "—"}</Td>
+                  <Td className="text-right"><Link href={`/games/${game.id}`}><Button variant="ghost" size="sm">Open</Button></Link></Td>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      ) : null}
     </div>
+  );
+}
+
+function GamesTableLoading() {
+  return (
+    <TableContainer>
+      <Table>
+        <TableHead><tr><Th>ID</Th><Th>Date</Th><Th>Players</Th><Th>Result</Th><Th>Line</Th><Th>Compliance</Th><Th>Matched ply</Th><Th>Action</Th></tr></TableHead>
+        <TableBody>
+          {Array.from({ length: 5 }).map((_, index) => (
+            <TableRow key={index}>
+              {Array.from({ length: 8 }).map((__, cell) => <Td key={cell}><Skeleton className="h-5 w-full min-w-16" /></Td>)}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
   );
 }
