@@ -2,6 +2,12 @@
 
 This checklist uses `docs/desktop_capabilities_inventory.md` as the source of truth and maps each desktop capability to concrete web surfaces.
 
+## How to use this document
+
+Use this file as a planning and release-readiness backlog. It is intended to guide parity work and clarify what “Done” means for parity-focused efforts. It should not be treated as a hard blocker for every implementation task in the repository.
+
+For routine coding tasks, contributors and coding agents may ship narrowly scoped improvements without satisfying every parity row below, unless the task explicitly involves parity status, cutover readiness, or desktop-dependency removal.
+
 ## Capability-to-surface map (source-of-truth mapping)
 
 ## Wiring status (current)
@@ -22,7 +28,7 @@ This checklist uses `docs/desktop_capabilities_inventory.md` as the source of tr
 
 ## Prioritized implementation backlog (tracked engineering tasks)
 
-Legend: `Open` = not started, `In progress` = partially implemented, `Done` = merged + parity tests green.
+Legend: `Open` = not started, `In progress` = partially implemented, `Done` = merged + parity evidence is in place and the relevant parity tests are green.
 
 ### P0 — Trainer interaction model parity (highest impact)
 
@@ -64,7 +70,7 @@ Legend: `Open` = not started, `In progress` = partially implemented, `Done` = me
 
 ## Cutover gate (desktop dependency removal)
 
-Desktop dependency can be removed **only when all backlog tasks above are marked `Done`** and the following regression gates are continuously green in CI:
+Desktop dependency should be removed only when all backlog tasks above are marked `Done` and the following regression gates are continuously green in CI. This gate applies to cutover/release decisions, not to unrelated implementation work:
 
 1. Python/API regressions in `tests/` covering every changed endpoint contract.
 2. Web component/page tests in `web/src/components/**/*.test.ts` (and page tests where applicable) covering each parity interaction loop.
@@ -77,7 +83,7 @@ npm --prefix web run test:ui-regression
 
 ### Done criteria per row
 
-A row is allowed to move to `Done` only when all of the following are true:
+A row should move to `Done` only when all of the following are true:
 
 - Endpoint contracts are implemented and documented in code-level types/schemas.
 - Frontend implementation is merged and wired to live backend contracts (no placeholder mocks for runtime paths).
