@@ -28,6 +28,10 @@ export function GameDetail({ gameId, initialPly }: { gameId: number; initialPly:
   const selectedMove = useMemo(() => (cursorIndex === 0 ? null : moves[cursorIndex - 1] ?? null), [moves, cursorIndex]);
   const selectedPly = selectedMove?.ply ?? null;
   const boardFen = useMemo(() => (!moves.length || cursorIndex === 0 ? undefined : selectedMove?.fen ?? undefined), [moves.length, cursorIndex, selectedMove]);
+  const lastMove = useMemo(() => {
+    if (!selectedMove?.uci_move || selectedMove.uci_move.length < 4) return null;
+    return { from: selectedMove.uci_move.slice(0, 2), to: selectedMove.uci_move.slice(2, 4) };
+  }, [selectedMove?.uci_move]);
   const hasEvalData = selectedMove?.pre_eval_cp !== null || selectedMove?.post_eval_cp !== null;
   const navigateNext = useCallback(() => { setCursorIndex((current) => Math.min(moves.length, current + 1)); }, [moves.length]);
   const navigatePrev = useCallback(() => { setCursorIndex((current) => Math.max(0, current - 1)); }, []);
@@ -55,16 +59,20 @@ export function GameDetail({ gameId, initialPly }: { gameId: number; initialPly:
       </DetailPane>
 
       <div className="grid gap-grid-gap xl:grid-cols-board">
-        <DetailPane title="Selected position" description="Review the board state and queue sideline analysis from any move with a FEN.">
-          <ChessBoard fen={boardFen} title="Selected game position" currentPlyIndex={cursorIndex} onNavigateNext={navigateNext} onNavigatePrev={navigatePrev} onNavigateStart={navigateStart} onNavigateEnd={navigateEnd} onMoveAttempt={({ uci }) => { const nextMove = moves[cursorIndex]; if (nextMove?.uci_move === uci) navigateNext(); }} />
-          <FilterPanel title="Move selector" description="Keep dense controls compact while the board and detail regions stay spacious.">
+        <DetailPane title="Selected position" description="Review the board state and queue sideline analysis from any move with a FEN." className="gap-5">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)] xl:items-start">
+            <ChessBoard fen={boardFen} title="Selected game position" subtitle="Board highlights stay in sync with the selected move, analysis tools, and keyboard navigation." currentPlyIndex={cursorIndex} lastMove={lastMove} onNavigateNext={navigateNext} onNavigatePrev={navigatePrev} onNavigateStart={navigateStart} onNavigateEnd={navigateEnd} onMoveAttempt={({ uci }) => { const nextMove = moves[cursorIndex]; if (nextMove?.uci_move === uci) navigateNext(); }} size="large" />
+            <div className="grid gap-4 xl:sticky xl:top-24">
+              <FilterPanel title="Move selector" description="Keep dense controls compact while the board and detail regions stay spacious.">
             <label className="grid max-w-md gap-xs">
               <FieldLabel as="span">Move ply</FieldLabel>
               <Select value={selectedPly ?? ""} onChange={(event) => { const ply = event.target.value ? Number(event.target.value) : null; if (ply === null) { setCursorIndex(0); return; } const moveIndex = moves.findIndex((move) => move.ply === ply); setCursorIndex(moveIndex >= 0 ? moveIndex + 1 : 0); }}><option value="">Initial position</option>{moves.map((move) => <option key={move.ply} value={move.ply}>Ply {move.ply} - {move.san_move ?? move.uci_move ?? "-"}</option>)}</Select>
             </label>
-          </FilterPanel>
-          {selectedMove?.fen ? <BodyText><Link className="font-medium text-primary hover:text-secondary" href={{ pathname: "/analysis", query: { game_id: String(gameId), move_ply: String(selectedMove.ply), fen: selectedMove.fen } }}>Open in /analysis with this position</Link></BodyText> : null}
-          {selectedMove?.fen ? <SidelineAnalysisForm key={`${selectedMove.ply}-${selectedMove.fen}`} title="Queue sideline from this game move" initialGameId={String(gameId)} initialMovePly={selectedMove.ply} initialFen={selectedMove.fen} lockedFields={{ gameId: true, movePly: true, fen: true }} /> : <EmptyState title="Select a move to analyze" description="Choose a move with an available FEN to queue a quick sideline evaluation from this game." />}
+              </FilterPanel>
+              {selectedMove?.fen ? <BodyText className="rounded-xl border border-border/70 bg-background/60 px-4 py-3"><Link className="font-medium text-primary hover:text-secondary" href={{ pathname: "/analysis", query: { game_id: String(gameId), move_ply: String(selectedMove.ply), fen: selectedMove.fen } }}>Open in /analysis with this position</Link></BodyText> : null}
+              {selectedMove?.fen ? <SidelineAnalysisForm key={`${selectedMove.ply}-${selectedMove.fen}`} title="Queue sideline from this game move" initialGameId={String(gameId)} initialMovePly={selectedMove.ply} initialFen={selectedMove.fen} lockedFields={{ gameId: true, movePly: true, fen: true }} /> : <EmptyState title="Select a move to analyze" description="Choose a move with an available FEN to queue a quick sideline evaluation from this game." />}
+            </div>
+          </div>
         </DetailPane>
 
         <div className="grid gap-grid-gap">
