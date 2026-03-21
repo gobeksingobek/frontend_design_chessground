@@ -12,6 +12,8 @@ const DEFAULT_PIECE_THEME_PATH = "/pieces/neo";
 
 type Square = string;
 
+type ChessBoardVariant = "framed" | "surface";
+
 interface ChessBoardProps {
   fen?: string;
   title?: string;
@@ -28,6 +30,7 @@ interface ChessBoardProps {
   lastMove?: { from: string; to: string } | null;
   pieceAssetBasePath?: string;
   surface?: "card" | "plain";
+  variant?: ChessBoardVariant;
   className?: string;
 }
 
@@ -36,6 +39,18 @@ interface ParsedFen {
   activeColor: "w" | "b";
   halfmoveClock: number;
   fullmoveNumber: number;
+}
+
+interface ChessBoardState {
+  safeFen: string;
+  board: string[][];
+  activeColor: "w" | "b";
+  halfmoveClock: number;
+  fullmoveNumber: number;
+  checkSquare: Square | null;
+  legalTargetSet: Set<string>;
+  selectedSquare: Square | null;
+  setSelectedSquare: (square: Square | null) => void;
 }
 
 function toSquare(rankIndex: number, fileIndex: number): Square {
@@ -162,6 +177,30 @@ export function isKingInCheck(fen: string): Square | null {
   return null;
 }
 
+function useChessBoardState({ fen, legalTargets }: Pick<ChessBoardProps, "fen" | "legalTargets">): ChessBoardState {
+  const safeFen = fen || DEFAULT_FEN;
+  const { board, activeColor, halfmoveClock, fullmoveNumber } = useMemo(() => parseFen(safeFen), [safeFen]);
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+  const checkSquare = useMemo(() => isKingInCheck(safeFen), [safeFen]);
+  const legalTargetSet = useMemo(() => new Set(legalTargets ?? []), [legalTargets]);
+
+  useEffect(() => {
+    setSelectedSquare(null);
+  }, [safeFen]);
+
+  return {
+    safeFen,
+    board,
+    activeColor,
+    halfmoveClock,
+    fullmoveNumber,
+    checkSquare,
+    legalTargetSet,
+    selectedSquare,
+    setSelectedSquare,
+  };
+}
+
 function IconChevronFirst() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M11 17l-5-5 5-5" /><path d="M18 17l-5-5 5-5" /></svg>;
 }
@@ -175,33 +214,53 @@ function IconChevronLast() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M13 17l5-5-5-5" /><path d="M6 17l5-5-5-5" /></svg>;
 }
 
-export function ChessBoard({
-  fen,
+export function ChessBoardHeader({
   title,
   subtitle,
+  activeColor,
+  fullmoveNumber,
   currentPlyIndex,
-  onMoveAttempt,
-  onNavigateNext,
-  onNavigatePrev,
+  halfmoveClock,
   onNavigateStart,
+  onNavigatePrev,
+  onNavigateNext,
   onNavigateEnd,
+}: Pick<ChessBoardProps, "title" | "subtitle" | "currentPlyIndex" | "onNavigateStart" | "onNavigatePrev" | "onNavigateNext" | "onNavigateEnd"> & Pick<ChessBoardState, "activeColor" | "fullmoveNumber" | "halfmoveClock">) {
+  return (
+    <div className="flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="grid gap-1">
+        {title ? <h3 className="text-base font-semibold tracking-tight text-foreground sm:text-lg">{title}</h3> : null}
+        <p className="text-sm text-muted-foreground">{subtitle ?? "Study the current position, inspect move context, and navigate through the line."}</p>
+      </div>
+      <div className="grid gap-2 sm:justify-items-end">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
+          <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1">{sideLabel(activeColor)}</span>
+          <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1">Move {fullmoveNumber}</span>
+          <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1">Ply {currentPlyIndex ?? 0}</span>
+          <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1">Halfmove {halfmoveClock}</span>
+        </div>
+        <div className="flex items-center gap-1 rounded-full border border-border/70 bg-background/70 p-1 shadow-sm" role="group" aria-label="Board navigation">
+          <Button type="button" size="icon" variant="ghost" className="rounded-full" onClick={onNavigateStart} disabled={!onNavigateStart} aria-label="Jump to start"><IconChevronFirst /></Button>
+          <Button type="button" size="icon" variant="ghost" className="rounded-full" onClick={onNavigatePrev} disabled={!onNavigatePrev} aria-label="Previous move"><IconChevronLeft /></Button>
+          <div className="h-6 w-px bg-border/80" aria-hidden="true" />
+          <Button type="button" size="icon" variant="ghost" className="rounded-full" onClick={onNavigateNext} disabled={!onNavigateNext} aria-label="Next move"><IconChevronRight /></Button>
+          <Button type="button" size="icon" variant="ghost" className="rounded-full" onClick={onNavigateEnd} disabled={!onNavigateEnd} aria-label="Jump to end"><IconChevronLast /></Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ChessBoardSurface({
   size = "default",
   showCoordinates = true,
-  legalTargets,
-  lastMove,
+  currentPlyIndex,
+  onMoveAttempt,
   pieceAssetBasePath = DEFAULT_PIECE_THEME_PATH,
-  surface = "card",
-  className,
-}: ChessBoardProps) {
-  const safeFen = fen || DEFAULT_FEN;
-  const { board, activeColor, halfmoveClock, fullmoveNumber } = useMemo(() => parseFen(safeFen), [safeFen]);
-  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
-  const checkSquare = useMemo(() => isKingInCheck(safeFen), [safeFen]);
-  const legalTargetSet = useMemo(() => new Set(legalTargets ?? []), [legalTargets]);
-
-  useEffect(() => {
-    setSelectedSquare(null);
-  }, [safeFen]);
+  lastMove,
+  state,
+}: Pick<ChessBoardProps, "size" | "showCoordinates" | "currentPlyIndex" | "onMoveAttempt" | "pieceAssetBasePath" | "lastMove"> & { state: ChessBoardState }) {
+  const { safeFen, board, activeColor, checkSquare, legalTargetSet, selectedSquare, setSelectedSquare } = state;
 
   const handleSquareClick = (rankIndex: number, fileIndex: number) => {
     if (!onMoveAttempt) return;
@@ -232,118 +291,150 @@ export function ChessBoard({
     setSelectedSquare(null);
   };
 
-  const content = (
-    <div
-      className={cn(
-        "w-full grid gap-4 overflow-hidden",
-        surface === "card" && "border-border/80 bg-gradient-to-br from-card via-card to-elevated/80",
-        size === "large" ? "max-w-none" : "max-w-[480px]",
-        surface === "plain" && className,
-      )}
-      aria-label={title ?? "Chess board"}
-    >
-      <div className="flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="grid gap-1">
-          {title ? <h3 className="text-base font-semibold tracking-tight text-foreground sm:text-lg">{title}</h3> : null}
-          <p className="text-sm text-muted-foreground">{subtitle ?? "Study the current position, inspect move context, and navigate through the line."}</p>
+  return (
+    <div className={cn("relative mx-auto w-full", size === "large" ? "max-w-[min(72vh,760px)]" : "max-w-[min(88vw,460px)]")}>
+      <div
+        className="chess-board-shell relative aspect-square w-full rounded-[1.25rem] border border-border/80 bg-[rgb(var(--board-frame))] p-3 shadow-board"
+        role="img"
+        aria-label={`Board position: ${safeFen}`}
+        data-ply-index={currentPlyIndex ?? 0}
+      >
+        <div className="absolute inset-x-5 top-2 flex justify-between text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/80" aria-hidden="true">
+          {showCoordinates ? FILES.split("").map((file) => <span key={`top-${file}`}>{file}</span>) : null}
         </div>
-        <div className="grid gap-2 sm:justify-items-end">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
-            <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1">{sideLabel(activeColor)}</span>
-            <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1">Move {fullmoveNumber}</span>
-            <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1">Ply {currentPlyIndex ?? 0}</span>
-            <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1">Halfmove {halfmoveClock}</span>
-          </div>
-          <div className="flex items-center gap-1 rounded-full border border-border/70 bg-background/70 p-1 shadow-sm" role="group" aria-label="Board navigation">
-            <Button type="button" size="icon" variant="ghost" className="rounded-full" onClick={onNavigateStart} disabled={!onNavigateStart} aria-label="Jump to start"><IconChevronFirst /></Button>
-            <Button type="button" size="icon" variant="ghost" className="rounded-full" onClick={onNavigatePrev} disabled={!onNavigatePrev} aria-label="Previous move"><IconChevronLeft /></Button>
-            <div className="h-6 w-px bg-border/80" aria-hidden="true" />
-            <Button type="button" size="icon" variant="ghost" className="rounded-full" onClick={onNavigateNext} disabled={!onNavigateNext} aria-label="Next move"><IconChevronRight /></Button>
-            <Button type="button" size="icon" variant="ghost" className="rounded-full" onClick={onNavigateEnd} disabled={!onNavigateEnd} aria-label="Jump to end"><IconChevronLast /></Button>
-          </div>
+        <div className="absolute inset-x-5 bottom-2 flex justify-between text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/80" aria-hidden="true">
+          {showCoordinates ? FILES.split("").map((file) => <span key={`bottom-${file}`}>{file}</span>) : null}
         </div>
-      </div>
-
-      <div className={cn("relative mx-auto w-full", size === "large" ? "max-w-[min(72vh,760px)]" : "max-w-[min(88vw,460px)]")}>
-        <div
-          className="chess-board-shell relative aspect-square w-full rounded-[1.25rem] border border-border/80 bg-[rgb(var(--board-frame))] p-3 shadow-board"
-          role="img"
-          aria-label={`Board position: ${safeFen}`}
-          data-ply-index={currentPlyIndex ?? 0}
-        >
-          <div className="absolute inset-x-5 top-2 flex justify-between text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/80" aria-hidden="true">
-            {showCoordinates ? FILES.split("").map((file) => <span key={`top-${file}`}>{file}</span>) : null}
-          </div>
-          <div className="absolute inset-x-5 bottom-2 flex justify-between text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/80" aria-hidden="true">
-            {showCoordinates ? FILES.split("").map((file) => <span key={`bottom-${file}`}>{file}</span>) : null}
-          </div>
-          <div className="absolute inset-y-5 left-2 flex flex-col justify-between text-[10px] font-semibold tracking-[0.22em] text-muted-foreground/80" aria-hidden="true">
-            {showCoordinates ? Array.from({ length: 8 }, (_, index) => <span key={`left-${8 - index}`}>{8 - index}</span>) : null}
-          </div>
-          <div className="absolute inset-y-5 right-2 flex flex-col justify-between text-[10px] font-semibold tracking-[0.22em] text-muted-foreground/80" aria-hidden="true">
-            {showCoordinates ? Array.from({ length: 8 }, (_, index) => <span key={`right-${8 - index}`}>{8 - index}</span>) : null}
-          </div>
-
-          <div className="grid aspect-square w-full grid-cols-8 overflow-hidden rounded-[0.95rem] border border-[rgb(var(--board-grid-border))] shadow-[inset_0_0_0_1px_rgba(var(--board-grid-shadow))]">
-            {board.map((rank, rankIndex) =>
-              rank.map((piece, fileIndex) => {
-                const isLight = (rankIndex + fileIndex) % 2 === 0;
-                const square = toSquare(rankIndex, fileIndex);
-                const imageCode = pieceToImageCode(piece);
-                const isSelected = selectedSquare === square;
-                const isLegalTarget = legalTargetSet.has(square);
-                const isLastMoveSquare = lastMove?.from === square || lastMove?.to === square;
-                const isLastMoveFrom = lastMove?.from === square;
-                const isLastMoveTo = lastMove?.to === square;
-                const isCheck = checkSquare === square;
-
-                return (
-                  <button
-                    key={`${rankIndex}-${fileIndex}`}
-                    type="button"
-                    className={cn(
-                      "group relative grid aspect-square w-full place-items-center overflow-hidden p-0 transition-transform duration-150 ease-out focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus hover:z-[1] hover:scale-[1.01]",
-                      isLight ? "bg-board-light text-board-light-piece" : "bg-board-dark text-board-dark-piece",
-                      isSelected && "ring-0 before:absolute before:inset-[8%] before:rounded-xl before:border-2 before:border-[rgb(var(--board-selected-ring))] before:bg-[rgb(var(--board-selected-fill))] before:content-['']",
-                      isLastMoveSquare && "after:absolute after:inset-[6%] after:rounded-xl after:border after:border-[rgb(var(--board-last-move-border))] after:content-['']",
-                      isCheck && "before:absolute before:inset-[8%] before:rounded-full before:bg-[radial-gradient(circle,rgba(248,113,113,0.9)_0%,rgba(248,113,113,0.18)_48%,transparent_72%)] before:content-['']",
-                    )}
-                    aria-label={`Square ${square}${piece ? ` with ${piece}` : ""}`}
-                    onClick={() => handleSquareClick(rankIndex, fileIndex)}
-                  >
-                    {isLastMoveFrom ? <span className="absolute inset-[10%] rounded-xl bg-[rgb(var(--board-last-move-from))] opacity-85" aria-hidden="true" /> : null}
-                    {isLastMoveTo ? <span className="absolute inset-[10%] rounded-xl bg-[rgb(var(--board-last-move-to))] opacity-85" aria-hidden="true" /> : null}
-                    {isLegalTarget ? (
-                      piece ? <span className="absolute inset-[20%] rounded-full border-4 border-[rgb(var(--board-legal-target))] opacity-80" aria-hidden="true" /> : <span className="absolute h-[22%] w-[22%] rounded-full bg-[rgb(var(--board-legal-target))] opacity-80" aria-hidden="true" />
-                    ) : null}
-                    {showCoordinates && fileIndex === 0 ? <span className={cn("pointer-events-none absolute left-1 top-1 text-[9px] font-semibold", isLight ? "text-[rgb(var(--board-coordinate-light))]" : "text-[rgb(var(--board-coordinate-dark))]")}>{8 - rankIndex}</span> : null}
-                    {showCoordinates && rankIndex === 7 ? <span className={cn("pointer-events-none absolute bottom-1 right-1 text-[9px] font-semibold lowercase", isLight ? "text-[rgb(var(--board-coordinate-light))]" : "text-[rgb(var(--board-coordinate-dark))]")}>{FILES[fileIndex]}</span> : null}
-                    {imageCode ? (
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          "chess-piece relative z-[1] block h-[88%] w-[88%] bg-contain bg-center bg-no-repeat drop-shadow-[0_8px_10px_rgba(15,23,42,0.18)] transition-transform duration-200 ease-out group-hover:scale-[1.04]",
-                          size === "large" && "h-[92%] w-[92%]",
-                          isSelected && "scale-[1.06]",
-                        )}
-                        style={{ backgroundImage: `url(${pieceAssetBasePath}/${imageCode}.svg)` } as CSSProperties}
-                      />
-                    ) : null}
-                  </button>
-                );
-              }),
-            )}
-          </div>
+        <div className="absolute inset-y-5 left-2 flex flex-col justify-between text-[10px] font-semibold tracking-[0.22em] text-muted-foreground/80" aria-hidden="true">
+          {showCoordinates ? Array.from({ length: 8 }, (_, index) => <span key={`left-${8 - index}`}>{8 - index}</span>) : null}
         </div>
-      </div>
+        <div className="absolute inset-y-5 right-2 flex flex-col justify-between text-[10px] font-semibold tracking-[0.22em] text-muted-foreground/80" aria-hidden="true">
+          {showCoordinates ? Array.from({ length: 8 }, (_, index) => <span key={`right-${8 - index}`}>{8 - index}</span>) : null}
+        </div>
 
-      <div className="grid gap-1">
-        <small className="text-xs text-muted-foreground">FEN: {safeFen}</small>
+        <div className="grid aspect-square w-full grid-cols-8 overflow-hidden rounded-[0.95rem] border border-[rgb(var(--board-grid-border))] shadow-[inset_0_0_0_1px_rgba(var(--board-grid-shadow))]">
+          {board.map((rank, rankIndex) =>
+            rank.map((piece, fileIndex) => {
+              const isLight = (rankIndex + fileIndex) % 2 === 0;
+              const square = toSquare(rankIndex, fileIndex);
+              const imageCode = pieceToImageCode(piece);
+              const isSelected = selectedSquare === square;
+              const isLegalTarget = legalTargetSet.has(square);
+              const isLastMoveSquare = lastMove?.from === square || lastMove?.to === square;
+              const isLastMoveFrom = lastMove?.from === square;
+              const isLastMoveTo = lastMove?.to === square;
+              const isCheck = checkSquare === square;
+
+              return (
+                <button
+                  key={`${rankIndex}-${fileIndex}`}
+                  type="button"
+                  className={cn(
+                    "group relative grid aspect-square w-full place-items-center overflow-hidden p-0 transition-transform duration-150 ease-out focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus hover:z-[1] hover:scale-[1.01]",
+                    isLight ? "bg-board-light text-board-light-piece" : "bg-board-dark text-board-dark-piece",
+                    isSelected && "ring-0 before:absolute before:inset-[8%] before:rounded-xl before:border-2 before:border-[rgb(var(--board-selected-ring))] before:bg-[rgb(var(--board-selected-fill))] before:content-['']",
+                    isLastMoveSquare && "after:absolute after:inset-[6%] after:rounded-xl after:border after:border-[rgb(var(--board-last-move-border))] after:content-['']",
+                    isCheck && "before:absolute before:inset-[8%] before:rounded-full before:bg-[radial-gradient(circle,rgba(248,113,113,0.9)_0%,rgba(248,113,113,0.18)_48%,transparent_72%)] before:content-['']",
+                  )}
+                  aria-label={`Square ${square}${piece ? ` with ${piece}` : ""}`}
+                  onClick={() => handleSquareClick(rankIndex, fileIndex)}
+                >
+                  {isLastMoveFrom ? <span className="absolute inset-[10%] rounded-xl bg-[rgb(var(--board-last-move-from))] opacity-85" aria-hidden="true" /> : null}
+                  {isLastMoveTo ? <span className="absolute inset-[10%] rounded-xl bg-[rgb(var(--board-last-move-to))] opacity-85" aria-hidden="true" /> : null}
+                  {isLegalTarget ? (
+                    piece ? <span className="absolute inset-[20%] rounded-full border-4 border-[rgb(var(--board-legal-target))] opacity-80" aria-hidden="true" /> : <span className="absolute h-[22%] w-[22%] rounded-full bg-[rgb(var(--board-legal-target))] opacity-80" aria-hidden="true" />
+                  ) : null}
+                  {showCoordinates && fileIndex === 0 ? <span className={cn("pointer-events-none absolute left-1 top-1 text-[9px] font-semibold", isLight ? "text-[rgb(var(--board-coordinate-light))]" : "text-[rgb(var(--board-coordinate-dark))]")}>{8 - rankIndex}</span> : null}
+                  {showCoordinates && rankIndex === 7 ? <span className={cn("pointer-events-none absolute bottom-1 right-1 text-[9px] font-semibold lowercase", isLight ? "text-[rgb(var(--board-coordinate-light))]" : "text-[rgb(var(--board-coordinate-dark))]")}>{FILES[fileIndex]}</span> : null}
+                  {imageCode ? (
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "chess-piece relative z-[1] block h-[88%] w-[88%] bg-contain bg-center bg-no-repeat drop-shadow-[0_8px_10px_rgba(15,23,42,0.18)] transition-transform duration-200 ease-out group-hover:scale-[1.04]",
+                        size === "large" && "h-[92%] w-[92%]",
+                        isSelected && "scale-[1.06]",
+                      )}
+                      style={{ backgroundImage: `url(${pieceAssetBasePath}/${imageCode}.svg)` } as CSSProperties}
+                    />
+                  ) : null}
+                </button>
+              );
+            }),
+          )}
+        </div>
       </div>
     </div>
   );
-
-  if (surface === "plain") return content;
-
-  return <Card className={cn("w-full", className)}>{content}</Card>;
 }
+
+export function ChessBoardDetails({ safeFen }: Pick<ChessBoardState, "safeFen">) {
+  return (
+    <div className="grid gap-1">
+      <small className="text-xs text-muted-foreground">FEN: {safeFen}</small>
+    </div>
+  );
+}
+
+function normalizeVariant(surface: ChessBoardProps["surface"], variant: ChessBoardProps["variant"]): ChessBoardVariant {
+  if (variant) return variant;
+  return surface === "plain" ? "surface" : "framed";
+}
+
+export function ChessBoardFramed(props: ChessBoardProps) {
+  const state = useChessBoardState(props);
+  const variant = normalizeVariant(props.surface, props.variant);
+  const content = (
+    <div className={cn("grid w-full gap-4 overflow-hidden rounded-[1.1rem]", variant === "framed" && "border-border/80 bg-gradient-to-br from-card via-card to-elevated/80", props.size === "large" ? "max-w-none" : "max-w-[480px]")} aria-label={props.title ?? "Chess board"}>
+      <ChessBoardHeader
+        title={props.title}
+        subtitle={props.subtitle}
+        currentPlyIndex={props.currentPlyIndex}
+        onNavigateStart={props.onNavigateStart}
+        onNavigatePrev={props.onNavigatePrev}
+        onNavigateNext={props.onNavigateNext}
+        onNavigateEnd={props.onNavigateEnd}
+        activeColor={state.activeColor}
+        fullmoveNumber={state.fullmoveNumber}
+        halfmoveClock={state.halfmoveClock}
+      />
+      <ChessBoardSurface
+        size={props.size}
+        showCoordinates={props.showCoordinates}
+        currentPlyIndex={props.currentPlyIndex}
+        onMoveAttempt={props.onMoveAttempt}
+        pieceAssetBasePath={props.pieceAssetBasePath}
+        lastMove={props.lastMove}
+        state={state}
+      />
+      <ChessBoardDetails safeFen={state.safeFen} />
+    </div>
+  );
+
+  if (variant === "surface") return <div className={cn("w-full", props.className)}>{content}</div>;
+
+  return <Card className={cn("w-full", props.className)}>{content}</Card>;
+}
+
+export function ChessBoardBoardOnly(props: ChessBoardProps) {
+  const state = useChessBoardState(props);
+
+  return (
+    <div className={cn("w-full", props.size === "large" ? "max-w-none" : "max-w-[480px]", props.className)} aria-label={props.title ?? "Chess board surface"}>
+      <ChessBoardSurface
+        size={props.size}
+        showCoordinates={props.showCoordinates}
+        currentPlyIndex={props.currentPlyIndex}
+        onMoveAttempt={props.onMoveAttempt}
+        pieceAssetBasePath={props.pieceAssetBasePath}
+        lastMove={props.lastMove}
+        state={state}
+      />
+    </div>
+  );
+}
+
+export function ChessBoard(props: ChessBoardProps) {
+  return <ChessBoardFramed {...props} />;
+}
+
+export default ChessBoard;
