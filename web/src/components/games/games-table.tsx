@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { DenseControlRow, EmptyState, FilterPanel } from "@/components/ui/page-patterns";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableHead, Td, Th } from "@/components/ui/table";
 import { listGamesFiltered } from "@/lib/api-client";
@@ -35,18 +35,21 @@ export function GamesTable({ state, onStateChange }: { state: GamesTableState; o
   const set = (patch: Partial<GamesTableState>) => onStateChange({ ...state, ...patch });
 
   return (
-    <div className="grid gap-4">
-      <Card className="grid gap-3 border-border/80 bg-elevated md:grid-cols-2 xl:grid-cols-5">
-        <Input value={state.result} onChange={(e) => set({ result: e.target.value })} placeholder="result" />
-        <Input value={state.compliance} onChange={(e) => set({ compliance: e.target.value })} placeholder="compliance" />
-        <Input value={state.complianceMin} onChange={(e) => set({ complianceMin: e.target.value })} placeholder="compliance min 0..1" />
-        <Input value={state.lineId} onChange={(e) => set({ lineId: e.target.value })} placeholder="line id" />
-        <Input value={state.player} onChange={(e) => set({ player: e.target.value })} placeholder="player" />
-      </Card>
-      <Table>
+    <div className="grid gap-section-gap">
+      <FilterPanel title="Game filters" description="Keep filter controls tight while leaving more breathing room around the broader dashboard layout.">
+        <DenseControlRow className="grid w-full gap-control-gap md:grid-cols-2 xl:grid-cols-5">
+          <Input value={state.result} onChange={(e) => set({ result: e.target.value })} placeholder="result" />
+          <Input value={state.compliance} onChange={(e) => set({ compliance: e.target.value })} placeholder="compliance" />
+          <Input value={state.complianceMin} onChange={(e) => set({ complianceMin: e.target.value })} placeholder="compliance min 0..1" />
+          <Input value={state.lineId} onChange={(e) => set({ lineId: e.target.value })} placeholder="line id" />
+          <Input value={state.player} onChange={(e) => set({ player: e.target.value })} placeholder="player" />
+        </DenseControlRow>
+      </FilterPanel>
+      {(data?.length ?? 0) === 0 ? <EmptyState title="No games match these filters" description="Adjust the filter panel or broaden the date and compliance constraints to see results." /> : null}
+      {(data?.length ?? 0) > 0 ? <Table>
         <TableHead><tr><Th>ID</Th><Th>Action</Th></tr></TableHead>
         <TableBody>{data?.map((game) => <tr key={game.id} className="transition hover:bg-hover"><Td>{game.id}</Td><Td><Link href={`/games/${game.id}`}><Button variant="ghost">Open</Button></Link></Td></tr>)}</TableBody>
-      </Table>
+      </Table> : null}
     </div>
   );
 }

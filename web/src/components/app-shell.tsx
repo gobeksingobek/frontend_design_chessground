@@ -132,8 +132,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             onMobileMenuToggle={() => setMobileMenuOpen((current) => !current)}
             onLogout={onLogout}
           />
-          <main className="min-w-0 px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
-            <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">{children}</div>
+          <main className="min-w-0 px-page-pad py-xl sm:px-xl lg:px-page-pad-lg lg:py-2xl">
+            <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-page-gap">{children}</div>
           </main>
         </div>
       </DashboardShell>
@@ -291,11 +291,11 @@ export function PageContainer({
     return () => context?.setPage({});
   }, [actions, context, description, title]);
 
-  return <div className="grid gap-6">{children}</div>;
+  return <div className="grid gap-page-gap">{children}</div>;
 }
 
 export function PageSection({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cn("grid gap-4", className)}>{children}</section>;
+  return <section className={cn("grid gap-section-gap", className)}>{children}</section>;
 }
 
 function IconWrapper({ className, children }: { className?: string; children: ReactNode }) {

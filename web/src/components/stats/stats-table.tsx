@@ -3,9 +3,8 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { Card } from "@/components/ui/card";
+import { DenseControlRow, DetailPane, EmptyState, FilterPanel } from "@/components/ui/page-patterns";
 import { Select } from "@/components/ui/select";
-import { SectionHeader } from "@/components/ui/section-header";
 import { Table, TableBody, TableHead, Td, Th } from "@/components/ui/table";
 import type { StatsRow } from "@/lib/types";
 import { cn } from "@/lib/cn";
@@ -38,32 +37,34 @@ export function StatsTable({ title, description, queryKey, queryFn, drilldownLab
   const pivot = useMemo(() => (!pivotColumn || !columns.includes(pivotColumn) ? [] : summarizePivot(rows, pivotColumn)), [rows, pivotColumn, columns]);
 
   return (
-    <div className="grid gap-4">
-      <SectionHeader title={title} description={description} />
+    <div className="grid gap-section-gap">
       {isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
       {error ? <p className="text-sm text-danger">{String(error)}</p> : null}
-      {!isLoading && !error && rows.length === 0 ? <p className="text-sm text-muted-foreground">No data yet.</p> : null}
+      {!isLoading && !error && rows.length === 0 ? <EmptyState title={`No ${title.toLowerCase()} data yet`} description={description} /> : null}
       {!isLoading && !error && rows.length > 0 ? (
         <>
-          <Card className="flex flex-wrap items-center gap-3 border-border/80 bg-elevated">
-            <label className="grid min-w-[220px] gap-2 text-sm text-muted-foreground">Pivot column<Select aria-label="Pivot column" value={pivotColumn} onChange={(e) => setPivotColumn(e.target.value)}><option value="">None</option>{columns.map((column) => <option key={column} value={column}>{column}</option>)}</Select></label>
-          </Card>
+          <FilterPanel title={`${title} filters`} description="Adjust the pivot while keeping dense controls compact.">
+            <DenseControlRow>
+              <label className="grid min-w-[220px] gap-xs text-sm text-muted-foreground">Pivot column<Select aria-label="Pivot column" value={pivotColumn} onChange={(e) => setPivotColumn(e.target.value)}><option value="">None</option>{columns.map((column) => <option key={column} value={column}>{column}</option>)}</Select></label>
+            </DenseControlRow>
+          </FilterPanel>
           <Table>
             <TableHead><tr>{columns.map((column) => <Th key={column}>{column}</Th>)}</tr></TableHead>
             <TableBody>
               {rows.map((row, index) => (
-                <tr key={index} className={cn("cursor-pointer transition hover:bg-hover", selectedIndex === index && "bg-selection text-selection-foreground") } onClick={() => setSelectedIndex(index)}>
+                <tr key={index} className={cn("cursor-pointer transition hover:bg-hover", selectedIndex === index && "bg-selection text-selection-foreground")} onClick={() => setSelectedIndex(index)}>
                   {columns.map((column) => <Td key={column} className={selectedIndex === index ? "text-selection-foreground" : undefined}>{String(row[column] ?? "")}</Td>)}
                 </tr>
               ))}
             </TableBody>
           </Table>
-          <Card className="bg-elevated">
-            <h3 className="text-base font-semibold text-foreground">{drilldownLabel}</h3>
-            {!selected ? <p className="text-sm text-muted-foreground">No row selected.</p> : null}
-            {selected ? <ul className="grid gap-2 text-sm text-foreground">{columns.map((column) => <li key={column}><strong>{column}:</strong> {String(selected[column] ?? "")}</li>)}</ul> : null}
-            {pivotColumn ? <><h4 className="text-sm font-semibold text-foreground">Pivot summary by {pivotColumn}</h4><ul className="grid gap-2 text-sm text-muted-foreground">{pivot.slice(0, 10).map((entry) => <li key={entry.key}>{entry.key}: {entry.count}</li>)}</ul></> : null}
-          </Card>
+          <div className="grid gap-grid-gap xl:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+            <DetailPane title={drilldownLabel} description="Inspect the currently selected row in a more readable layout.">
+              {!selected ? <p className="text-sm text-muted-foreground">No row selected.</p> : null}
+              {selected ? <ul className="grid gap-control-gap text-sm text-foreground">{columns.map((column) => <li key={column}><strong>{column}:</strong> {String(selected[column] ?? "")}</li>)}</ul> : null}
+            </DetailPane>
+            {pivotColumn ? <DetailPane title={`Pivot summary by ${pivotColumn}`} description="Top values by row count for the selected pivot."><ul className="grid gap-control-gap text-sm text-muted-foreground">{pivot.slice(0, 10).map((entry) => <li key={entry.key}>{entry.key}: {entry.count}</li>)}</ul></DetailPane> : null}
+          </div>
         </>
       ) : null}
     </div>
