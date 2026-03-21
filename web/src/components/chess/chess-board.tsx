@@ -27,6 +27,8 @@ interface ChessBoardProps {
   legalTargets?: string[];
   lastMove?: { from: string; to: string } | null;
   pieceAssetBasePath?: string;
+  surface?: "card" | "plain";
+  className?: string;
 }
 
 interface ParsedFen {
@@ -188,6 +190,8 @@ export function ChessBoard({
   legalTargets,
   lastMove,
   pieceAssetBasePath = DEFAULT_PIECE_THEME_PATH,
+  surface = "card",
+  className,
 }: ChessBoardProps) {
   const safeFen = fen || DEFAULT_FEN;
   const { board, activeColor, halfmoveClock, fullmoveNumber } = useMemo(() => parseFen(safeFen), [safeFen]);
@@ -228,11 +232,13 @@ export function ChessBoard({
     setSelectedSquare(null);
   };
 
-  return (
-    <Card
+  const content = (
+    <div
       className={cn(
-        "w-full gap-4 overflow-hidden border-border/80 bg-gradient-to-br from-card via-card to-elevated/80",
+        "w-full grid gap-4 overflow-hidden",
+        surface === "card" && "border-border/80 bg-gradient-to-br from-card via-card to-elevated/80",
         size === "large" ? "max-w-none" : "max-w-[480px]",
+        surface === "plain" && className,
       )}
       aria-label={title ?? "Chess board"}
     >
@@ -334,6 +340,10 @@ export function ChessBoard({
       <div className="grid gap-1">
         <small className="text-xs text-muted-foreground">FEN: {safeFen}</small>
       </div>
-    </Card>
+    </div>
   );
+
+  if (surface === "plain") return content;
+
+  return <Card className={cn("w-full", className)}>{content}</Card>;
 }
