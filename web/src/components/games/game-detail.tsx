@@ -10,8 +10,8 @@ import { EvalBar } from "@/components/games/eval-bar";
 import { MoveQualityBadge } from "@/components/games/move-quality-badge";
 import { DenseControlRow, DetailPane, EmptyState, FilterPanel } from "@/components/ui/page-patterns";
 import { Select } from "@/components/ui/select";
-import { Table, TableBody, TableHead, Td, Th } from "@/components/ui/table";
-import { BodyText, CaptionText, CardTitle, FieldLabel, MonoText, MutedText } from "@/components/ui/typography";
+import { Table, TableBody, TableContainer, TableHead, Td, Th } from "@/components/ui/table";
+import { BodyText, CaptionText, CardTitle, FieldLabel, MutedText } from "@/components/ui/typography";
 import { cn } from "@/lib/cn";
 import { getGame } from "@/lib/api-client";
 
@@ -24,7 +24,22 @@ export function GameDetail({ gameId, initialPly }: { gameId: number; initialPly:
   const { data, isLoading, error } = useQuery({ queryKey: ["game", gameId], queryFn: () => getGame(gameId) });
   const moves = useMemo(() => data?.moves ?? [], [data]);
   const headerEntries = useMemo(() => metadataEntries(data?.header), [data?.header]);
-  useEffect(() => { if (!moves.length) { setCursorIndex(0); return; } if (initialPly !== null) { const moveIndex = moves.findIndex((move) => move.ply === initialPly); if (moveIndex >= 0) { setCursorIndex(moveIndex + 1); return; } } setCursorIndex(0); }, [gameId, initialPly, moves]);
+
+  useEffect(() => {
+    if (!moves.length) {
+      setCursorIndex(0);
+      return;
+    }
+    if (initialPly !== null) {
+      const moveIndex = moves.findIndex((move) => move.ply === initialPly);
+      if (moveIndex >= 0) {
+        setCursorIndex(moveIndex + 1);
+        return;
+      }
+    }
+    setCursorIndex(0);
+  }, [gameId, initialPly, moves]);
+
   const selectedMove = useMemo(() => (cursorIndex === 0 ? null : moves[cursorIndex - 1] ?? null), [moves, cursorIndex]);
   const selectedPly = selectedMove?.ply ?? null;
   const boardFen = useMemo(() => (!moves.length || cursorIndex === 0 ? undefined : selectedMove?.fen ?? undefined), [moves.length, cursorIndex, selectedMove]);
@@ -38,12 +53,13 @@ export function GameDetail({ gameId, initialPly }: { gameId: number; initialPly:
   const navigateStart = useCallback(() => { setCursorIndex(0); }, []);
   const navigateEnd = useCallback(() => { setCursorIndex(moves.length); }, [moves.length]);
   const onKeyNavigate = useCallback((event: KeyboardEvent | ReactKeyboardEvent) => { if (shouldIgnoreKeyboardEvent(event)) return; const nextCursor = applyCursorKey(event.key, cursorIndex, moves.length); if (nextCursor !== cursorIndex) { event.preventDefault(); setCursorIndex(nextCursor); } }, [cursorIndex, moves.length]);
+
   if (isLoading) return <MutedText>Loading game detail...</MutedText>;
   if (error) return <BodyText className="font-medium text-danger">Failed to load game detail: {(error as Error).message}</BodyText>;
 
   return (
     <div className="grid gap-section-gap" onKeyDown={onKeyNavigate} tabIndex={0}>
-      <DetailPane title="Game header" description="Navigate between adjacent games and review curated game metadata instead of raw header JSON.">
+      <DetailPane title="Game summary" description="Metadata is grouped into a readable summary card so you can orient yourself before stepping through the board and move list.">
         <div className="flex flex-wrap items-center justify-between gap-control-gap">
           <div className="grid gap-xs">
             <CaptionText>Game detail</CaptionText>
@@ -55,37 +71,96 @@ export function GameDetail({ gameId, initialPly }: { gameId: number; initialPly:
             {data?.next_game_id ? <Link className="text-label font-medium text-primary hover:text-secondary" href={{ pathname: `/games/${data.next_game_id}`, query: selectedPly ? { ply: String(selectedPly) } : {} }}>Next game →</Link> : <span className="text-label text-muted-foreground/70">Next game →</span>}
           </DenseControlRow>
         </div>
-        {headerEntries.length > 0 ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{headerEntries.map(([label, value]) => <div key={label} className="rounded-xl border border-border/70 bg-card px-4 py-4"><FieldLabel as="span">{label}</FieldLabel><BodyText className="mt-2 break-words leading-6">{String(value)}</BodyText></div>)}</div> : <EmptyState title="No game metadata" description="This game does not currently expose header fields." />}
+        {headerEntries.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {headerEntries.map(([label, value]) => (
+              <div key={label} className="rounded-xl border border-border/70 bg-card px-4 py-4">
+                <FieldLabel as="span">{label}</FieldLabel>
+                <BodyText className="mt-2 break-words leading-6">{String(value)}</BodyText>
+              </div>
+            ))}
+          </div>
+        ) : <EmptyState title="No game metadata" description="This game does not currently expose header fields." />}
       </DetailPane>
 
-      <div className="grid gap-grid-gap xl:grid-cols-board">
-        <DetailPane title="Selected position" description="Review the board state and queue sideline analysis from any move with a FEN." className="gap-5">
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)] xl:items-start">
+      <div className="grid gap-grid-gap xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.9fr)] xl:items-start">
+        <DetailPane title="Board review" description="The board and move-level analysis stay side by side so board navigation never competes with the selected context.">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.95fr)] xl:items-start">
             <ChessBoard fen={boardFen} title="Selected game position" subtitle="Board highlights stay in sync with the selected move, analysis tools, and keyboard navigation." currentPlyIndex={cursorIndex} lastMove={lastMove} onNavigateNext={navigateNext} onNavigatePrev={navigatePrev} onNavigateStart={navigateStart} onNavigateEnd={navigateEnd} onMoveAttempt={({ uci }) => { const nextMove = moves[cursorIndex]; if (nextMove?.uci_move === uci) navigateNext(); }} size="large" />
             <div className="grid gap-4 xl:sticky xl:top-24">
-              <FilterPanel title="Move selector" description="Keep dense controls compact while the board and detail regions stay spacious.">
-            <label className="grid max-w-md gap-xs">
-              <FieldLabel as="span">Move ply</FieldLabel>
-              <Select value={selectedPly ?? ""} onChange={(event) => { const ply = event.target.value ? Number(event.target.value) : null; if (ply === null) { setCursorIndex(0); return; } const moveIndex = moves.findIndex((move) => move.ply === ply); setCursorIndex(moveIndex >= 0 ? moveIndex + 1 : 0); }}><option value="">Initial position</option>{moves.map((move) => <option key={move.ply} value={move.ply}>Ply {move.ply} - {move.san_move ?? move.uci_move ?? "-"}</option>)}</Select>
-            </label>
+              <FilterPanel title="Analysis side panel" description="Selection controls, eval summaries, and sideline actions stay together next to the board.">
+                <label className="grid gap-xs">
+                  <FieldLabel as="span">Move ply</FieldLabel>
+                  <Select value={selectedPly ?? ""} onChange={(event) => { const ply = event.target.value ? Number(event.target.value) : null; if (ply === null) { setCursorIndex(0); return; } const moveIndex = moves.findIndex((move) => move.ply === ply); setCursorIndex(moveIndex >= 0 ? moveIndex + 1 : 0); }}>
+                    <option value="">Initial position</option>
+                    {moves.map((move) => <option key={move.ply} value={move.ply}>Ply {move.ply} - {move.san_move ?? move.uci_move ?? "-"}</option>)}
+                  </Select>
+                </label>
+                {selectedMove ? (
+                  <div className="grid gap-3">
+                    <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
+                      <CaptionText>Selected move</CaptionText>
+                      <CardTitle className="mt-2 text-base">Ply {selectedMove.ply}: {selectedMove.san_move ?? selectedMove.uci_move ?? "-"}</CardTitle>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
+                      <CaptionText>Classification</CaptionText>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <MoveQualityBadge label={selectedMove.quality_label} />
+                        <span className="text-sm text-muted-foreground">{selectedMove.repertoire_class ?? "No repertoire class"}</span>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
+                      <CaptionText>Your CPL</CaptionText>
+                      <CardTitle className={cn("mt-2 text-base", selectedMove.your_cpl !== null && selectedMove.your_cpl > 120 ? "text-danger" : "text-success")}>{selectedMove.your_cpl ?? "—"}</CardTitle>
+                    </div>
+                  </div>
+                ) : <MutedText>Select a move to populate the analysis side panel.</MutedText>}
               </FilterPanel>
+              {selectedMove ? (
+                hasEvalData ? <div className="grid gap-4 xl:grid-cols-1"><EvalBar evalCp={selectedMove.pre_eval_cp} title="Before move" /><EvalBar evalCp={selectedMove.post_eval_cp} title="After move" /></div> : <DetailPane title="Eval panel" description="No pre/post eval values are available for the selected move."><MutedText>Evaluation data will appear here when engine scores are available.</MutedText></DetailPane>
+              ) : null}
               {selectedMove?.fen ? <BodyText className="rounded-xl border border-border/70 bg-background/60 px-4 py-3"><Link className="font-medium text-primary hover:text-secondary" href={{ pathname: "/analysis", query: { game_id: String(gameId), move_ply: String(selectedMove.ply), fen: selectedMove.fen } }}>Open in /analysis with this position</Link></BodyText> : null}
               {selectedMove?.fen ? <SidelineAnalysisForm key={`${selectedMove.ply}-${selectedMove.fen}`} title="Queue sideline from this game move" initialGameId={String(gameId)} initialMovePly={selectedMove.ply} initialFen={selectedMove.fen} lockedFields={{ gameId: true, movePly: true, fen: true }} /> : <EmptyState title="Select a move to analyze" description="Choose a move with an available FEN to queue a quick sideline evaluation from this game." />}
             </div>
           </div>
         </DetailPane>
 
-        <div className="grid gap-grid-gap">
-          {selectedMove ? <div className="grid gap-grid-gap xl:grid-cols-3"><DetailPane title="Selected ply details"><div className="grid gap-4"><div className="grid gap-1"><FieldLabel as="span">Move</FieldLabel><CardTitle>Ply {selectedMove.ply}: {selectedMove.san_move ?? selectedMove.uci_move ?? "-"}</CardTitle></div><div className="grid gap-1"><FieldLabel as="span">Quality</FieldLabel><div><MoveQualityBadge label={selectedMove.quality_label} /></div></div><div className="grid gap-1"><FieldLabel as="span">Your CPL</FieldLabel><BodyText className={cn("font-medium", selectedMove.your_cpl !== null && selectedMove.your_cpl > 120 ? "text-danger" : "text-success")}>{selectedMove.your_cpl ?? "-"}</BodyText></div></div></DetailPane>{hasEvalData ? <><EvalBar evalCp={selectedMove.pre_eval_cp} title="Before move" /><EvalBar evalCp={selectedMove.post_eval_cp} title="After move" /></> : <DetailPane title="Eval panel" description="No pre/post eval values are available for the selected move."><MutedText>Evaluation data will appear here when pre/post engine scores are available.</MutedText></DetailPane>}</div> : <EmptyState title="No move selected" description="Select a move from the table to populate the detail pane and evaluation cards." />}
-          {data?.header ? <DetailPane title="Developer diagnostics" description="Reserve monospaced formatting for payload inspection when troubleshooting header shape changes."><MonoText as="pre" className="overflow-x-auto rounded-lg border border-border bg-muted p-4">{JSON.stringify(data.header, null, 2)}</MonoText></DetailPane> : null}
-        </div>
+        <DetailPane title="Review guidance" description="Keep the selected context separate from the move list so the row table can stay dense and readable.">
+          <div className="grid gap-4">
+            <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
+              <CaptionText>Keyboard navigation</CaptionText>
+              <MutedText className="mt-2">Use ← and → to move one ply at a time, Home to reset to the start, and End to jump to the latest move.</MutedText>
+            </div>
+            <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
+              <CaptionText>Table emphasis</CaptionText>
+              <MutedText className="mt-2">The selected move row is highlighted so it remains visually tied to the board and side panel while you scroll.</MutedText>
+            </div>
+          </div>
+        </DetailPane>
       </div>
 
-      <DetailPane title="Moves" description="Click a row or use arrow keys while focused to step through the game.">
-        {moves.length === 0 ? <EmptyState title="No moves recorded" description="This game does not have move data available yet." /> : <Table>
-          <TableHead><tr><Th>Ply</Th><Th>SAN</Th><Th>UCI</Th><Th>Class</Th><Th>Quality</Th><Th>Your CPL</Th></tr></TableHead>
-          <TableBody>{moves.map((move) => <tr key={move.ply} className={cn("cursor-pointer transition hover:bg-hover", move.ply === selectedPly && "bg-selection")} onClick={() => { const moveIndex = moves.findIndex((candidate) => candidate.ply === move.ply); setCursorIndex(moveIndex + 1); }}><Td className={move.ply === selectedPly ? "text-selection-foreground" : undefined}>{move.ply}</Td><Td className={move.ply === selectedPly ? "text-selection-foreground font-medium" : "font-medium"}>{move.san_move ?? "-"}</Td><Td className={cn(move.ply === selectedPly ? "text-selection-foreground" : undefined, "font-mono text-mono")}>{move.uci_move ?? "-"}</Td><Td className={move.ply === selectedPly ? "text-selection-foreground" : undefined}>{move.repertoire_class ?? "-"}</Td><Td><MoveQualityBadge label={move.quality_label} /></Td><Td className={cn(move.ply === selectedPly && "text-selection-foreground", move.your_cpl !== null && move.your_cpl > 120 ? "text-danger" : "text-success", "font-medium")}>{move.your_cpl ?? "-"}</Td></tr>)}</TableBody>
-        </Table>}
+      <DetailPane title="Move list" description="Rows are styled for stronger emphasis, and the header stays sticky while you scroll longer games.">
+        {moves.length === 0 ? <EmptyState title="No moves recorded" description="This game does not have move data available yet." /> : (
+          <TableContainer className="max-h-[42rem] overflow-auto">
+            <Table>
+              <TableHead className="sticky top-0 z-10 bg-elevated/95 backdrop-blur">
+                <tr><Th>Ply</Th><Th>SAN</Th><Th>UCI</Th><Th>Class</Th><Th>Quality</Th><Th>Your CPL</Th></tr>
+              </TableHead>
+              <TableBody>
+                {moves.map((move) => (
+                  <tr key={move.ply} className={cn("cursor-pointer border-b border-border/50 transition hover:bg-hover", move.ply === selectedPly && "bg-selection shadow-soft")} onClick={() => { const moveIndex = moves.findIndex((candidate) => candidate.ply === move.ply); setCursorIndex(moveIndex + 1); }}>
+                    <Td className={move.ply === selectedPly ? "text-selection-foreground font-semibold" : undefined}>{move.ply}</Td>
+                    <Td className={move.ply === selectedPly ? "text-selection-foreground font-semibold" : "font-medium"}>{move.san_move ?? "-"}</Td>
+                    <Td className={cn(move.ply === selectedPly ? "text-selection-foreground" : undefined, "font-mono text-mono")}>{move.uci_move ?? "-"}</Td>
+                    <Td className={move.ply === selectedPly ? "text-selection-foreground" : undefined}>{move.repertoire_class ?? "-"}</Td>
+                    <Td><MoveQualityBadge label={move.quality_label} /></Td>
+                    <Td className={cn(move.ply === selectedPly && "text-selection-foreground", move.your_cpl !== null && move.your_cpl > 120 ? "text-danger" : "text-success", "font-medium")}>{move.your_cpl ?? "-"}</Td>
+                  </tr>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
       </DetailPane>
     </div>
   );

@@ -5,11 +5,20 @@ import { useQueryClient } from "@tanstack/react-query";
 import { PageContainer, PageSection } from "@/components/app-shell";
 import { ReviewActionsPanel } from "@/components/review/review-actions-panel";
 import { StatsTable } from "@/components/stats-table";
+import { SectionHeader } from "@/components/ui/section-header";
 import { listReviewItems } from "@/lib/api-client";
 
 import { refreshReviewPageStateAtomically } from "./review-page-state";
 
 export default function ReviewPage() {
   const queryClient = useQueryClient();
-  return <PageContainer title="Review" description="Process queued review items generated from deviations and coverage gaps."><PageSection><StatsTable title="Review" description="Review items generated from your deviations and coverage gaps." queryKey={["review-items"]} queryFn={listReviewItems} /><ReviewActionsPanel onActionCommitted={() => refreshReviewPageStateAtomically(queryClient)} /></PageSection></PageContainer>;
+  return (
+    <PageContainer title="Review" description="Process queued review items generated from deviations and coverage gaps.">
+      <PageSection>
+        <SectionHeader title="Review queue" description="The review queue now follows the same page title and intro placement used across analysis pages." />
+        <StatsTable title="Review" description="Review items generated from your deviations and coverage gaps." queryKey={["review-items"]} queryFn={listReviewItems} />
+        <ReviewActionsPanel onActionCommitted={() => refreshReviewPageStateAtomically(queryClient)} />
+      </PageSection>
+    </PageContainer>
+  );
 }
