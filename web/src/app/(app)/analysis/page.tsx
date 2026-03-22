@@ -1,13 +1,34 @@
 import { PageContainer, PageSection } from "@/components/app-shell";
 import { SidelineAnalysisForm } from "@/components/analysis/sideline-analysis-form";
 import { ChessBoard } from "@/components/chess/chess-board";
-import { DetailPane, HeroWorkspaceSection, UtilityPanel, UtilityPanelGroup, UtilityPanelStack } from "@/components/ui/page-patterns";
+import { BoardWorkspace } from "@/components/chess/board-workspace";
+import { DetailPane, UtilityPanel, UtilityPanelGroup, UtilityPanelStack } from "@/components/ui/page-patterns";
 import { CaptionText, CardTitle, MutedText } from "@/components/ui/typography";
 
 function firstParam(value: string | string[] | undefined): string {
   if (!value) return "";
   if (Array.isArray(value)) return value[0] ?? "";
   return value;
+}
+
+function ContextValueCard({
+  label,
+  value,
+  description,
+  breakValue,
+}: {
+  label: string;
+  value: string | number;
+  description: string;
+  breakValue?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
+      <CaptionText>{label}</CaptionText>
+      <CardTitle className={breakValue ? "mt-2 break-all text-base" : "mt-2 text-base"}>{value}</CardTitle>
+      <MutedText className="mt-2">{description}</MutedText>
+    </div>
+  );
 }
 
 export default function AnalysisPage({ searchParams }: { searchParams: Record<string, string | string[] | undefined>; }) {
@@ -21,10 +42,18 @@ export default function AnalysisPage({ searchParams }: { searchParams: Record<st
   return (
     <PageContainer title="Board Analysis" description="Run a quick local WASM eval, inspect the current position, and queue authoritative sideline analysis.">
       <PageSection>
-        <HeroWorkspaceSection
-          title="Analysis Board"
-          description="Run a quick local WASM eval for your first custom move, then queue authoritative sideline analysis."
-          hero={(
+        <BoardWorkspace
+          header={(
+            <div className="grid gap-2">
+              <div className="grid gap-1">
+                <h2 className="text-xl font-semibold tracking-tight text-foreground">Analysis board</h2>
+                <MutedText>
+                  Run a quick local WASM eval for your first custom move, then queue authoritative sideline analysis without pushing the board out of focus.
+                </MutedText>
+              </div>
+            </div>
+          )}
+          board={(
             <ChessBoard
               fen={initialFen}
               title="Live position"
@@ -34,8 +63,20 @@ export default function AnalysisPage({ searchParams }: { searchParams: Record<st
               className="h-full max-w-none"
             />
           )}
-          heroClassName="gap-5"
-          support={(
+          main={(
+            <DetailPane
+              title="Position context"
+              description="Initial route state still comes from the existing query params so deep links from game review and other tools keep working."
+              className="border-none bg-transparent p-0 shadow-none"
+              contentClassName="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+            >
+              <ContextValueCard label="Game id" value={initialGameId || "Not provided"} description="Links the queued sideline back to the originating game when available." />
+              <ContextValueCard label="Move ply" value={resolvedMovePly ?? "Not provided"} description="Keeps move-level context aligned with the source position used to seed analysis." />
+              <ContextValueCard label="Starting FEN" value={initialFen || "Default starting position"} description="The board opens from this exact position when a FEN is supplied." breakValue />
+              <ContextValueCard label="Branch moves" value={initialBranchMoves || "Not provided"} description="Candidate UCI moves continue to prefill the sideline queue form for quick iteration." breakValue />
+            </DetailPane>
+          )}
+          aside={(
             <UtilityPanelStack>
               <UtilityPanel
                 eyebrow="Contextual tool"
@@ -74,35 +115,7 @@ export default function AnalysisPage({ searchParams }: { searchParams: Record<st
               </UtilityPanel>
             </UtilityPanelStack>
           )}
-        >
-          <DetailPane
-            title="Position context"
-            description="Initial route state still comes from the existing query params so deep links from game review and other tools keep working."
-          >
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
-                <CaptionText>Game id</CaptionText>
-                <CardTitle className="mt-2 text-base">{initialGameId || "Not provided"}</CardTitle>
-                <MutedText className="mt-2">Links the queued sideline back to the originating game when available.</MutedText>
-              </div>
-              <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
-                <CaptionText>Move ply</CaptionText>
-                <CardTitle className="mt-2 text-base">{resolvedMovePly ?? "Not provided"}</CardTitle>
-                <MutedText className="mt-2">Keeps move-level context aligned with the source position used to seed analysis.</MutedText>
-              </div>
-              <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
-                <CaptionText>Starting FEN</CaptionText>
-                <CardTitle className="mt-2 break-all text-base">{initialFen || "Default starting position"}</CardTitle>
-                <MutedText className="mt-2">The board opens from this exact position when a FEN is supplied.</MutedText>
-              </div>
-              <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
-                <CaptionText>Branch moves</CaptionText>
-                <CardTitle className="mt-2 break-all text-base">{initialBranchMoves || "Not provided"}</CardTitle>
-                <MutedText className="mt-2">Candidate UCI moves continue to prefill the sideline queue form for quick iteration.</MutedText>
-              </div>
-            </div>
-          </DetailPane>
-        </HeroWorkspaceSection>
+        />
       </PageSection>
     </PageContainer>
   );

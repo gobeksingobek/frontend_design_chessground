@@ -1,8 +1,26 @@
 import { PageContainer, PageSection } from "@/components/app-shell";
-import { TreeExplorer } from "@/components/tree/tree-explorer";
-import { TreeEndpointsPanel } from "@/components/tree/tree-endpoints-panel";
-import { SectionHeader } from "@/components/ui/section-header";
+import { RepertoireTreeModule } from "@/components/tree/repertoire-tree-module";
+import { UtilityPanel } from "@/components/ui/page-patterns";
 
 export default function TreePage() {
-  return <PageContainer title="Tree Explorer" description="Browse tree endpoints for branch navigation, coverage, and move metrics."><PageSection><SectionHeader title="Tree" description="Browse line-tree endpoints for branch navigation, coverage, and branch metrics." /><TreeEndpointsPanel /><TreeExplorer /></PageSection></PageContainer>;
+  return (
+    <PageContainer title="Tree Explorer" description="Browse tree endpoints for branch navigation, coverage, and move metrics.">
+      <PageSection>
+        <RepertoireTreeModule
+          controls={(
+            <UtilityPanel
+              eyebrow="Product priority"
+              title="Why tree is the next page"
+              description="Tree exploration benefits most from the same board-first workspace pattern because users compare branch context, coverage, and follow-on moves in one reading flow."
+            >
+              <div className="grid gap-2 text-sm text-muted-foreground">
+                <p>The redesign stays scoped to branch-heavy pages instead of rewriting unrelated tables for visual consistency alone.</p>
+                <p>Lines and repertoire import remain unchanged because they do not depend on the same board-dominant workspace.</p>
+              </div>
+            </UtilityPanel>
+          )}
+        />
+      </PageSection>
+    </PageContainer>
+  );
 }
