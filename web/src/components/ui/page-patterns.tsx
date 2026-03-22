@@ -30,11 +30,11 @@ export function DataTableSection({ title, description, actions, children, classN
   );
 }
 
-export function DetailPane({ title, description, children, className }: { title?: string; description?: string; children: ReactNode; className?: string }) {
+export function DetailPane({ title, description, children, className, contentClassName }: { title?: string; description?: string; children: ReactNode; className?: string; contentClassName?: string }) {
   return (
-    <Card className={cn("gap-grid-gap bg-elevated", className)}>
+    <Card variant="soft" className={cn("gap-grid-gap", className)}>
       {title ? <SectionHeader title={title} description={description} /> : description ? <MutedText>{description}</MutedText> : null}
-      {children}
+      <div className={cn("grid gap-control-gap", contentClassName)}>{children}</div>
     </Card>
   );
 }
@@ -65,13 +65,64 @@ export function HeroWorkspaceSection({
   return (
     <section className={cn("grid gap-grid-gap", className)}>
       {title ? <SectionHeader title={title} description={description} actions={actions} /> : description || actions ? <div className="grid gap-sm">{description ? <MutedText as="div">{description}</MutedText> : null}{actions ? <div className="flex flex-wrap items-center gap-sm">{actions}</div> : null}</div> : null}
-      <div className={cn("grid gap-grid-gap xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.9fr)] xl:items-start", contentClassName)}>
-        <div className="grid gap-grid-gap">
-          {hero ? <Card variant="workspace" className={cn("gap-grid-gap overflow-hidden", heroClassName)}>{hero}</Card> : null}
-          {children}
-        </div>
-        {support ? <SupportRail className={supportClassName}>{support}</SupportRail> : null}
+      <WorkspaceLayout
+        hero={hero}
+        support={support}
+        heroClassName={heroClassName}
+        contentClassName={contentClassName}
+        supportClassName={supportClassName}
+      >
+        {children}
+      </WorkspaceLayout>
+    </section>
+  );
+}
+
+export function WorkspaceLayout({
+  hero,
+  support,
+  children,
+  heroClassName,
+  contentClassName,
+  supportClassName,
+  className,
+}: {
+  hero?: ReactNode;
+  support?: ReactNode;
+  children?: ReactNode;
+  heroClassName?: string;
+  contentClassName?: string;
+  supportClassName?: string;
+  className?: string;
+}) {
+  return (
+    <div className={cn("grid gap-grid-gap xl:grid-cols-[minmax(0,1.7fr)_minmax(19rem,0.88fr)] xl:items-start", contentClassName, className)}>
+      <div className="grid gap-grid-gap min-w-0">
+        {hero ? <Card variant="workspace" className={cn("gap-grid-gap overflow-hidden", heroClassName)}>{hero}</Card> : null}
+        {children}
       </div>
+      {support ? <SupportRail className={supportClassName}>{support}</SupportRail> : null}
+    </div>
+  );
+}
+
+export function WorkspaceSection({
+  title,
+  description,
+  actions,
+  children,
+  className,
+}: {
+  title?: string;
+  description?: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={cn("grid gap-grid-gap", className)}>
+      {title ? <SectionHeader title={title} description={description} actions={actions} /> : description || actions ? <div className="grid gap-sm">{description ? <MutedText as="div">{description}</MutedText> : null}{actions ? <div className="flex flex-wrap items-center gap-sm">{actions}</div> : null}</div> : null}
+      {children}
     </section>
   );
 }

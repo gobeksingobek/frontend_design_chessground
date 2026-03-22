@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, useEffect, useMemo, useState } from "react";
+import { CSSProperties, ReactNode, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -51,6 +51,10 @@ interface ChessBoardState {
   legalTargetSet: Set<string>;
   selectedSquare: Square | null;
   setSelectedSquare: (square: Square | null) => void;
+}
+
+interface ChessBoardRootProps extends ChessBoardProps {
+  children: (state: ChessBoardState) => ReactNode;
 }
 
 function toSquare(rankIndex: number, fileIndex: number): Square {
@@ -380,56 +384,82 @@ function normalizeVariant(surface: ChessBoardProps["surface"], variant: ChessBoa
   return surface === "plain" ? "surface" : "framed";
 }
 
-export function ChessBoardFramed(props: ChessBoardProps) {
+export function ChessBoardRoot({ children, ...props }: ChessBoardRootProps) {
   const state = useChessBoardState(props);
-  const variant = normalizeVariant(props.surface, props.variant);
-  const content = (
-    <div className={cn("grid w-full gap-4 overflow-hidden rounded-[1.1rem]", variant === "framed" && "border-border/80 bg-gradient-to-br from-card via-card to-elevated/80", props.size === "large" ? "max-w-none" : "max-w-[480px]")} aria-label={props.title ?? "Chess board"}>
-      <ChessBoardHeader
-        title={props.title}
-        subtitle={props.subtitle}
-        currentPlyIndex={props.currentPlyIndex}
-        onNavigateStart={props.onNavigateStart}
-        onNavigatePrev={props.onNavigatePrev}
-        onNavigateNext={props.onNavigateNext}
-        onNavigateEnd={props.onNavigateEnd}
-        activeColor={state.activeColor}
-        fullmoveNumber={state.fullmoveNumber}
-        halfmoveClock={state.halfmoveClock}
-      />
-      <ChessBoardSurface
-        size={props.size}
-        showCoordinates={props.showCoordinates}
-        currentPlyIndex={props.currentPlyIndex}
-        onMoveAttempt={props.onMoveAttempt}
-        pieceAssetBasePath={props.pieceAssetBasePath}
-        lastMove={props.lastMove}
-        state={state}
-      />
-      <ChessBoardDetails safeFen={state.safeFen} />
-    </div>
+  return <>{children(state)}</>;
+}
+
+export function ChessBoardFrame({
+  state,
+  className,
+  variant = "framed",
+  children,
+}: {
+  state: ChessBoardState;
+  className?: string;
+  variant?: ChessBoardVariant;
+  children: ReactNode;
+}) {
+  const content = <div className={cn("grid w-full gap-4 overflow-hidden rounded-[1.1rem]", variant === "framed" && "border-border/80 bg-gradient-to-br from-card via-card to-elevated/80")}>{children}</div>;
+
+  if (variant === "surface") return <div className={cn("w-full", className)}>{content}</div>;
+  return <Card className={cn("w-full", className)}>{content}</Card>;
+}
+
+export function ChessBoardFramed(props: ChessBoardProps) {
+  return (
+    <ChessBoardRoot {...props}>
+      {(state) => {
+        const variant = normalizeVariant(props.surface, props.variant);
+
+        return (
+          <ChessBoardFrame state={state} variant={variant} className={props.className}>
+            <ChessBoardHeader
+              title={props.title}
+              subtitle={props.subtitle}
+              currentPlyIndex={props.currentPlyIndex}
+              onNavigateStart={props.onNavigateStart}
+              onNavigatePrev={props.onNavigatePrev}
+              onNavigateNext={props.onNavigateNext}
+              onNavigateEnd={props.onNavigateEnd}
+              activeColor={state.activeColor}
+              fullmoveNumber={state.fullmoveNumber}
+              halfmoveClock={state.halfmoveClock}
+            />
+            <ChessBoardSurface
+              size={props.size}
+              showCoordinates={props.showCoordinates}
+              currentPlyIndex={props.currentPlyIndex}
+              onMoveAttempt={props.onMoveAttempt}
+              pieceAssetBasePath={props.pieceAssetBasePath}
+              lastMove={props.lastMove}
+              state={state}
+            />
+            <ChessBoardDetails safeFen={state.safeFen} />
+          </ChessBoardFrame>
+        );
+      }}
+    </ChessBoardRoot>
   );
-
-  if (variant === "surface") return <div className={cn("w-full", props.className)}>{content}</div>;
-
-  return <Card className={cn("w-full", props.className)}>{content}</Card>;
 }
 
 export function ChessBoardBoardOnly(props: ChessBoardProps) {
-  const state = useChessBoardState(props);
-
   return (
-    <div className={cn("w-full", props.size === "large" ? "max-w-none" : "max-w-[480px]", props.className)} aria-label={props.title ?? "Chess board surface"}>
-      <ChessBoardSurface
-        size={props.size}
-        showCoordinates={props.showCoordinates}
-        currentPlyIndex={props.currentPlyIndex}
-        onMoveAttempt={props.onMoveAttempt}
-        pieceAssetBasePath={props.pieceAssetBasePath}
-        lastMove={props.lastMove}
-        state={state}
-      />
-    </div>
+    <ChessBoardRoot {...props}>
+      {(state) => (
+        <div className={cn("w-full", props.size === "large" ? "max-w-none" : "max-w-[480px]", props.className)} aria-label={props.title ?? "Chess board surface"}>
+          <ChessBoardSurface
+            size={props.size}
+            showCoordinates={props.showCoordinates}
+            currentPlyIndex={props.currentPlyIndex}
+            onMoveAttempt={props.onMoveAttempt}
+            pieceAssetBasePath={props.pieceAssetBasePath}
+            lastMove={props.lastMove}
+            state={state}
+          />
+        </div>
+      )}
+    </ChessBoardRoot>
   );
 }
 

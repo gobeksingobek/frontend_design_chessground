@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 
 import { Card } from "@/components/ui/card";
+import { SupportRail, WorkspaceLayout } from "@/components/ui/page-patterns";
 import { cn } from "@/lib/cn";
 
 interface BoardWorkspaceProps {
@@ -8,10 +9,12 @@ interface BoardWorkspaceProps {
   board: ReactNode;
   main?: ReactNode;
   aside?: ReactNode;
+  footer?: ReactNode;
   className?: string;
+  heroClassName?: string;
   boardWrapperClassName?: string;
   mainCardClassName?: string;
-  asideCardClassName?: string;
+  asideClassName?: string;
 }
 
 export function BoardWorkspace({
@@ -19,21 +22,29 @@ export function BoardWorkspace({
   board,
   main,
   aside,
+  footer,
   className,
+  heroClassName,
   boardWrapperClassName,
   mainCardClassName,
-  asideCardClassName,
+  asideClassName,
 }: BoardWorkspaceProps) {
   return (
-    <div className={cn("grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start", className)}>
-      <Card className={cn("gap-5", mainCardClassName)}>
-        {header ? <div>{header}</div> : null}
-        <div className={cn("w-full max-w-[900px] aspect-square mx-auto", boardWrapperClassName)}>
-          {board}
+    <WorkspaceLayout
+      className={className}
+      heroClassName={heroClassName}
+      support={aside ? <SupportRail className={asideClassName}>{aside}</SupportRail> : undefined}
+      hero={(
+        <div className="grid gap-grid-gap">
+          {header ? <div>{header}</div> : null}
+          <div className={cn("mx-auto aspect-square w-full max-w-[900px]", boardWrapperClassName)}>
+            {board}
+          </div>
+          {main ? <Card variant="workspacePanel" className={cn("gap-grid-gap", mainCardClassName)}>{main}</Card> : null}
         </div>
-        {main ? <div>{main}</div> : null}
-      </Card>
-      {aside ? <Card className={cn("xl:sticky xl:top-24 xl:self-start", asideCardClassName)}>{aside}</Card> : null}
-    </div>
+      )}
+    >
+      {footer}
+    </WorkspaceLayout>
   );
 }
