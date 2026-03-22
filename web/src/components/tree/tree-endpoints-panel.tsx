@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { toCanonicalTreeSnapshot } from "@/components/tree/tree-explorer";
+import { toCanonicalTreeSnapshot } from "@/components/tree/tree-explorer-shared";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getLineTreeBrowse, getLineTreeCoverage } from "@/lib/api-client";
