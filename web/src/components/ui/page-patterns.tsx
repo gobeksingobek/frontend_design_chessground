@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SectionHeader } from "@/components/ui/section-header";
-import { CardTitle, MutedText } from "@/components/ui/typography";
+import { CaptionText, CardTitle, MutedText } from "@/components/ui/typography";
 
 export { EmptyState };
 
@@ -77,7 +77,71 @@ export function HeroWorkspaceSection({
 }
 
 export function SupportRail({ children, className }: { children: ReactNode; className?: string }) {
-  return <aside className={cn("grid gap-grid-gap xl:sticky xl:top-6 xl:self-start", className)}>{children}</aside>;
+  return <aside className={cn("grid gap-lg lg:sticky lg:top-6 lg:self-start", className)}>{children}</aside>;
+}
+
+export function UtilityPanelStack({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("grid gap-md", className)}>{children}</div>;
+}
+
+export function UtilityPanel({
+  title,
+  description,
+  eyebrow,
+  actions,
+  children,
+  className,
+  contentClassName,
+}: {
+  title?: string;
+  description?: ReactNode;
+  eyebrow?: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  contentClassName?: string;
+}) {
+  return (
+    <Card variant="utility" className={cn("gap-md rounded-xl", className)}>
+      {title || description || eyebrow || actions ? (
+        <div className="grid gap-2">
+          {eyebrow ? <CaptionText className="text-[0.68rem] tracking-[0.16em] text-muted-foreground/75">{eyebrow}</CaptionText> : null}
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="grid gap-1.5">
+              {title ? <CardTitle className="text-sm font-semibold text-foreground/95">{title}</CardTitle> : null}
+              {description ? <MutedText as="div" className="text-sm leading-6">{description}</MutedText> : null}
+            </div>
+            {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+          </div>
+        </div>
+      ) : null}
+      <div className={cn("grid gap-sm", contentClassName)}>{children}</div>
+    </Card>
+  );
+}
+
+export function UtilityPanelGroup({
+  title,
+  description,
+  children,
+  className,
+}: {
+  title?: string;
+  description?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={cn("grid gap-2.5", className)}>
+      {title || description ? (
+        <div className="grid gap-1">
+          {title ? <CardTitle className="text-sm text-foreground/90">{title}</CardTitle> : null}
+          {description ? <MutedText as="div" className="text-sm leading-6">{description}</MutedText> : null}
+        </div>
+      ) : null}
+      <div className="grid gap-sm">{children}</div>
+    </section>
+  );
 }
 
 export function SecondaryModuleStack({
