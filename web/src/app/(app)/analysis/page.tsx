@@ -1,7 +1,7 @@
 import { PageContainer, PageSection } from "@/components/app-shell";
 import { SidelineAnalysisForm } from "@/components/analysis/sideline-analysis-form";
 import { ChessBoard } from "@/components/chess/chess-board";
-import { DetailPane, HeroWorkspaceSection } from "@/components/ui/page-patterns";
+import { DetailPane, HeroWorkspaceSection, UtilityPanel, UtilityPanelGroup, UtilityPanelStack } from "@/components/ui/page-patterns";
 import { CaptionText, CardTitle, MutedText } from "@/components/ui/typography";
 
 function firstParam(value: string | string[] | undefined): string {
@@ -36,19 +36,43 @@ export default function AnalysisPage({ searchParams }: { searchParams: Record<st
           )}
           heroClassName="gap-5"
           support={(
-            <DetailPane
-              title="Create sideline from custom position"
-              description="Queue the same sideline workflow from the utility rail so the board remains the dominant surface."
-              className="bg-elevated"
-            >
-              <SidelineAnalysisForm
+            <UtilityPanelStack>
+              <UtilityPanel
+                eyebrow="Contextual tool"
                 title="Create sideline from custom position"
-                initialGameId={initialGameId}
-                initialMovePly={resolvedMovePly}
-                initialFen={initialFen}
-                initialBranchMoves={initialBranchMoves}
-              />
-            </DetailPane>
+                description="Queue the same sideline workflow from the rail so the board remains the dominant surface."
+              >
+                <SidelineAnalysisForm
+                  title="Create sideline from custom position"
+                  initialGameId={initialGameId}
+                  initialMovePly={resolvedMovePly}
+                  initialFen={initialFen}
+                  initialBranchMoves={initialBranchMoves}
+                />
+              </UtilityPanel>
+              <UtilityPanel
+                eyebrow="Move summary"
+                title="Deep-link payload"
+                description="Route parameters stay visible in a lighter-weight stack so support modules do not overpower the analysis board."
+              >
+                <UtilityPanelGroup>
+                  <div className="grid gap-2 text-sm text-muted-foreground">
+                    <div className="flex items-start justify-between gap-3 rounded-lg border border-border/55 bg-background/55 px-3 py-2.5">
+                      <span>Game id</span>
+                      <span className="text-right font-medium text-foreground">{initialGameId || "Not provided"}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 rounded-lg border border-border/55 bg-background/55 px-3 py-2.5">
+                      <span>Move ply</span>
+                      <span className="text-right font-medium text-foreground">{resolvedMovePly ?? "Not provided"}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 rounded-lg border border-border/55 bg-background/55 px-3 py-2.5">
+                      <span>Branch moves</span>
+                      <span className="break-all text-right font-medium text-foreground">{initialBranchMoves || "Not provided"}</span>
+                    </div>
+                  </div>
+                </UtilityPanelGroup>
+              </UtilityPanel>
+            </UtilityPanelStack>
           )}
         >
           <DetailPane
