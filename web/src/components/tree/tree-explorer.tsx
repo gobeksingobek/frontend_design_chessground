@@ -3,6 +3,8 @@
 import { TreeExplorerView, type TreeExplorerLayout } from "@/components/tree/tree-explorer-view";
 import { useTreeExplorerData } from "@/components/tree/use-tree-explorer-data";
 
+export type { TreeExplorerLayout } from "@/components/tree/tree-explorer-view";
+
 export { toCanonicalTreeSnapshot } from "@/components/tree/tree-explorer-shared";
 
 export function TreeExplorer({ layout = "workspace" }: { layout?: TreeExplorerLayout }) {
