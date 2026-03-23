@@ -22,11 +22,6 @@ type NavSection = {
   items: NavItem[];
 };
 
-type QuickStat = {
-  label: string;
-  value: string;
-};
-
 type DashboardPageConfig = {
   title?: string;
   description?: string;
@@ -53,32 +48,12 @@ const navSections: NavSection[] = [
     label: "Analysis",
     items: [
       { href: "/overview", label: "Overview", icon: GridIcon },
-      { href: "/analysis", label: "Board analysis", icon: ActivityIcon },
+      { href: "/analysis", label: "Analysis", icon: ActivityIcon },
       { href: "/games", label: "Games", icon: GamepadIcon, match: (pathname) => pathname.startsWith("/games") },
-      { href: "/insights", label: "Insights", icon: SparklesIcon },
-      { href: "/sidelines", label: "Sidelines", icon: BranchIcon },
-      { href: "/tree", label: "Explorer tree", icon: TreeIcon },
-    ],
-  },
-  {
-    label: "Training",
-    items: [
+      { href: "/tree", label: "Repertoire", icon: TreeIcon },
       { href: "/trainer", label: "Trainer", icon: TargetIcon },
-      { href: "/review", label: "Review queue", icon: RefreshIcon },
-      { href: "/time-usage", label: "Time usage", icon: ClockIcon },
-      { href: "/rating-bands", label: "Rating bands", icon: BarChartIcon },
+      { href: "/settings", label: "Settings", icon: SettingsIcon },
     ],
-  },
-  {
-    label: "Repertoire",
-    items: [
-      { href: "/repertoires", label: "Imports", icon: FolderIcon },
-      { href: "/lines", label: "Lines", icon: BookIcon },
-    ],
-  },
-  {
-    label: "Settings",
-    items: [{ href: "/settings", label: "Runtime settings", icon: SettingsIcon }],
   },
 ];
 
@@ -98,12 +73,6 @@ const pageFallbacks = new Map<string, DashboardPageConfig>([
   ["/tree", { title: "Tree Explorer", description: "Navigate branch structure, coverage, and move metrics." }],
 ]);
 
-
-const quickStats: QuickStat[] = [
-  { label: "Workspace", value: "Web" },
-  { label: "Theme", value: "Adaptive" },
-  { label: "Focus", value: "Analysis" },
-];
 
 function getFallbackPage(pathname: string): DashboardPageConfig {
   if (pathname.startsWith("/games/")) {
@@ -154,7 +123,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             onMobileMenuToggle={() => setMobileMenuOpen((current) => !current)}
             onLogout={onLogout}
           />
-          <main className="min-w-0 px-page-pad py-xl sm:px-xl lg:px-page-pad-lg lg:py-2xl">
+          <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
             <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-page-gap">{children}</div>
           </main>
         </div>
@@ -182,59 +151,38 @@ export function DashboardSidebar({
   const sidebar = (
     <div
       className={cn(
-        "flex h-full flex-col rounded-[1.75rem] border border-border/80 bg-elevated/95 text-foreground shadow-panel backdrop-blur-sm",
+        "flex h-full flex-col rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(8,15,30,0.92),rgba(6,12,24,0.86))] text-foreground shadow-[0_24px_70px_rgba(2,6,23,0.42)] ring-1 ring-inset ring-white/8 backdrop-blur-2xl",
         collapsed ? "w-[5.5rem]" : "w-72",
       )}
     >
-      <div className="border-b border-border/70 px-4 py-4">
+      <div className="border-b border-white/10 px-5 py-5">
         <div className="flex items-center justify-between gap-3">
           <Link href="/overview" className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/20 bg-primary/12 text-primary shadow-soft ring-1 ring-inset ring-primary/20">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-sky-300/20 bg-sky-400/12 text-sky-300 shadow-[0_10px_28px_rgba(56,189,248,0.16)] ring-1 ring-inset ring-white/10">
               <KnightIcon className="h-[1.15rem] w-[1.15rem]" />
             </div>
             {!collapsed ? (
               <div className="min-w-0">
-                <p className="truncate text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-primary/75">ChessGround</p>
-                <p className="truncate text-sm font-semibold text-foreground">Analysis workspace</p>
+                <p className="truncate text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-slate-400">Chess</p>
+                <p className="truncate text-xl font-semibold text-slate-50">Chess</p>
               </div>
             ) : null}
           </Link>
           <button
             type="button"
             onClick={onCollapseToggle}
-            className="hidden rounded-xl border border-border/70 bg-card/80 p-2 text-muted-foreground shadow-soft transition hover:bg-overlay hover:text-foreground lg:inline-flex"
+            className="hidden rounded-xl border border-white/10 bg-white/5 p-2 text-slate-400 transition hover:bg-white/10 hover:text-slate-100 lg:inline-flex"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
             <PanelIcon className={cn("h-4 w-4 transition-transform", collapsed && "rotate-180")} />
           </button>
         </div>
-        {!collapsed ? (
-          <div className="mt-4 grid gap-3 rounded-2xl border border-border/70 bg-card/80 p-3 shadow-soft">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground/75">Control center</p>
-                <p className="mt-1 text-sm font-medium text-foreground">Move faster across analysis, review, and training.</p>
-              </div>
-              <div className="rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-success">
-                Live
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {quickStats.map((stat) => (
-                <div key={stat.label} className="rounded-xl border border-border/60 bg-elevated/80 px-2.5 py-2">
-                  <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground/75">{stat.label}</p>
-                  <p className="mt-1 text-sm font-semibold text-foreground">{stat.value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
       </div>
-      <div className="flex-1 overflow-y-auto px-3 py-4">
+      <div className="flex-1 overflow-y-auto px-3 py-6">
         <nav className="grid gap-6">
           {navSections.map((section) => (
-            <div key={section.label} className="grid gap-2">
-              <p className={cn("px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70", collapsed && "px-0 text-center")}>{collapsed ? section.label.slice(0, 1) : section.label}</p>
+            <div key={section.label} className="grid gap-3">
+              <p className={cn("px-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500/80", collapsed && "px-0 text-center")}>{collapsed ? section.label.slice(0, 1) : section.label}</p>
               <div className="grid gap-1">
                 {section.items.map((item) => {
                   const active = item.match ? item.match(pathname) : pathname === item.href;
@@ -244,14 +192,14 @@ export function DashboardSidebar({
                       href={item.href}
                       onClick={onMobileClose}
                       className={cn(
-                        "group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition duration-200 hover:-translate-y-px hover:border-border/70 hover:bg-hover hover:text-hover-foreground",
+                        "group relative flex items-center gap-3 overflow-hidden rounded-[1.1rem] border border-transparent px-3 py-3 text-sm font-medium text-slate-300/78 transition duration-200 hover:border-white/10 hover:bg-white/6 hover:text-slate-100",
                         collapsed && "justify-center px-2",
-                        active && "border-primary/25 bg-selection text-selection-foreground shadow-soft",
+                        active && "border-sky-300/20 bg-[linear-gradient(180deg,rgba(59,130,246,0.18),rgba(30,41,59,0.34))] text-slate-50 shadow-[0_14px_30px_rgba(15,23,42,0.22)]",
                       )}
                       aria-current={active ? "page" : undefined}
                     >
-                      <span className={cn("absolute inset-y-2 left-0 w-1 rounded-r-full bg-primary opacity-0 transition", active && "opacity-100", collapsed && "inset-x-2 inset-y-auto bottom-0 left-2 h-1 w-auto rounded-t-full rounded-r-none")} />
-                      <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl border border-transparent bg-transparent text-muted-foreground transition group-hover:border-primary/10 group-hover:bg-primary/5 group-hover:text-primary", active && "border-primary/15 bg-primary/10 text-primary")}>
+                      <span className={cn("absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-sky-300 opacity-0 transition", active && "opacity-100", collapsed && "inset-x-2 inset-y-auto bottom-0 left-2 h-1 w-auto rounded-t-full rounded-r-none")} />
+                      <span className={cn("flex h-9 w-9 items-center justify-center rounded-xl border border-transparent bg-transparent text-slate-400 transition group-hover:border-white/10 group-hover:bg-white/10 group-hover:text-sky-300", active && "border-sky-300/15 bg-sky-400/10 text-sky-300")}>
                         {item.icon({ className: "h-4 w-4" })}
                       </span>
                       {!collapsed ? <span className="truncate">{item.label}</span> : null}
@@ -268,7 +216,7 @@ export function DashboardSidebar({
 
   return (
     <>
-      <aside className="sticky top-0 hidden h-screen shrink-0 border-r border-border/70 bg-sidebar/60 p-3 lg:block">{sidebar}</aside>
+      <aside className="sticky top-0 hidden h-screen shrink-0 border-r border-white/6 bg-[rgba(2,6,23,0.34)] p-4 backdrop-blur-xl lg:block">{sidebar}</aside>
       {mobileOpen ? (
         <div className="fixed inset-0 z-50 lg:hidden">
           <button type="button" className="absolute inset-0 bg-background/70 backdrop-blur-sm" onClick={onMobileClose} aria-label="Close navigation" />
@@ -293,8 +241,8 @@ export function DashboardHeader({
   onLogout: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/78 backdrop-blur-2xl">
-      <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-40 border-b border-white/8 bg-[rgba(2,6,23,0.48)] backdrop-blur-2xl">
+      <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
             <button
@@ -306,19 +254,18 @@ export function DashboardHeader({
               <MenuIcon className="h-5 w-5" />
             </button>
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-primary/15 bg-primary/10 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-primary">Dashboard</span>
-                <span className="rounded-full border border-border/70 bg-card/80 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">UI refresh</span>
-              </div>
-              <h1 className="mt-3 truncate text-2xl font-semibold tracking-tight text-foreground sm:text-[2rem]">{title}</h1>
-              {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
+              <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-50 sm:text-[2.15rem]">{title}</h1>
+              {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300/78">{description}</p> : null}
             </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             {actions}
+            <HeaderIconButton label="Notifications"><BellIcon className="h-5 w-5" /></HeaderIconButton>
+            <HeaderIconButton label="Alerts"><BellDotIcon className="h-5 w-5" /></HeaderIconButton>
             <ThemeToggle />
+            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(30,41,59,0.28))] text-sm font-semibold text-slate-50 shadow-[0_12px_24px_rgba(15,23,42,0.28)]">CG</div>
             <Link href="/login" onClick={onLogout}>
-              <Button variant="ghost" className="bg-card/80">Log out</Button>
+              <Button variant="ghost" className="border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10">Log out</Button>
             </Link>
           </div>
         </div>
@@ -336,7 +283,7 @@ function ThemeToggle() {
     <Button
       type="button"
       variant="ghost"
-      className="bg-card/80"
+      className="border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
       onClick={toggleTheme}
       aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
       aria-pressed={isDark}
@@ -433,3 +380,6 @@ function PanelIcon({ className }: { className?: string }) { return <IconWrapper 
 function MenuIcon({ className }: { className?: string }) { return <IconWrapper className={className}><path d="M4 7h16M4 12h16M4 17h16" /></IconWrapper>; }
 function SunIcon({ className }: { className?: string }) { return <IconWrapper className={className}><circle cx="12" cy="12" r="4" /><path d="M12 2v2.5M12 19.5V22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M2 12h2.5M19.5 12H22M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" /></IconWrapper>; }
 function MoonIcon({ className }: { className?: string }) { return <IconWrapper className={className}><path d="M20 14.5A7.5 7.5 0 1 1 9.5 4 6.2 6.2 0 0 0 20 14.5Z" /></IconWrapper>; }
+function BellIcon({ className }: { className?: string }) { return <IconWrapper className={className}><path d="M15 17H9" /><path d="M18 16V11a6 6 0 1 0-12 0v5l-2 2h16l-2-2Z" /></IconWrapper>; }
+function BellDotIcon({ className }: { className?: string }) { return <IconWrapper className={className}><path d="M15 17H9" /><path d="M18 16V11a6 6 0 1 0-12 0v5l-2 2h11" /><circle cx="19" cy="5" r="3" /></IconWrapper>; }
+function HeaderIconButton({ label, children }: { label: string; children: ReactNode }) { return <button type="button" aria-label={label} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-slate-50">{children}</button>; }
