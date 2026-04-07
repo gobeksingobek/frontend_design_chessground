@@ -19,7 +19,10 @@ type NavItem = {
 
 type NavSection = {
   label: string;
-  items: NavItem[];
+  groups: Array<{
+    label: string;
+    items: NavItem[];
+  }>;
 };
 
 type DashboardPageConfig = {
@@ -46,13 +49,35 @@ const DashboardPageContext = createContext<DashboardPageContextValue | null>(nul
 const navSections: NavSection[] = [
   {
     label: "Analysis",
-    items: [
-      { href: "/overview", label: "Overview", icon: GridIcon },
-      { href: "/analysis", label: "Analysis", icon: ActivityIcon },
-      { href: "/games", label: "Games", icon: GamepadIcon, match: (pathname) => pathname.startsWith("/games") },
-      { href: "/tree", label: "Repertoire", icon: TreeIcon },
-      { href: "/trainer", label: "Trainer", icon: TargetIcon },
-      { href: "/settings", label: "Settings", icon: SettingsIcon },
+    groups: [
+      {
+        label: "Workspace",
+        items: [
+          { href: "/overview", label: "Overview", icon: GridIcon },
+          { href: "/analysis", label: "Analysis", icon: ActivityIcon },
+          { href: "/games", label: "Games", icon: GamepadIcon, match: (pathname) => pathname.startsWith("/games") },
+          { href: "/tree", label: "Tree", icon: TreeIcon },
+          { href: "/trainer", label: "Trainer", icon: TargetIcon },
+        ],
+      },
+      {
+        label: "Reports",
+        items: [
+          { href: "/lines", label: "Lines", icon: BranchIcon },
+          { href: "/time-usage", label: "Time usage", icon: ClockIcon },
+          { href: "/rating-bands", label: "Rating bands", icon: BarChartIcon },
+          { href: "/insights", label: "Insights", icon: SparklesIcon },
+          { href: "/review", label: "Review", icon: BookIcon },
+        ],
+      },
+      {
+        label: "Data",
+        items: [
+          { href: "/repertoires", label: "Repertoires", icon: FolderIcon },
+          { href: "/sidelines", label: "Sidelines", icon: RefreshIcon },
+          { href: "/settings", label: "Settings", icon: SettingsIcon },
+        ],
+      },
     ],
   },
 ];
@@ -183,29 +208,38 @@ export function DashboardSidebar({
           {navSections.map((section) => (
             <div key={section.label} className="grid gap-3">
               <p className={cn("px-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500/80", collapsed && "px-0 text-center")}>{collapsed ? section.label.slice(0, 1) : section.label}</p>
-              <div className="grid gap-1">
-                {section.items.map((item) => {
-                  const active = item.match ? item.match(pathname) : pathname === item.href;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={onMobileClose}
-                      className={cn(
-                        "group relative flex items-center gap-3 overflow-hidden rounded-[1.1rem] border border-transparent px-3 py-3 text-sm font-medium text-slate-300/78 transition duration-200 hover:border-white/10 hover:bg-white/6 hover:text-slate-100",
-                        collapsed && "justify-center px-2",
-                        active && "border-sky-300/20 bg-[linear-gradient(180deg,rgba(59,130,246,0.18),rgba(30,41,59,0.34))] text-slate-50 shadow-[0_14px_30px_rgba(15,23,42,0.22)]",
-                      )}
-                      aria-current={active ? "page" : undefined}
-                    >
-                      <span className={cn("absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-sky-300 opacity-0 transition", active && "opacity-100", collapsed && "inset-x-2 inset-y-auto bottom-0 left-2 h-1 w-auto rounded-t-full rounded-r-none")} />
-                      <span className={cn("flex h-9 w-9 items-center justify-center rounded-xl border border-transparent bg-transparent text-slate-400 transition group-hover:border-white/10 group-hover:bg-white/10 group-hover:text-sky-300", active && "border-sky-300/15 bg-sky-400/10 text-sky-300")}>
-                        {item.icon({ className: "h-4 w-4" })}
-                      </span>
-                      {!collapsed ? <span className="truncate">{item.label}</span> : null}
-                    </Link>
-                  );
-                })}
+              <div className="grid gap-3">
+                {section.groups.map((group) => (
+                  <div key={group.label} className="grid gap-1">
+                    {!collapsed ? (
+                      <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500/65">
+                        {group.label}
+                      </p>
+                    ) : null}
+                    {group.items.map((item) => {
+                      const active = item.match ? item.match(pathname) : pathname === item.href;
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={onMobileClose}
+                          className={cn(
+                            "group relative flex items-center gap-3 overflow-hidden rounded-[1.1rem] border border-transparent px-3 py-3 text-sm font-medium text-slate-300/78 transition duration-200 hover:border-white/10 hover:bg-white/6 hover:text-slate-100",
+                            collapsed && "justify-center px-2",
+                            active && "border-sky-300/20 bg-[linear-gradient(180deg,rgba(59,130,246,0.18),rgba(30,41,59,0.34))] text-slate-50 shadow-[0_14px_30px_rgba(15,23,42,0.22)]",
+                          )}
+                          aria-current={active ? "page" : undefined}
+                        >
+                          <span className={cn("absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-sky-300 opacity-0 transition", active && "opacity-100", collapsed && "inset-x-2 inset-y-auto bottom-0 left-2 h-1 w-auto rounded-t-full rounded-r-none")} />
+                          <span className={cn("flex h-9 w-9 items-center justify-center rounded-xl border border-transparent bg-transparent text-slate-400 transition group-hover:border-white/10 group-hover:bg-white/10 group-hover:text-sky-300", active && "border-sky-300/15 bg-sky-400/10 text-sky-300")}>
+                            {item.icon({ className: "h-4 w-4" })}
+                          </span>
+                          {!collapsed ? <span className="truncate">{item.label}</span> : null}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             </div>
           ))}
