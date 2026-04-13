@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -20,7 +21,11 @@ def fail(message: str) -> None:
 
 def run(command: str) -> None:
     print(f"\n$ {command}")
-    completed = subprocess.run(command, shell=True, cwd=ROOT)
+    env = dict(os.environ)
+    root_path = str(ROOT)
+    existing_pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = f"{root_path}:{existing_pythonpath}" if existing_pythonpath else root_path
+    completed = subprocess.run(command, shell=True, cwd=ROOT, env=env)
     if completed.returncode != 0:
         fail(f"Command failed: {command}")
 
