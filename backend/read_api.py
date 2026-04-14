@@ -12,6 +12,8 @@ from backend.settings import SETTINGS, RuntimeFieldError, load_runtime_settings,
 from analysis import statistics
 from storage import queries
 
+TIME_USAGE_PIVOTS = {"self_vs_opp", "in_book_vs_out_of_book"}
+
 
 def get_runtime_settings_payload(settings_ini_path: Path) -> dict[str, Any]:
     return load_runtime_settings(settings_ini_path)
@@ -782,19 +784,61 @@ def _build_time_usage_stats_payload(
     time_rows: list[dict[str, Any]],
     pivot: str,
 ) -> dict[str, Any]:
-    time_by_game = statistics.time_analysis.compute_time_usage_by_game(time_rows)
-    stats: dict[str, dict[str, Any]] = {}
-    for game in games:
-        if pivot == "result":
-            key = game.get("result") or "Unknown"
-        elif pivot == "compliance":
-            key = game.get("compliance") or "Unknown"
+    if pivot not in TIME_USAGE_PIVOTS:
+        raise ValueError(f"Invalid time usage pivot: {pivot}")
+
+    game_totals = {
+        "self_vs_opp": {"Self", "Opponent"},
+        "in_book_vs_out_of_book": {"In book", "Out of book"},
+    }
+    bucket_game_ids: dict[str, set[int]] = {bucket: set() for bucket in game_totals[pivot]}
+    bucket_totals: dict[str, dict[str, float | int]] = {
+        bucket: {"total_moves": 0, "time_total_seconds": 0.0, "time_fraction_total": 0.0, "time_fraction_count": 0}
+        for bucket in game_totals[pivot]
+    }
+
+    for row in time_rows:
+        if row.get("is_daily"):
+            continue
+        time_spent = row.get("time_spent_seconds")
+        if time_spent is None:
+            continue
+        if pivot == "self_vs_opp":
+            bucket_name = "Self" if row.get("is_self") else "Opponent"
         else:
-            date = game.get("date") or ""
-            key = date[:7] if len(date) >= 7 else "Unknown"
-        entry = stats.setdefault(str(key), statistics._init_stat_entry())
-        statistics._accumulate_game(entry, game, eval_at_exit, time_by_game)
-    return _normalize_time_usage_payload(statistics._finalize_stats(stats), pivot)
+            if not row.get("is_self"):
+                continue
+            rep_class = row.get("repertoire_class") or ""
+            bucket_name = "In book" if rep_class in {"IN_REPERTOIRE_MAIN", "IN_REPERTOIRE_OTHER"} else "Out of book"
+        bucket_game_ids[bucket_name].add(int(row["game_id"]))
+        bucket = bucket_totals[bucket_name]
+        bucket["total_moves"] = int(bucket["total_moves"]) + 1
+        bucket["time_total_seconds"] = float(bucket["time_total_seconds"]) + float(time_spent)
+        fraction = row.get("time_spent_fraction")
+        if fraction is not None:
+            bucket["time_fraction_total"] = float(bucket["time_fraction_total"]) + float(fraction)
+            bucket["time_fraction_count"] = int(bucket["time_fraction_count"]) + 1
+
+    buckets: list[dict[str, Any]] = []
+    for bucket_name in sorted(bucket_totals.keys()):
+        bucket = bucket_totals[bucket_name]
+        total_moves = int(bucket["total_moves"])
+        fraction_count = int(bucket["time_fraction_count"])
+        buckets.append(
+            {
+                "bucket": bucket_name,
+                "total_games": len(bucket_game_ids[bucket_name]),
+                "total_moves": total_moves,
+                "avg_time_spent_seconds": (float(bucket["time_total_seconds"]) / total_moves) if total_moves else None,
+                "avg_time_spent_fraction": (float(bucket["time_fraction_total"]) / fraction_count) if fraction_count else None,
+            }
+        )
+
+    totals = {
+        "total_games": len({int(game["id"]) for game in games}),
+        "total_moves": sum(int(bucket["total_moves"]) for bucket in bucket_totals.values()),
+    }
+    return {"pivot": pivot, "buckets": buckets, "totals": totals}
 
 
 def _fetch_time_usage_stats_sqlite(pivot: str) -> dict[str, Any]:

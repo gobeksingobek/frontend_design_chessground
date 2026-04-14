@@ -257,7 +257,7 @@ export async function getLineStatsHistory(lineId: string): Promise<{ line_id: st
   return unwrap<{ line_id: string; buckets: StatsRow[]; totals: Record<string, number> }>(response);
 }
 
-export async function listTimeUsageStats(pivot: TimeUsagePivot = "month"): Promise<TimeUsageStatsResponse> {
+export async function listTimeUsageStats(pivot: TimeUsagePivot): Promise<TimeUsageStatsResponse> {
   const response = await fetch(`${API_BASE_URL}/time-usage/stats?pivot=${pivot}`, {
     method: "GET",
     headers: headers(),

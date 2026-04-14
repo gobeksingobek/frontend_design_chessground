@@ -181,13 +181,12 @@ class GameDetailResponse(BaseModel):
 
 
 class TimeUsagePivot(str):
-    MONTH = "month"
-    RESULT = "result"
-    COMPLIANCE = "compliance"
+    SELF_VS_OPP = "self_vs_opp"
+    IN_BOOK_VS_OUT_OF_BOOK = "in_book_vs_out_of_book"
 
 
 class TimeUsageStatsResponse(BaseModel):
-    pivot: Literal["month", "result", "compliance"]
+    pivot: Literal["self_vs_opp", "in_book_vs_out_of_book"]
     buckets: list[dict[str, Any]]
     totals: dict[str, Any]
 
@@ -1671,7 +1670,7 @@ async def get_line_stats_history(line_id: str, _: str = Depends(require_auth)) -
 
 @app.get("/time-usage/stats", response_model=TimeUsageStatsResponse)
 async def get_time_usage_stats(
-    pivot: Literal["month", "result", "compliance"] = "month",
+    pivot: Literal["self_vs_opp", "in_book_vs_out_of_book"],
     _: str = Depends(require_auth),
 ) -> TimeUsageStatsResponse:
     payload = await fetch_time_usage_stats(pivot)

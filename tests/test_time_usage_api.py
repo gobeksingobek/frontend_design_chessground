@@ -24,8 +24,8 @@ def test_time_usage_pivot_contract(monkeypatch) -> None:
 
     monkeypatch.setattr(api_service, "fetch_time_usage_stats", fake_stats)
 
-    result = asyncio.run(api_service.get_time_usage_stats(pivot="result", _="dev-user"))
+    result = asyncio.run(api_service.get_time_usage_stats(pivot="self_vs_opp", _="dev-user"))
 
-    assert result.pivot == "result"
-    assert result.buckets[0]["bucket"] == "result"
+    assert result.pivot == "self_vs_opp"
+    assert result.buckets[0]["bucket"] == "self_vs_opp"
     assert result.totals["total_games"] == 3
