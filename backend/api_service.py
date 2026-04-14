@@ -166,6 +166,8 @@ class GameDetailResponse(BaseModel):
     moves: list[GameMoveResponse]
     prev_game_id: int | None = None
     next_game_id: int | None = None
+    prev_game_label: str | None = None
+    next_game_label: str | None = None
 
 
 class TimeUsagePivot(str):

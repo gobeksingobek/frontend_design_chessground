@@ -78,6 +78,8 @@ export interface GameDetail {
   moves: GameMove[];
   prev_game_id: number | null;
   next_game_id: number | null;
+  prev_game_label: string | null;
+  next_game_label: string | null;
 }
 
 export interface OverviewSummary {

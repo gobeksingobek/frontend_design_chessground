@@ -135,12 +135,24 @@ def _fetch_game_detail_sqlite(game_id: int) -> dict[str, Any] | None:
         moves = queries.fetch_game_moves(conn, game_id)
         neighbors = conn.execute(
             """
-            SELECT prev_game_id, next_game_id
+            SELECT prev_game_id, next_game_id, prev_game_label, next_game_label
             FROM (
                 SELECT
                     id,
                     LAG(id) OVER (ORDER BY date DESC, id DESC) AS prev_game_id,
-                    LEAD(id) OVER (ORDER BY date DESC, id DESC) AS next_game_id
+                    LEAD(id) OVER (ORDER BY date DESC, id DESC) AS next_game_id,
+                    LAG(
+                        TRIM(
+                            COALESCE(white, '?') || ' vs ' || COALESCE(black, '?')
+                            || CASE WHEN date IS NOT NULL AND TRIM(date) <> '' THEN ' (' || date || ')' ELSE '' END
+                        )
+                    ) OVER (ORDER BY date DESC, id DESC) AS prev_game_label,
+                    LEAD(
+                        TRIM(
+                            COALESCE(white, '?') || ' vs ' || COALESCE(black, '?')
+                            || CASE WHEN date IS NOT NULL AND TRIM(date) <> '' THEN ' (' || date || ')' ELSE '' END
+                        )
+                    ) OVER (ORDER BY date DESC, id DESC) AS next_game_label
                 FROM games
             ) ordered_games
             WHERE id = ?
@@ -170,6 +182,8 @@ def _fetch_game_detail_sqlite(game_id: int) -> dict[str, Any] | None:
         "moves": enriched_moves,
         "prev_game_id": int(neighbors["prev_game_id"]) if neighbors and neighbors["prev_game_id"] is not None else None,
         "next_game_id": int(neighbors["next_game_id"]) if neighbors and neighbors["next_game_id"] is not None else None,
+        "prev_game_label": str(neighbors["prev_game_label"]) if neighbors and neighbors["prev_game_label"] else None,
+        "next_game_label": str(neighbors["next_game_label"]) if neighbors and neighbors["next_game_label"] else None,
     }
 
 
@@ -278,12 +292,24 @@ async def _fetch_game_detail_postgres(game_id: int) -> dict[str, Any] | None:
         )
         neighbors = await conn.fetchrow(
             """
-            SELECT prev_game_id, next_game_id
+            SELECT prev_game_id, next_game_id, prev_game_label, next_game_label
             FROM (
                 SELECT
                     id,
                     LAG(id) OVER (ORDER BY date DESC, id DESC) AS prev_game_id,
-                    LEAD(id) OVER (ORDER BY date DESC, id DESC) AS next_game_id
+                    LEAD(id) OVER (ORDER BY date DESC, id DESC) AS next_game_id,
+                    LAG(
+                        TRIM(
+                            COALESCE(white, '?') || ' vs ' || COALESCE(black, '?')
+                            || CASE WHEN date IS NOT NULL AND BTRIM(date) <> '' THEN ' (' || date || ')' ELSE '' END
+                        )
+                    ) OVER (ORDER BY date DESC, id DESC) AS prev_game_label,
+                    LEAD(
+                        TRIM(
+                            COALESCE(white, '?') || ' vs ' || COALESCE(black, '?')
+                            || CASE WHEN date IS NOT NULL AND BTRIM(date) <> '' THEN ' (' || date || ')' ELSE '' END
+                        )
+                    ) OVER (ORDER BY date DESC, id DESC) AS next_game_label
                 FROM games
             ) ordered_games
             WHERE id = $1
@@ -293,8 +319,10 @@ async def _fetch_game_detail_postgres(game_id: int) -> dict[str, Any] | None:
         return {
             "header": header_data,
             "moves": [dict(row) for row in moves],
-            "prev_game_id": neighbors["prev_game_id"] if neighbors else None,
-            "next_game_id": neighbors["next_game_id"] if neighbors else None,
+            "prev_game_id": int(neighbors["prev_game_id"]) if neighbors and neighbors["prev_game_id"] is not None else None,
+            "next_game_id": int(neighbors["next_game_id"]) if neighbors and neighbors["next_game_id"] is not None else None,
+            "prev_game_label": str(neighbors["prev_game_label"]) if neighbors and neighbors["prev_game_label"] else None,
+            "next_game_label": str(neighbors["next_game_label"]) if neighbors and neighbors["next_game_label"] else None,
         }
     finally:
         await conn.close()

@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { SidelineAnalysisForm } from "@/components/analysis/sideline-analysis-form";
@@ -18,9 +19,33 @@ import { getGame } from "@/lib/api-client";
 export function applyCursorKey(key: string, current: number, max: number): number { if (key === "ArrowRight") return Math.min(max, current + 1); if (key === "ArrowLeft") return Math.max(0, current - 1); if (key === "ArrowUp" || key === "End") return max; if (key === "ArrowDown" || key === "Home") return 0; return current; }
 function shouldIgnoreKeyboardEvent(event: KeyboardEvent | ReactKeyboardEvent): boolean { const target = event.target; if (!(target instanceof HTMLElement)) return false; const tagName = target.tagName; if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return true; return target.isContentEditable; }
 function metadataEntries(header: Record<string, unknown> | null | undefined) { if (!header) return []; return Object.entries(header).filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== ""); }
+export function buildGameRouteQuery(selectedPly: number | null, activeTab: "board" | "moves", orientation: "white" | "black") {
+  return {
+    ...(selectedPly ? { ply: String(selectedPly) } : {}),
+    tab: activeTab,
+    orientation,
+  };
+}
+function buildGameHref(gameId: number, selectedPly: number | null, activeTab: "board" | "moves", orientation: "white" | "black") {
+  const params = new URLSearchParams(buildGameRouteQuery(selectedPly, activeTab, orientation));
+  return `/games/${gameId}?${params.toString()}`;
+}
 
-export function GameDetail({ gameId, initialPly }: { gameId: number; initialPly: number | null }) {
+export function GameDetail({
+  gameId,
+  initialPly,
+  initialTab,
+  initialOrientation,
+}: {
+  gameId: number;
+  initialPly: number | null;
+  initialTab: "board" | "moves";
+  initialOrientation: "white" | "black";
+}) {
+  const router = useRouter();
   const [cursorIndex, setCursorIndex] = useState(0);
+  const [activeTab, setActiveTab] = useState<"board" | "moves">(initialTab);
+  const [orientation, setOrientation] = useState<"white" | "black">(initialOrientation);
   const { data, isLoading, error } = useQuery({ queryKey: ["game", gameId], queryFn: () => getGame(gameId) });
   const moves = useMemo(() => data?.moves ?? [], [data]);
   const headerEntries = useMemo(() => metadataEntries(data?.header), [data?.header]);
@@ -52,7 +77,24 @@ export function GameDetail({ gameId, initialPly }: { gameId: number; initialPly:
   const navigatePrev = useCallback(() => { setCursorIndex((current) => Math.max(0, current - 1)); }, []);
   const navigateStart = useCallback(() => { setCursorIndex(0); }, []);
   const navigateEnd = useCallback(() => { setCursorIndex(moves.length); }, [moves.length]);
-  const onKeyNavigate = useCallback((event: KeyboardEvent | ReactKeyboardEvent) => { if (shouldIgnoreKeyboardEvent(event)) return; const nextCursor = applyCursorKey(event.key, cursorIndex, moves.length); if (nextCursor !== cursorIndex) { event.preventDefault(); setCursorIndex(nextCursor); } }, [cursorIndex, moves.length]);
+  const onKeyNavigate = useCallback((event: KeyboardEvent | ReactKeyboardEvent) => {
+    if (shouldIgnoreKeyboardEvent(event)) return;
+    if (event.altKey && data?.prev_game_id && event.key === "ArrowLeft") {
+      event.preventDefault();
+      router.push(buildGameHref(data.prev_game_id, selectedPly, activeTab, orientation));
+      return;
+    }
+    if (event.altKey && data?.next_game_id && event.key === "ArrowRight") {
+      event.preventDefault();
+      router.push(buildGameHref(data.next_game_id, selectedPly, activeTab, orientation));
+      return;
+    }
+    const nextCursor = applyCursorKey(event.key, cursorIndex, moves.length);
+    if (nextCursor !== cursorIndex) {
+      event.preventDefault();
+      setCursorIndex(nextCursor);
+    }
+  }, [activeTab, cursorIndex, data?.next_game_id, data?.prev_game_id, moves.length, orientation, router, selectedPly]);
 
   if (isLoading) return <MutedText>Loading game detail...</MutedText>;
   if (error) return <BodyText className="font-medium text-danger">Failed to load game detail: {(error as Error).message}</BodyText>;
@@ -67,8 +109,16 @@ export function GameDetail({ gameId, initialPly }: { gameId: number; initialPly:
             <MutedText>Use the move table or keyboard shortcuts to step through the position history.</MutedText>
           </div>
           <DenseControlRow>
-            {data?.prev_game_id ? <Link className="text-label font-medium text-primary hover:text-secondary" href={{ pathname: `/games/${data.prev_game_id}`, query: selectedPly ? { ply: String(selectedPly) } : {} }}>← Previous game</Link> : <span className="text-label text-muted-foreground/70">← Previous game</span>}
-            {data?.next_game_id ? <Link className="text-label font-medium text-primary hover:text-secondary" href={{ pathname: `/games/${data.next_game_id}`, query: selectedPly ? { ply: String(selectedPly) } : {} }}>Next game →</Link> : <span className="text-label text-muted-foreground/70">Next game →</span>}
+            <Select value={activeTab} onChange={(event) => setActiveTab(event.target.value === "moves" ? "moves" : "board")}>
+              <option value="board">Board tab</option>
+              <option value="moves">Moves tab</option>
+            </Select>
+            <Select value={orientation} onChange={(event) => setOrientation(event.target.value === "black" ? "black" : "white")}>
+              <option value="white">White orientation</option>
+              <option value="black">Black orientation</option>
+            </Select>
+            {data?.prev_game_id ? <Link className="text-label font-medium text-primary hover:text-secondary" href={{ pathname: `/games/${data.prev_game_id}`, query: buildGameRouteQuery(selectedPly, activeTab, orientation) }} title={data.prev_game_label ?? undefined}>← Previous game</Link> : <span className="text-label text-muted-foreground/70">← Previous game</span>}
+            {data?.next_game_id ? <Link className="text-label font-medium text-primary hover:text-secondary" href={{ pathname: `/games/${data.next_game_id}`, query: buildGameRouteQuery(selectedPly, activeTab, orientation) }} title={data.next_game_label ?? undefined}>Next game →</Link> : <span className="text-label text-muted-foreground/70">Next game →</span>}
           </DenseControlRow>
         </div>
         {headerEntries.length > 0 ? (
@@ -83,10 +133,10 @@ export function GameDetail({ gameId, initialPly }: { gameId: number; initialPly:
         ) : <EmptyState title="No game metadata" description="This game does not currently expose header fields." />}
       </DetailPane>
 
-      <div className="grid gap-grid-gap xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.9fr)] xl:items-start">
+      <div className={cn("grid gap-grid-gap xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.9fr)] xl:items-start", activeTab === "moves" && "xl:grid-cols-1")}>
         <DetailPane title="Board review" description="The board and move-level analysis stay side by side so board navigation never competes with the selected context.">
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.95fr)] xl:items-start">
-            <ChessBoard fen={boardFen} title="Selected game position" subtitle="Board highlights stay in sync with the selected move, analysis tools, and keyboard navigation." currentPlyIndex={cursorIndex} lastMove={lastMove} onNavigateNext={navigateNext} onNavigatePrev={navigatePrev} onNavigateStart={navigateStart} onNavigateEnd={navigateEnd} onMoveAttempt={({ uci }) => { const nextMove = moves[cursorIndex]; if (nextMove?.uci_move === uci) navigateNext(); }} size="large" />
+            <ChessBoard fen={boardFen} title="Selected game position" subtitle="Board highlights stay in sync with the selected move, analysis tools, and keyboard navigation." currentPlyIndex={cursorIndex} lastMove={lastMove} onNavigateNext={navigateNext} onNavigatePrev={navigatePrev} onNavigateStart={navigateStart} onNavigateEnd={navigateEnd} onMoveAttempt={({ uci }) => { const nextMove = moves[cursorIndex]; if (nextMove?.uci_move === uci) navigateNext(); }} size="large" orientation={orientation} />
             <div className="grid gap-4 xl:sticky xl:top-24">
               <FilterPanel title="Analysis side panel" description="Selection controls, eval summaries, and sideline actions stay together next to the board.">
                 <label className="grid gap-xs">

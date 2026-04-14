@@ -31,6 +31,7 @@ interface ChessBoardProps {
   pieceAssetBasePath?: string;
   surface?: "card" | "plain";
   variant?: ChessBoardVariant;
+  orientation?: "white" | "black";
   className?: string;
 }
 
@@ -262,9 +263,12 @@ export function ChessBoardSurface({
   onMoveAttempt,
   pieceAssetBasePath = DEFAULT_PIECE_THEME_PATH,
   lastMove,
+  orientation = "white",
   state,
-}: Pick<ChessBoardProps, "size" | "showCoordinates" | "currentPlyIndex" | "onMoveAttempt" | "pieceAssetBasePath" | "lastMove"> & { state: ChessBoardState }) {
+}: Pick<ChessBoardProps, "size" | "showCoordinates" | "currentPlyIndex" | "onMoveAttempt" | "pieceAssetBasePath" | "lastMove" | "orientation"> & { state: ChessBoardState }) {
   const { safeFen, board, activeColor, checkSquare, legalTargetSet, selectedSquare, setSelectedSquare } = state;
+  const rankOrder = orientation === "black" ? [7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7];
+  const fileOrder = orientation === "black" ? [7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7];
 
   const handleSquareClick = (rankIndex: number, fileIndex: number) => {
     if (!onMoveAttempt) return;
@@ -304,21 +308,22 @@ export function ChessBoardSurface({
         data-ply-index={currentPlyIndex ?? 0}
       >
         <div className="absolute inset-x-5 top-2 flex justify-between text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/80" aria-hidden="true">
-          {showCoordinates ? FILES.split("").map((file) => <span key={`top-${file}`}>{file}</span>) : null}
+          {showCoordinates ? fileOrder.map((fileIndex) => <span key={`top-${fileIndex}`}>{FILES[fileIndex]}</span>) : null}
         </div>
         <div className="absolute inset-x-5 bottom-2 flex justify-between text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/80" aria-hidden="true">
-          {showCoordinates ? FILES.split("").map((file) => <span key={`bottom-${file}`}>{file}</span>) : null}
+          {showCoordinates ? fileOrder.map((fileIndex) => <span key={`bottom-${fileIndex}`}>{FILES[fileIndex]}</span>) : null}
         </div>
         <div className="absolute inset-y-5 left-2 flex flex-col justify-between text-[10px] font-semibold tracking-[0.22em] text-muted-foreground/80" aria-hidden="true">
-          {showCoordinates ? Array.from({ length: 8 }, (_, index) => <span key={`left-${8 - index}`}>{8 - index}</span>) : null}
+          {showCoordinates ? rankOrder.map((rankIndex) => <span key={`left-${rankIndex}`}>{8 - rankIndex}</span>) : null}
         </div>
         <div className="absolute inset-y-5 right-2 flex flex-col justify-between text-[10px] font-semibold tracking-[0.22em] text-muted-foreground/80" aria-hidden="true">
-          {showCoordinates ? Array.from({ length: 8 }, (_, index) => <span key={`right-${8 - index}`}>{8 - index}</span>) : null}
+          {showCoordinates ? rankOrder.map((rankIndex) => <span key={`right-${rankIndex}`}>{8 - rankIndex}</span>) : null}
         </div>
 
         <div className="grid aspect-square w-full grid-cols-8 overflow-hidden rounded-[0.95rem] border border-[rgb(var(--board-grid-border))] shadow-[inset_0_0_0_1px_rgba(var(--board-grid-shadow))]">
-          {board.map((rank, rankIndex) =>
-            rank.map((piece, fileIndex) => {
+          {rankOrder.map((rankIndex) =>
+            fileOrder.map((fileIndex) => {
+              const piece = board[rankIndex]?.[fileIndex] ?? "";
               const isLight = (rankIndex + fileIndex) % 2 === 0;
               const square = toSquare(rankIndex, fileIndex);
               const imageCode = pieceToImageCode(piece);
@@ -433,6 +438,7 @@ export function ChessBoardFramed(props: ChessBoardProps) {
               onMoveAttempt={props.onMoveAttempt}
               pieceAssetBasePath={props.pieceAssetBasePath}
               lastMove={props.lastMove}
+              orientation={props.orientation}
               state={state}
             />
             <ChessBoardDetails safeFen={state.safeFen} />
@@ -455,6 +461,7 @@ export function ChessBoardBoardOnly(props: ChessBoardProps) {
             onMoveAttempt={props.onMoveAttempt}
             pieceAssetBasePath={props.pieceAssetBasePath}
             lastMove={props.lastMove}
+            orientation={props.orientation}
             state={state}
           />
         </div>
