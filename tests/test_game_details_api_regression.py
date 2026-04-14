@@ -30,6 +30,9 @@ sys.modules.setdefault("multipart.multipart", multipart_submodule)
 from backend import api_service
 
 
+# Canonical traversal contract is GET /games/{id} neighbor fields;
+# any dedicated /games/{id}/neighbors route is compatibility-only during migration.
+
 def test_list_games_bounds_limit_and_offset(monkeypatch) -> None:
     calls: list[tuple[int, int]] = []
 
@@ -116,7 +119,7 @@ def test_get_game_raises_not_found_for_missing_game(monkeypatch) -> None:
         raise AssertionError("Expected HTTPException for missing game")
 
 
-def test_get_game_includes_neighbors(monkeypatch) -> None:
+def test_get_game_includes_neighbor_fields_on_canonical_get_game(monkeypatch) -> None:
     async def fake_fetch_game_detail(game_id: int):
         assert game_id == 44
         return {
@@ -134,7 +137,7 @@ def test_get_game_includes_neighbors(monkeypatch) -> None:
     assert result.next_game_id == 43
 
 
-def test_get_game_neighbors_handle_edge_games(monkeypatch) -> None:
+def test_get_game_neighbor_fields_handle_edge_games(monkeypatch) -> None:
     payloads = {
         100: {"header": {"id": 100}, "moves": [], "prev_game_id": None, "next_game_id": 99},
         1: {"header": {"id": 1}, "moves": [], "prev_game_id": 2, "next_game_id": None},

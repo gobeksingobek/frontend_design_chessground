@@ -17,11 +17,11 @@ function checkNavigation(payload) {
   assert(typeof payload.can_jump_end === "boolean", "navigation.can_jump_end must be boolean");
 }
 
-function checkNeighbors(payload) {
-  assert(isObject(payload), "neighbors payload must be object");
-  assert(typeof payload.game_id === "string", "neighbors.game_id must be string");
+function checkDeprecatedNeighborsCompatibility(payload) {
+  assert(isObject(payload), "deprecated neighbors payload must be object when provided");
+  assert(typeof payload.game_id === "string", "deprecated neighbors.game_id must be string");
   for (const field of ["prev_game_id", "next_game_id", "prev_label", "next_label"]) {
-    assert(payload[field] === null || typeof payload[field] === "string", `neighbors.${field} must be string|null`);
+    assert(payload[field] === null || typeof payload[field] === "string", `deprecated neighbors.${field} must be string|null`);
   }
 }
 
@@ -34,7 +34,7 @@ checkNavigation({
   can_jump_end: true,
 });
 
-checkNeighbors({
+checkDeprecatedNeighborsCompatibility({
   game_id: "game-2",
   prev_game_id: "game-1",
   next_game_id: "game-3",
@@ -42,4 +42,4 @@ checkNeighbors({
   next_label: "vs Opponent C",
 });
 
-console.log("Game detail contract checks passed.");
+console.log("Game detail contract checks passed with canonical /games/{id}.navigation and deprecated /games/{id}/neighbors compatibility shape.");

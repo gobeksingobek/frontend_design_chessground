@@ -60,7 +60,7 @@ const queueResponse = [
   },
 ];
 
-assert(Array.isArray(queueResponse), "GET /review/branch-queue must return an array");
+assert(Array.isArray(queueResponse), "GET /review/branch-queue must return a plain array (not an envelope object)");
 assertHasKeys(
   queueResponse[0],
   [
@@ -105,4 +105,4 @@ assertHasKeys(
   "POST /review/actions queue_delta",
 );
 
-console.log("Review contract checks passed for /review/actions and /review/branch-queue endpoints.");
+console.log("Review contract checks passed for /review/actions and canonical array-shaped /review/branch-queue.");
