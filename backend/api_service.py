@@ -163,12 +163,21 @@ class GameMoveResponse(BaseModel):
 
 
 class GameDetailResponse(BaseModel):
+    class NavigationResponse(BaseModel):
+        current_game_id: int | None = None
+        prev_game_id: int | None = None
+        next_game_id: int | None = None
+        bookmarked_ply_ids: list[int] = Field(default_factory=list)
+        can_jump_start: bool = False
+        can_jump_end: bool = False
+
     header: dict[str, Any]
     moves: list[GameMoveResponse]
     prev_game_id: int | None = None
     next_game_id: int | None = None
     prev_game_label: str | None = None
     next_game_label: str | None = None
+    navigation: NavigationResponse
 
 
 class TimeUsagePivot(str):

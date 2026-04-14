@@ -97,6 +97,24 @@ def _sort_games(rows: list[dict[str, Any]], sort_by: str, sort_dir: str) -> list
     return sorted(rows, key=lambda row: row.get("id") or 0, reverse=reverse)
 
 
+def _build_game_navigation_payload(
+    *,
+    game_id: int,
+    moves: list[dict[str, Any]],
+    prev_game_id: int | None,
+    next_game_id: int | None,
+) -> dict[str, Any]:
+    has_moves = len(moves) > 0
+    return {
+        "current_game_id": int(game_id),
+        "prev_game_id": prev_game_id,
+        "next_game_id": next_game_id,
+        "bookmarked_ply_ids": [],
+        "can_jump_start": has_moves,
+        "can_jump_end": has_moves,
+    }
+
+
 def _fetch_games_sqlite(
     limit: int,
     offset: int,
@@ -189,13 +207,21 @@ def _fetch_game_detail_sqlite(game_id: int) -> dict[str, Any] | None:
             enriched["fen"] = fen_by_pos.get(int(pos_id)) if pos_id is not None else None
             enriched_moves.append(enriched)
 
+    prev_game_id = int(neighbors["prev_game_id"]) if neighbors and neighbors["prev_game_id"] is not None else None
+    next_game_id = int(neighbors["next_game_id"]) if neighbors and neighbors["next_game_id"] is not None else None
     return {
         "header": header,
         "moves": enriched_moves,
-        "prev_game_id": int(neighbors["prev_game_id"]) if neighbors and neighbors["prev_game_id"] is not None else None,
-        "next_game_id": int(neighbors["next_game_id"]) if neighbors and neighbors["next_game_id"] is not None else None,
+        "prev_game_id": prev_game_id,
+        "next_game_id": next_game_id,
         "prev_game_label": str(neighbors["prev_game_label"]) if neighbors and neighbors["prev_game_label"] else None,
         "next_game_label": str(neighbors["next_game_label"]) if neighbors and neighbors["next_game_label"] else None,
+        "navigation": _build_game_navigation_payload(
+            game_id=game_id,
+            moves=enriched_moves,
+            prev_game_id=prev_game_id,
+            next_game_id=next_game_id,
+        ),
     }
 
 
@@ -328,13 +354,22 @@ async def _fetch_game_detail_postgres(game_id: int) -> dict[str, Any] | None:
             """,
             game_id,
         )
+        serialized_moves = [dict(row) for row in moves]
+        prev_game_id = int(neighbors["prev_game_id"]) if neighbors and neighbors["prev_game_id"] is not None else None
+        next_game_id = int(neighbors["next_game_id"]) if neighbors and neighbors["next_game_id"] is not None else None
         return {
             "header": header_data,
-            "moves": [dict(row) for row in moves],
-            "prev_game_id": int(neighbors["prev_game_id"]) if neighbors and neighbors["prev_game_id"] is not None else None,
-            "next_game_id": int(neighbors["next_game_id"]) if neighbors and neighbors["next_game_id"] is not None else None,
+            "moves": serialized_moves,
+            "prev_game_id": prev_game_id,
+            "next_game_id": next_game_id,
             "prev_game_label": str(neighbors["prev_game_label"]) if neighbors and neighbors["prev_game_label"] else None,
             "next_game_label": str(neighbors["next_game_label"]) if neighbors and neighbors["next_game_label"] else None,
+            "navigation": _build_game_navigation_payload(
+                game_id=game_id,
+                moves=serialized_moves,
+                prev_game_id=prev_game_id,
+                next_game_id=next_game_id,
+            ),
         }
     finally:
         await conn.close()
