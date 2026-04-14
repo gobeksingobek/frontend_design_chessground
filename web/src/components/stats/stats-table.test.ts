@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { normalizeStatsRows, summarizePivot } from "@/components/stats/stats-table";
+import { normalizeStatsRows, resolveColumns, summarizePivot } from "@/components/stats/stats-table";
 
 test("drill-down row normalization supports bucket payload", () => {
   const rows = normalizeStatsRows({ buckets: [{ bucket: "2024-01", total_games: 2 }] });
@@ -22,6 +22,19 @@ test("pivot swap changes summary key distribution", () => {
   assert.equal(byBucket.length, 3);
   assert.equal(byResult[0].key, "1-0");
   assert.equal(byResult[0].count, 2);
+});
+
+test("pivot toggle swaps column model", () => {
+  const rows = normalizeStatsRows({
+    buckets: [
+      { bucket: "Self", total_games: 10, total_moves: 120, avg_time_spent_seconds: 13.2, avg_time_spent_fraction: 0.08 },
+    ],
+  });
+  const selfVsOppColumns = resolveColumns(rows, ["bucket", "total_games", "total_moves"]);
+  const inBookColumns = resolveColumns(rows, ["bucket", "avg_time_spent_seconds", "avg_time_spent_fraction"]);
+
+  assert.deepEqual(selfVsOppColumns, ["bucket", "total_games", "total_moves"]);
+  assert.deepEqual(inBookColumns, ["bucket", "avg_time_spent_seconds", "avg_time_spent_fraction"]);
 });
 
 test("band-size change keeps rows consumable", () => {

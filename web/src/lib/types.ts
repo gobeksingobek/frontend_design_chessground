@@ -134,7 +134,7 @@ export interface FieldValidationError {
   message: string;
 }
 
-export type TimeUsagePivot = "month" | "result" | "compliance";
+export type TimeUsagePivot = "self_vs_opp" | "in_book_vs_out_of_book";
 
 export interface TimeUsageStatsResponse {
   pivot: TimeUsagePivot;

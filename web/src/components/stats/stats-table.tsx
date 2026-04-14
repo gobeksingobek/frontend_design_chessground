@@ -12,6 +12,14 @@ import type { StatsRow } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
 type StatsPayload = StatsRow[] | { buckets: StatsRow[] };
+type PivotOption = { value: string; label: string };
+
+export function resolveColumns(rows: StatsRow[], columnModel: string[] | undefined): string[] {
+  if (rows.length === 0) return [];
+  const allColumns = Object.keys(rows[0] ?? {});
+  if (!columnModel || columnModel.length === 0) return allColumns;
+  return columnModel.filter((column) => allColumns.includes(column));
+}
 
 export function normalizeStatsRows(data: StatsPayload | undefined): StatsRow[] {
   if (!data) return [];
@@ -29,12 +37,35 @@ export function summarizePivot(rows: StatsRow[], pivotColumn: string): Array<{ k
   return Array.from(counts.entries()).map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count);
 }
 
-export function StatsTable({ title, description, queryKey, queryFn, drilldownLabel = "Selected row" }: { title: string; description: string; queryKey: string[]; queryFn: () => Promise<StatsPayload>; drilldownLabel?: string; }) {
+export function StatsTable({
+  title,
+  description,
+  queryKey,
+  queryFn,
+  drilldownLabel = "Selected row",
+  pivotOptions,
+  pivotValue,
+  onPivotChange,
+  columnModelsByPivot,
+}: {
+  title: string;
+  description: string;
+  queryKey: string[];
+  queryFn: () => Promise<StatsPayload>;
+  drilldownLabel?: string;
+  pivotOptions?: PivotOption[];
+  pivotValue?: string;
+  onPivotChange?: (pivot: string) => void;
+  columnModelsByPivot?: Record<string, string[]>;
+}) {
   const { data, isLoading, error } = useQuery({ queryKey, queryFn });
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [pivotColumn, setPivotColumn] = useState<string>("");
   const rows = useMemo<StatsRow[]>(() => normalizeStatsRows(data), [data]);
-  const columns = useMemo(() => (rows.length === 0 ? [] as string[] : Object.keys(rows[0] ?? {})), [rows]);
+  const columns = useMemo(
+    () => resolveColumns(rows, pivotValue && columnModelsByPivot ? columnModelsByPivot[pivotValue] : undefined),
+    [rows, pivotValue, columnModelsByPivot],
+  );
   const selected = useMemo(() => (rows.length > 0 ? rows[Math.min(selectedIndex, rows.length - 1)] : null), [rows, selectedIndex]);
   const pivot = useMemo(() => (!pivotColumn || !columns.includes(pivotColumn) ? [] : summarizePivot(rows, pivotColumn)), [rows, pivotColumn, columns]);
 
@@ -47,6 +78,13 @@ export function StatsTable({ title, description, queryKey, queryFn, drilldownLab
         <>
           <FilterPanel title={`${title} filters`} description="Adjust the pivot column to compare related clusters without losing access to the active row detail.">
             <DenseControlRow>
+              {pivotOptions && pivotValue && onPivotChange ? (
+                <FormField label="Pivot" helpText="Switch report pivots for side-by-side comparison." className="min-w-[220px]">
+                  <Select aria-label="Pivot" value={pivotValue} onChange={(e) => onPivotChange(e.target.value)}>
+                    {pivotOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </Select>
+                </FormField>
+              ) : null}
               <FormField label="Pivot column" helpText="Summarize the dataset by any visible table column." className="min-w-[220px]">
                 <Select aria-label="Pivot column" value={pivotColumn} onChange={(e) => setPivotColumn(e.target.value)}>
                   <option value="">None</option>

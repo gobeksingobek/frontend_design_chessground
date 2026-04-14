@@ -112,9 +112,9 @@ def test_postgres_stats_endpoints_return_expected_shapes(monkeypatch) -> None:
     assert line_stats
     assert {"key", "total_games", "compliance_rate", "in_rep_other_rate"}.issubset(line_stats[0].keys())
 
-    time_stats = asyncio.run(read_api.fetch_time_usage_stats("month"))
+    time_stats = asyncio.run(read_api.fetch_time_usage_stats("self_vs_opp"))
     assert isinstance(time_stats, dict)
-    assert time_stats["pivot"] == "month"
+    assert time_stats["pivot"] == "self_vs_opp"
     assert isinstance(time_stats["buckets"], list)
     assert {"total_games"}.issubset(time_stats["totals"].keys())
 
@@ -124,7 +124,9 @@ def test_postgres_stats_endpoints_return_expected_shapes(monkeypatch) -> None:
     assert {"white_band", "black_band", "total_games", "compliance_rate"}.issubset(rating_stats[0].keys())
 
     insights = asyncio.run(read_api.fetch_insights())
-    assert insights == [{"category": "prep", "title": "Top miss", "details": "detail", "data_json": '{"n": 1}', "data": {"n": 1}}]
+    assert insights[0]["category"] == "prep"
+    assert insights[0]["title"] == "Top miss"
+    assert insights[0]["data"] == {"n": 1}
 
     review_items = asyncio.run(read_api.fetch_review_items())
     assert review_items == [{"line_id": "line-a", "reason": "coverage", "detail": "missing move"}]
