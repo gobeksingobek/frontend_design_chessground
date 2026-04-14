@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { SidelineAnalysisForm } from "@/components/analysis/sideline-analysis-form";
 import { ChessBoard } from "@/components/chess/chess-board";
@@ -17,6 +17,7 @@ import { cn } from "@/lib/cn";
 import { getGame } from "@/lib/api-client";
 
 export function applyCursorKey(key: string, current: number, max: number): number { if (key === "ArrowRight") return Math.min(max, current + 1); if (key === "ArrowLeft") return Math.max(0, current - 1); if (key === "ArrowUp" || key === "End") return max; if (key === "ArrowDown" || key === "Home") return 0; return current; }
+export function isCursorNavigationKey(key: string): boolean { return key === "ArrowRight" || key === "ArrowLeft" || key === "ArrowUp" || key === "ArrowDown" || key === "Home" || key === "End"; }
 function shouldIgnoreKeyboardEvent(event: KeyboardEvent | ReactKeyboardEvent): boolean { const target = event.target; if (!(target instanceof HTMLElement)) return false; const tagName = target.tagName; if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return true; return target.isContentEditable; }
 function metadataEntries(header: Record<string, unknown> | null | undefined) { if (!header) return []; return Object.entries(header).filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== ""); }
 export function buildGameRouteQuery(selectedPly: number | null, activeTab: "board" | "moves", orientation: "white" | "black") {
@@ -43,6 +44,8 @@ export function GameDetail({
   initialOrientation: "white" | "black";
 }) {
   const router = useRouter();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const initializedGameIdRef = useRef<number | null>(null);
   const [cursorIndex, setCursorIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<"board" | "moves">(initialTab);
   const [orientation, setOrientation] = useState<"white" | "black">(initialOrientation);
@@ -55,6 +58,8 @@ export function GameDetail({
       setCursorIndex(0);
       return;
     }
+    if (initializedGameIdRef.current === gameId) return;
+    initializedGameIdRef.current = gameId;
     if (initialPly !== null) {
       const moveIndex = moves.findIndex((move) => move.ply === initialPly);
       if (moveIndex >= 0) {
@@ -77,30 +82,44 @@ export function GameDetail({
   const navigatePrev = useCallback(() => { setCursorIndex((current) => Math.max(0, current - 1)); }, []);
   const navigateStart = useCallback(() => { setCursorIndex(0); }, []);
   const navigateEnd = useCallback(() => { setCursorIndex(moves.length); }, [moves.length]);
+  const retainContainerFocus = useCallback((key: string) => {
+    if (!isCursorNavigationKey(key)) return;
+    const container = containerRef.current;
+    if (!container) return;
+    if (typeof document !== "undefined" && document.activeElement === container) {
+      container.focus();
+    }
+  }, []);
+
+  const nav = data?.navigation;
+  const prevGameId = nav?.prev_game_id ?? data?.prev_game_id ?? null;
+  const nextGameId = nav?.next_game_id ?? data?.next_game_id ?? null;
+
   const onKeyNavigate = useCallback((event: KeyboardEvent | ReactKeyboardEvent) => {
     if (shouldIgnoreKeyboardEvent(event)) return;
-    if (event.altKey && data?.prev_game_id && event.key === "ArrowLeft") {
+    if (event.altKey && prevGameId && event.key === "ArrowLeft") {
       event.preventDefault();
-      router.push(buildGameHref(data.prev_game_id, selectedPly, activeTab, orientation));
+      router.push(buildGameHref(prevGameId, selectedPly, activeTab, orientation));
       return;
     }
-    if (event.altKey && data?.next_game_id && event.key === "ArrowRight") {
+    if (event.altKey && nextGameId && event.key === "ArrowRight") {
       event.preventDefault();
-      router.push(buildGameHref(data.next_game_id, selectedPly, activeTab, orientation));
+      router.push(buildGameHref(nextGameId, selectedPly, activeTab, orientation));
       return;
     }
     const nextCursor = applyCursorKey(event.key, cursorIndex, moves.length);
     if (nextCursor !== cursorIndex) {
       event.preventDefault();
       setCursorIndex(nextCursor);
+      retainContainerFocus(event.key);
     }
-  }, [activeTab, cursorIndex, data?.next_game_id, data?.prev_game_id, moves.length, orientation, router, selectedPly]);
+  }, [activeTab, cursorIndex, moves.length, nextGameId, orientation, prevGameId, retainContainerFocus, router, selectedPly]);
 
   if (isLoading) return <MutedText>Loading game detail...</MutedText>;
   if (error) return <BodyText className="font-medium text-danger">Failed to load game detail: {(error as Error).message}</BodyText>;
 
   return (
-    <div className="grid gap-section-gap" onKeyDown={onKeyNavigate} tabIndex={0}>
+    <div className="grid gap-section-gap" onKeyDown={onKeyNavigate} tabIndex={0} ref={containerRef}>
       <DetailPane title="Game summary" description="Metadata is grouped into a readable summary card so you can orient yourself before stepping through the board and move list.">
         <div className="flex flex-wrap items-center justify-between gap-control-gap">
           <div className="grid gap-xs">
@@ -117,8 +136,8 @@ export function GameDetail({
               <option value="white">White orientation</option>
               <option value="black">Black orientation</option>
             </Select>
-            {data?.prev_game_id ? <Link className="text-label font-medium text-primary hover:text-secondary" href={{ pathname: `/games/${data.prev_game_id}`, query: buildGameRouteQuery(selectedPly, activeTab, orientation) }} title={data.prev_game_label ?? undefined}>← Previous game</Link> : <span className="text-label text-muted-foreground/70">← Previous game</span>}
-            {data?.next_game_id ? <Link className="text-label font-medium text-primary hover:text-secondary" href={{ pathname: `/games/${data.next_game_id}`, query: buildGameRouteQuery(selectedPly, activeTab, orientation) }} title={data.next_game_label ?? undefined}>Next game →</Link> : <span className="text-label text-muted-foreground/70">Next game →</span>}
+            {prevGameId ? <Link className="text-label font-medium text-primary hover:text-secondary" href={{ pathname: `/games/${prevGameId}`, query: buildGameRouteQuery(selectedPly, activeTab, orientation) }} title={data?.prev_game_label ?? undefined}>← Previous game</Link> : <span className="text-label text-muted-foreground/70">← Previous game</span>}
+            {nextGameId ? <Link className="text-label font-medium text-primary hover:text-secondary" href={{ pathname: `/games/${nextGameId}`, query: buildGameRouteQuery(selectedPly, activeTab, orientation) }} title={data?.next_game_label ?? undefined}>Next game →</Link> : <span className="text-label text-muted-foreground/70">Next game →</span>}
           </DenseControlRow>
         </div>
         {headerEntries.length > 0 ? (

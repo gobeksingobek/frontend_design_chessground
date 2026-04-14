@@ -80,6 +80,14 @@ export interface GameDetail {
   next_game_id: number | null;
   prev_game_label: string | null;
   next_game_label: string | null;
+  navigation: {
+    current_game_id: number | null;
+    prev_game_id: number | null;
+    next_game_id: number | null;
+    bookmarked_ply_ids: number[];
+    can_jump_start: boolean;
+    can_jump_end: boolean;
+  };
 }
 
 export interface OverviewSummary {

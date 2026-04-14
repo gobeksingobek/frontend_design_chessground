@@ -93,6 +93,14 @@ def test_get_game_returns_payload_from_read_layer(monkeypatch) -> None:
                     "quality_label": "best",
                 }
             ],
+            "navigation": {
+                "current_game_id": 44,
+                "prev_game_id": None,
+                "next_game_id": None,
+                "bookmarked_ply_ids": [],
+                "can_jump_start": True,
+                "can_jump_end": True,
+            },
         }
 
     monkeypatch.setattr(api_service, "fetch_game_detail", fake_fetch_game_detail)
@@ -102,6 +110,8 @@ def test_get_game_returns_payload_from_read_layer(monkeypatch) -> None:
     assert result.header["id"] == 44
     assert len(result.moves) == 1
     assert result.moves[0].uci_move == "e2e4"
+    assert result.navigation.current_game_id == 44
+    assert result.navigation.bookmarked_ply_ids == []
 
 
 def test_get_game_raises_not_found_for_missing_game(monkeypatch) -> None:
@@ -129,6 +139,14 @@ def test_get_game_includes_neighbor_fields_on_canonical_get_game(monkeypatch) ->
             "next_game_id": 43,
             "prev_game_label": "Alpha vs Beta (2024.01.03)",
             "next_game_label": "Gamma vs Delta (2024.01.01)",
+            "navigation": {
+                "current_game_id": 44,
+                "prev_game_id": 45,
+                "next_game_id": 43,
+                "bookmarked_ply_ids": [],
+                "can_jump_start": False,
+                "can_jump_end": False,
+            },
         }
 
     monkeypatch.setattr(api_service, "fetch_game_detail", fake_fetch_game_detail)
@@ -139,12 +157,44 @@ def test_get_game_includes_neighbor_fields_on_canonical_get_game(monkeypatch) ->
     assert result.next_game_id == 43
     assert result.prev_game_label == "Alpha vs Beta (2024.01.03)"
     assert result.next_game_label == "Gamma vs Delta (2024.01.01)"
+    assert result.navigation.prev_game_id == 45
+    assert result.navigation.next_game_id == 43
 
 
 def test_get_game_neighbor_fields_handle_edge_games(monkeypatch) -> None:
     payloads = {
-        100: {"header": {"id": 100}, "moves": [], "prev_game_id": None, "next_game_id": 99, "prev_game_label": None, "next_game_label": "Middle vs Player (2024.01.02)"},
-        1: {"header": {"id": 1}, "moves": [], "prev_game_id": 2, "next_game_id": None, "prev_game_label": "Middle vs Player (2024.01.02)", "next_game_label": None},
+        100: {
+            "header": {"id": 100},
+            "moves": [],
+            "prev_game_id": None,
+            "next_game_id": 99,
+            "prev_game_label": None,
+            "next_game_label": "Middle vs Player (2024.01.02)",
+            "navigation": {
+                "current_game_id": 100,
+                "prev_game_id": None,
+                "next_game_id": 99,
+                "bookmarked_ply_ids": [],
+                "can_jump_start": False,
+                "can_jump_end": False,
+            },
+        },
+        1: {
+            "header": {"id": 1},
+            "moves": [],
+            "prev_game_id": 2,
+            "next_game_id": None,
+            "prev_game_label": "Middle vs Player (2024.01.02)",
+            "next_game_label": None,
+            "navigation": {
+                "current_game_id": 1,
+                "prev_game_id": 2,
+                "next_game_id": None,
+                "bookmarked_ply_ids": [],
+                "can_jump_start": False,
+                "can_jump_end": False,
+            },
+        },
     }
 
     async def fake_fetch_game_detail(game_id: int):
@@ -159,10 +209,18 @@ def test_get_game_neighbor_fields_handle_edge_games(monkeypatch) -> None:
     assert newest.next_game_id == 99
     assert newest.prev_game_label is None
     assert newest.next_game_label == "Middle vs Player (2024.01.02)"
+    assert newest.navigation.current_game_id == 100
+    assert newest.navigation.prev_game_id is None
+    assert newest.navigation.next_game_id == 99
+    assert newest.navigation.can_jump_start is False
+    assert newest.navigation.can_jump_end is False
     assert oldest.prev_game_id == 2
     assert oldest.next_game_id is None
     assert oldest.prev_game_label == "Middle vs Player (2024.01.02)"
     assert oldest.next_game_label is None
+    assert oldest.navigation.current_game_id == 1
+    assert oldest.navigation.prev_game_id == 2
+    assert oldest.navigation.next_game_id is None
 
 
 def test_get_game_neighbor_fields_handle_middle_game(monkeypatch) -> None:
@@ -175,6 +233,14 @@ def test_get_game_neighbor_fields_handle_middle_game(monkeypatch) -> None:
             "next_game_id": 1,
             "prev_game_label": "Newest vs Player (2024.01.03)",
             "next_game_label": "Oldest vs Player (2024.01.01)",
+            "navigation": {
+                "current_game_id": 99,
+                "prev_game_id": 100,
+                "next_game_id": 1,
+                "bookmarked_ply_ids": [],
+                "can_jump_start": False,
+                "can_jump_end": False,
+            },
         }
 
     monkeypatch.setattr(api_service, "fetch_game_detail", fake_fetch_game_detail)
@@ -185,3 +251,37 @@ def test_get_game_neighbor_fields_handle_middle_game(monkeypatch) -> None:
     assert middle.next_game_id == 1
     assert middle.prev_game_label == "Newest vs Player (2024.01.03)"
     assert middle.next_game_label == "Oldest vs Player (2024.01.01)"
+    assert middle.navigation.current_game_id == 99
+    assert middle.navigation.prev_game_id == 100
+    assert middle.navigation.next_game_id == 1
+
+
+def test_get_game_navigation_schema_nullable_fields(monkeypatch) -> None:
+    async def fake_fetch_game_detail(game_id: int):
+        assert game_id == 77
+        return {
+            "header": {"id": 77},
+            "moves": [],
+            "prev_game_id": None,
+            "next_game_id": None,
+            "prev_game_label": None,
+            "next_game_label": None,
+            "navigation": {
+                "current_game_id": 77,
+                "prev_game_id": None,
+                "next_game_id": None,
+                "bookmarked_ply_ids": [],
+                "can_jump_start": False,
+                "can_jump_end": False,
+            },
+        }
+
+    monkeypatch.setattr(api_service, "fetch_game_detail", fake_fetch_game_detail)
+    result = asyncio.run(api_service.get_game(77, _="dev-user"))
+
+    assert result.navigation.current_game_id == 77
+    assert result.navigation.prev_game_id is None
+    assert result.navigation.next_game_id is None
+    assert result.navigation.bookmarked_ply_ids == []
+    assert result.navigation.can_jump_start is False
+    assert result.navigation.can_jump_end is False
