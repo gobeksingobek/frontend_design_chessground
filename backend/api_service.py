@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 import threading
-import configparser
 import asyncio
 import hashlib
 import json
@@ -37,6 +36,8 @@ from backend.read_api import (
     fetch_rating_band_stats,
     fetch_review_items,
     fetch_time_usage_stats,
+    get_runtime_settings_payload,
+    save_runtime_settings_payload,
 )
 from backend.settings import SETTINGS
 from analysis import game_fetcher
@@ -1014,92 +1015,37 @@ async def _execute_review_action_backend(
         },
     }
 
-def _safe_int(value: str | None, default: int) -> int:
-    if value is None:
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        return default
-
-
-def _parse_list(value: str | None) -> list[str]:
-    if not value:
-        return []
-    return [item.strip() for item in value.split(",") if item.strip()]
-
-
-def _normalize_list(values: list[str]) -> list[str]:
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        item = value.strip()
-        if not item:
-            continue
-        key = item.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        normalized.append(item)
-    return normalized
-
-
 def _load_runtime_config() -> RuntimeConfig:
-    config = configparser.ConfigParser()
-    if SETTINGS_INI_PATH.exists():
-        config.read(SETTINGS_INI_PATH, encoding="utf-8")
-
-    for section in ["PATHS", "ANALYSIS", "PLAYER", "FETCH"]:
-        if section not in config:
-            config[section] = {}
-
-    paths = config["PATHS"]
-    analysis = config["ANALYSIS"]
-    player = config["PLAYER"]
-    fetch = config["FETCH"]
-
-    player_name = (player.get("name") or "").strip()
-    chesscom_usernames = _parse_list(fetch.get("chesscom_usernames"))
-    lichess_usernames = _parse_list(fetch.get("lichess_usernames"))
-
-    combined_names: list[str] = []
-    seen: set[str] = set()
-    for name in _parse_list(player_name) + chesscom_usernames + lichess_usernames:
-        key = name.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        combined_names.append(name)
-
+    payload = get_runtime_settings_payload(SETTINGS_INI_PATH)
     return RuntimeConfig(
-        repertoire_dir=paths.get("repertoire_dir", ""),
-        games_dir=paths.get("games_dir", ""),
-        database_path=paths.get("database_path", ""),
-        stockfish_path=paths.get("stockfish_path", ""),
-        piece_dir=paths.get("piece_dir", ""),
-        engine_depth=_safe_int(analysis.get("engine_depth"), 20),
-        max_plies=_safe_int(analysis.get("max_plies"), 30),
-        player_name=player_name,
-        player_names=combined_names,
-        rating_band_size=_safe_int(player.get("rating_band_size"), 100),
-        matching_mode=(analysis.get("matching_mode") or "STRICT").strip(),
-        enable_engine_cache=_safe_int(analysis.get("enable_engine_cache"), 1) > 0,
-        incremental_analysis=_safe_int(analysis.get("incremental_analysis"), 1) > 0,
-        review_top_n=_safe_int(analysis.get("review_top_n"), 25),
-        tabiya_top_n=_safe_int(analysis.get("tabiya_top_n"), 10),
-        engine_workers=_safe_int(analysis.get("engine_workers"), 0),
-        engine_worker_cap=_safe_int(analysis.get("engine_worker_cap"), 4),
-        engine_threads=_safe_int(analysis.get("engine_threads"), 1),
-        engine_hash_mb=_safe_int(analysis.get("engine_hash_mb"), 0),
-        engine_mode=(analysis.get("engine_mode") or "adaptive").strip().lower(),
-        engine_max_time_ms=_safe_int(analysis.get("engine_max_time_ms"), 300),
-        engine_profile=(analysis.get("engine_profile") or "aggressive").strip().lower(),
-        engine_cache_prune_non_active=_safe_int(analysis.get("engine_cache_prune_non_active"), 1) > 0,
-        missing_coverage_proposal_threshold=_safe_int(analysis.get("missing_coverage_proposal_threshold"), 5),
-        chesscom_usernames=chesscom_usernames,
-        lichess_usernames=lichess_usernames,
-        fetch_variants=_parse_list(fetch.get("variants") or fetch.get("fetch_variants") or "blitz,rapid,daily"),
-        fetch_days_back=_safe_int(fetch.get("days_back") or fetch.get("fetch_days_back"), 180),
+        repertoire_dir=str(payload["repertoire_dir"]),
+        games_dir=str(payload["games_dir"]),
+        database_path=str(payload["database_path"]),
+        stockfish_path=str(payload["stockfish_path"]),
+        piece_dir=str(payload["piece_dir"]),
+        engine_depth=int(payload["engine_depth"]),
+        max_plies=int(payload["max_plies"]),
+        player_name=str(payload["player_name"]),
+        player_names=list(payload["player_names"]),
+        rating_band_size=int(payload["rating_band_size"]),
+        matching_mode=str(payload["matching_mode"]),
+        enable_engine_cache=bool(payload["enable_engine_cache"]),
+        incremental_analysis=bool(payload["incremental_analysis"]),
+        review_top_n=int(payload["review_top_n"]),
+        tabiya_top_n=int(payload["tabiya_top_n"]),
+        engine_workers=int(payload["engine_workers"]),
+        engine_worker_cap=int(payload["engine_worker_cap"]),
+        engine_threads=int(payload["engine_threads"]),
+        engine_hash_mb=int(payload["engine_hash_mb"]),
+        engine_mode=str(payload["engine_mode"]),
+        engine_max_time_ms=int(payload["engine_max_time_ms"]),
+        engine_profile=str(payload["engine_profile"]),
+        engine_cache_prune_non_active=bool(payload["engine_cache_prune_non_active"]),
+        missing_coverage_proposal_threshold=int(payload["missing_coverage_proposal_threshold"]),
+        chesscom_usernames=list(payload["chesscom_usernames"]),
+        lichess_usernames=list(payload["lichess_usernames"]),
+        fetch_variants=list(payload["variants"]),
+        fetch_days_back=int(payload["days_back"]),
     )
 
 
@@ -1136,88 +1082,15 @@ def _runtime_settings_response(cfg: RuntimeConfig) -> RuntimeSettingsResponse:
     )
 
 
-def _save_runtime_settings(payload: RuntimeSettingsUpdateRequest) -> RuntimeSettingsResponse:
-    config = configparser.ConfigParser()
-    if SETTINGS_INI_PATH.exists():
-        config.read(SETTINGS_INI_PATH, encoding="utf-8")
-
-    for section in ["PATHS", "ANALYSIS", "PLAYER", "FETCH"]:
-        if section not in config:
-            config[section] = {}
-
-    fetch = config["FETCH"]
-    normalized_chesscom = _normalize_list(payload.chesscom_usernames)
-    normalized_lichess = _normalize_list(payload.lichess_usernames)
-    normalized_variants = [variant.strip().lower() for variant in payload.variants if variant.strip()]
-    normalized_variants = _normalize_list(normalized_variants)
-    if not normalized_variants:
-        raise api_error(status_code=422, error_code="VALIDATION_ERROR", detail="At least one variant is required")
-
-    fetch["chesscom_usernames"] = ",".join(normalized_chesscom)
-    fetch["lichess_usernames"] = ",".join(normalized_lichess)
-    fetch["variants"] = ",".join(normalized_variants)
-    fetch["days_back"] = str(payload.days_back)
-
-    paths = config["PATHS"]
-    analysis = config["ANALYSIS"]
-    player = config["PLAYER"]
-
-    if payload.repertoire_dir is not None:
-        paths["repertoire_dir"] = payload.repertoire_dir
-    if payload.games_dir is not None:
-        paths["games_dir"] = payload.games_dir
-    if payload.database_path is not None:
-        paths["database_path"] = payload.database_path
-    if payload.stockfish_path is not None:
-        paths["stockfish_path"] = payload.stockfish_path
-    if payload.piece_dir is not None:
-        paths["piece_dir"] = payload.piece_dir
-
-    if payload.engine_depth is not None:
-        analysis["engine_depth"] = str(payload.engine_depth)
-    if payload.max_plies is not None:
-        analysis["max_plies"] = str(payload.max_plies)
-    if payload.matching_mode is not None:
-        analysis["matching_mode"] = payload.matching_mode
-    if payload.enable_engine_cache is not None:
-        analysis["enable_engine_cache"] = "1" if payload.enable_engine_cache else "0"
-    if payload.incremental_analysis is not None:
-        analysis["incremental_analysis"] = "1" if payload.incremental_analysis else "0"
-    if payload.review_top_n is not None:
-        analysis["review_top_n"] = str(payload.review_top_n)
-    if payload.tabiya_top_n is not None:
-        analysis["tabiya_top_n"] = str(payload.tabiya_top_n)
-    if payload.engine_workers is not None:
-        analysis["engine_workers"] = str(payload.engine_workers)
-    if payload.engine_worker_cap is not None:
-        analysis["engine_worker_cap"] = str(payload.engine_worker_cap)
-    if payload.engine_threads is not None:
-        analysis["engine_threads"] = str(payload.engine_threads)
-    if payload.engine_hash_mb is not None:
-        analysis["engine_hash_mb"] = str(payload.engine_hash_mb)
-    if payload.engine_mode is not None:
-        analysis["engine_mode"] = payload.engine_mode
-    if payload.engine_max_time_ms is not None:
-        analysis["engine_max_time_ms"] = str(payload.engine_max_time_ms)
-    if payload.engine_profile is not None:
-        analysis["engine_profile"] = payload.engine_profile
-    if payload.engine_cache_prune_non_active is not None:
-        analysis["engine_cache_prune_non_active"] = "1" if payload.engine_cache_prune_non_active else "0"
-    if payload.missing_coverage_proposal_threshold is not None:
-        analysis["missing_coverage_proposal_threshold"] = str(payload.missing_coverage_proposal_threshold)
-
-    if payload.player_name is not None:
-        player["player_name"] = payload.player_name
-    if payload.player_names is not None:
-        player["player_names"] = ",".join(_normalize_list(payload.player_names))
-    if payload.rating_band_size is not None:
-        player["rating_band_size"] = str(payload.rating_band_size)
-
-    with SETTINGS_INI_PATH.open("w", encoding="utf-8") as f:
-        config.write(f)
-
-    cfg = _load_runtime_config()
-    return _runtime_settings_response(cfg)
+def _save_runtime_settings(payload: dict[str, Any]) -> RuntimeSettingsResponse:
+    saved, errors = save_runtime_settings_payload(SETTINGS_INI_PATH, payload)
+    if errors:
+        raise HTTPException(
+            status_code=422,
+            detail=[{"field": err.field, "code": err.code, "message": err.message} for err in errors],
+        )
+    assert saved is not None
+    return RuntimeSettingsResponse.model_validate(saved)
 
 
 class AnalysisRuntimeManager:
@@ -1539,12 +1412,12 @@ async def auth_validate(_: str = Depends(require_auth)) -> AuthValidateResponse:
 
 @app.get('/settings/runtime', response_model=RuntimeSettingsResponse, responses={401: {"model": ErrorResponse}})
 async def get_runtime_settings(_: str = Depends(require_auth)) -> RuntimeSettingsResponse:
-    cfg = _load_runtime_config()
-    return _runtime_settings_response(cfg)
+    payload = get_runtime_settings_payload(SETTINGS_INI_PATH)
+    return RuntimeSettingsResponse.model_validate(payload)
 
 
-@app.put('/settings/runtime', response_model=RuntimeSettingsResponse, responses={401: {"model": ErrorResponse}, 422: {"model": ErrorResponse}})
-async def update_runtime_settings(payload: RuntimeSettingsUpdateRequest, _: str = Depends(require_auth)) -> RuntimeSettingsResponse:
+@app.put('/settings/runtime', response_model=RuntimeSettingsResponse, responses={401: {"model": ErrorResponse}, 422: {"model": ValidationErrorResponse}})
+async def update_runtime_settings(payload: dict[str, Any], _: str = Depends(require_auth)) -> RuntimeSettingsResponse:
     return _save_runtime_settings(payload)
 
 

@@ -6,9 +6,21 @@ from typing import Any
 
 import asyncpg
 
-from backend.settings import SETTINGS
+from pathlib import Path
+
+from backend.settings import SETTINGS, RuntimeFieldError, load_runtime_settings, update_runtime_settings
 from analysis import statistics
 from storage import queries
+
+
+def get_runtime_settings_payload(settings_ini_path: Path) -> dict[str, Any]:
+    return load_runtime_settings(settings_ini_path)
+
+
+def save_runtime_settings_payload(
+    settings_ini_path: Path, payload: dict[str, Any]
+) -> tuple[dict[str, Any] | None, list[RuntimeFieldError]]:
+    return update_runtime_settings(settings_ini_path, payload)
 
 
 def _normalize_insight_row(data: dict[str, Any]) -> dict[str, Any]:
