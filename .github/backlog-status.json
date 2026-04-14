@@ -51,7 +51,8 @@
       ],
       "contract_check_commands": [
         "node web/scripts/check-review-contract.mjs"
-      ]
+      ],
+      "contract_decision": "Canonical /review/branch-queue payload is a plain array, not an envelope object."
     },
     {
       "id": "GMD-01",
@@ -76,14 +77,15 @@
         "backend/read_api.py"
       ],
       "api_test_commands": [
-        "pytest tests/test_game_details_api_regression.py"
+        "pytest tests/test_game_details_api_regression.py -k neighbor_fields"
       ],
       "ui_test_commands": [
         "npm --prefix web run test:ui-regression -- game-detail"
       ],
       "contract_check_commands": [
         "node web/scripts/check-game-detail-contract.mjs"
-      ]
+      ],
+      "contract_decision": "Canonical neighbor traversal comes from GET /games/{id} fields; /games/{id}/neighbors is deprecated compatibility only."
     },
     {
       "id": "STS-01",
@@ -99,7 +101,8 @@
       ],
       "contract_check_commands": [
         "node web/scripts/check-lines-contract.mjs"
-      ]
+      ],
+      "contract_decision": "Canonical line drill-down routes are /lines/stats/{line_id} and /lines/stats/{line_id}/history (no /lines/{line_id} alias)."
     },
     {
       "id": "STS-02",

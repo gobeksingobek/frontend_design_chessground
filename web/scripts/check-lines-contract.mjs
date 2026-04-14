@@ -18,4 +18,4 @@ const history = {
 assert(Array.isArray(history.buckets), "GET /lines/stats/{line_id}/history requires buckets[]");
 assert("totals" in history, "GET /lines/stats/{line_id}/history requires totals");
 
-console.log("Lines contracts verified.");
+console.log("Lines contracts verified for canonical /lines/stats/{line_id} and /lines/stats/{line_id}/history routes.");
