@@ -127,6 +127,8 @@ def test_get_game_includes_neighbor_fields_on_canonical_get_game(monkeypatch) ->
             "moves": [],
             "prev_game_id": 45,
             "next_game_id": 43,
+            "prev_game_label": "Alpha vs Beta (2024.01.03)",
+            "next_game_label": "Gamma vs Delta (2024.01.01)",
         }
 
     monkeypatch.setattr(api_service, "fetch_game_detail", fake_fetch_game_detail)
@@ -135,12 +137,14 @@ def test_get_game_includes_neighbor_fields_on_canonical_get_game(monkeypatch) ->
 
     assert result.prev_game_id == 45
     assert result.next_game_id == 43
+    assert result.prev_game_label == "Alpha vs Beta (2024.01.03)"
+    assert result.next_game_label == "Gamma vs Delta (2024.01.01)"
 
 
 def test_get_game_neighbor_fields_handle_edge_games(monkeypatch) -> None:
     payloads = {
-        100: {"header": {"id": 100}, "moves": [], "prev_game_id": None, "next_game_id": 99},
-        1: {"header": {"id": 1}, "moves": [], "prev_game_id": 2, "next_game_id": None},
+        100: {"header": {"id": 100}, "moves": [], "prev_game_id": None, "next_game_id": 99, "prev_game_label": None, "next_game_label": "Middle vs Player (2024.01.02)"},
+        1: {"header": {"id": 1}, "moves": [], "prev_game_id": 2, "next_game_id": None, "prev_game_label": "Middle vs Player (2024.01.02)", "next_game_label": None},
     }
 
     async def fake_fetch_game_detail(game_id: int):
@@ -153,5 +157,31 @@ def test_get_game_neighbor_fields_handle_edge_games(monkeypatch) -> None:
 
     assert newest.prev_game_id is None
     assert newest.next_game_id == 99
+    assert newest.prev_game_label is None
+    assert newest.next_game_label == "Middle vs Player (2024.01.02)"
     assert oldest.prev_game_id == 2
     assert oldest.next_game_id is None
+    assert oldest.prev_game_label == "Middle vs Player (2024.01.02)"
+    assert oldest.next_game_label is None
+
+
+def test_get_game_neighbor_fields_handle_middle_game(monkeypatch) -> None:
+    async def fake_fetch_game_detail(game_id: int):
+        assert game_id == 99
+        return {
+            "header": {"id": 99},
+            "moves": [],
+            "prev_game_id": 100,
+            "next_game_id": 1,
+            "prev_game_label": "Newest vs Player (2024.01.03)",
+            "next_game_label": "Oldest vs Player (2024.01.01)",
+        }
+
+    monkeypatch.setattr(api_service, "fetch_game_detail", fake_fetch_game_detail)
+
+    middle = asyncio.run(api_service.get_game(99, _="dev-user"))
+
+    assert middle.prev_game_id == 100
+    assert middle.next_game_id == 1
+    assert middle.prev_game_label == "Newest vs Player (2024.01.03)"
+    assert middle.next_game_label == "Oldest vs Player (2024.01.01)"
