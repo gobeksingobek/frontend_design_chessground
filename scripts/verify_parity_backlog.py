@@ -21,10 +21,12 @@ def fail(message: str) -> None:
 
 def run(command: str) -> None:
     print(f"\n$ {command}")
-    env = dict(os.environ)
-    root_path = str(ROOT)
+    env = os.environ.copy()
+    pythonpath_entries = [str(ROOT)]
     existing_pythonpath = env.get("PYTHONPATH")
-    env["PYTHONPATH"] = f"{root_path}:{existing_pythonpath}" if existing_pythonpath else root_path
+    if existing_pythonpath:
+        pythonpath_entries.append(existing_pythonpath)
+    env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
     completed = subprocess.run(command, shell=True, cwd=ROOT, env=env)
     if completed.returncode != 0:
         fail(f"Command failed: {command}")
