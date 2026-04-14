@@ -4,7 +4,7 @@
   "tasks": [
     {
       "id": "TRN-01",
-      "status": "In progress",
+      "status": "Done",
       "endpoint_contract_files": [
         "backend/read_api.py",
         "backend/api_service.py"
@@ -21,7 +21,7 @@
     },
     {
       "id": "TRN-02",
-      "status": "In progress",
+      "status": "Done",
       "endpoint_contract_files": [
         "backend/read_api.py",
         "backend/api_service.py"
@@ -38,7 +38,7 @@
     },
     {
       "id": "REV-01",
-      "status": "In progress",
+      "status": "Done",
       "endpoint_contract_files": [
         "backend/read_api.py",
         "backend/api_service.py"
