@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 
@@ -27,14 +27,14 @@ export interface GamesTableState {
 }
 
 export const DEFAULT_GAMES_TABLE_STATE: GamesTableState = { result: "", compliance: "", complianceMin: "", lineId: "", player: "", dateFrom: "", dateTo: "", sortBy: "date", sortDir: "desc" };
-export function applyStoredGamesTableState(parsed: Partial<GamesTableState>): GamesTableState { return { ...DEFAULT_GAMES_TABLE_STATE, ...parsed }; }
+export function applyStoredGamesTableState(parsed: Partial<GamesTableState>): GamesTableState {
+  const sortBy = parsed.sortBy && ["date", "result", "compliance", "id"].includes(parsed.sortBy) ? parsed.sortBy : DEFAULT_GAMES_TABLE_STATE.sortBy;
+  const sortDir = parsed.sortDir && ["asc", "desc"].includes(parsed.sortDir) ? parsed.sortDir : DEFAULT_GAMES_TABLE_STATE.sortDir;
+  return { ...DEFAULT_GAMES_TABLE_STATE, ...parsed, sortBy, sortDir };
+}
 export function buildGamesQueryKey(state: GamesTableState): string[] { return ["games", ...Object.values(state)]; }
 
 export function GamesTable({ state, onStateChange }: { state: GamesTableState; onStateChange: (next: GamesTableState) => void }) {
-  useEffect(() => {
-    localStorage.setItem("cg_games_table_state_v2", JSON.stringify(state));
-  }, [state]);
-
   const queryKey = useMemo(() => buildGamesQueryKey(state), [state]);
   const { data, isLoading, error } = useQuery({
     queryKey,
