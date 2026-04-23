@@ -90,6 +90,18 @@ def _normalize_insight_row(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _sort_insights(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            float(row.get("priority_score") or 0),
+            float(row.get("confidence") or 0),
+            str(row.get("title") or ""),
+        ),
+        reverse=True,
+    )
+
+
 def _sqlite_backend_allowed() -> bool:
     return not SETTINGS.is_production_environment
 
@@ -766,7 +778,7 @@ async def _fetch_insights_postgres() -> list[dict[str, Any]]:
         else:
             data["data"] = None
         results.append(_normalize_insight_row(data))
-    return sorted(results, key=lambda row: float(row.get("priority_score") or 0), reverse=True)
+    return _sort_insights(results)
 
 
 async def _fetch_review_items_postgres() -> list[dict[str, Any]]:
@@ -819,7 +831,7 @@ def _fetch_insights_sqlite() -> list[dict[str, Any]]:
         conn.row_factory = sqlite3.Row
         rows = queries.fetch_insights(conn)
     normalized = [_normalize_insight_row(dict(row)) for row in rows]
-    return sorted(normalized, key=lambda row: float(row.get("priority_score") or 0), reverse=True)
+    return _sort_insights(normalized)
 
 
 def _fetch_review_items_sqlite() -> list[dict[str, Any]]:
