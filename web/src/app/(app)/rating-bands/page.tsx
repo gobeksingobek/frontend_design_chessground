@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { PageContainer, PageSection } from "@/components/app-shell";
-import { buildRatingBandSummary, normalizeBandSizeByGuardrails, StatsTable } from "@/components/stats/stats-table";
+import { StatsTable } from "@/components/stats/stats-table";
+import { buildRatingBandSummary, normalizeBandSizeByGuardrails } from "@/components/stats/stats-table-helpers";
 import { StatCard } from "@/components/ui/stat-card";
 import { Select } from "@/components/ui/select";
 import { SectionHeader } from "@/components/ui/section-header";

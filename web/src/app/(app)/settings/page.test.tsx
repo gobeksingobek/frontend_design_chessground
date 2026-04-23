@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { mapBackendFieldErrors, SECTIONS } from "./settings-form";
+import { mapBackendFieldErrors, SECTIONS } from "./settings-form.ts";
 
 test("settings page defines grouped section order", () => {
   assert.deepEqual(
