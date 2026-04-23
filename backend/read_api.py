@@ -113,10 +113,35 @@ def _sort_games(rows: list[dict[str, Any]], sort_by: str, sort_dir: str) -> list
     if sort_by == "date":
         return sorted(rows, key=lambda row: (row.get("date") or "", row.get("id") or 0), reverse=reverse)
     if sort_by == "compliance":
-        return sorted(rows, key=lambda row: (row.get("compliance") or "", row.get("date") or ""), reverse=reverse)
+        return sorted(
+            rows,
+            key=lambda row: (row.get("compliance") or "", row.get("date") or "", row.get("id") or 0),
+            reverse=reverse,
+        )
     if sort_by == "result":
-        return sorted(rows, key=lambda row: (row.get("result") or "", row.get("date") or ""), reverse=reverse)
+        return sorted(
+            rows,
+            key=lambda row: (row.get("result") or "", row.get("date") or "", row.get("id") or 0),
+            reverse=reverse,
+        )
     return sorted(rows, key=lambda row: row.get("id") or 0, reverse=reverse)
+
+
+def _normalize_games_sort(sort_by: str | None, sort_dir: str | None) -> tuple[str, str]:
+    normalized_sort_by = (sort_by or "date").lower()
+    if normalized_sort_by not in {"date", "result", "compliance", "id"}:
+        normalized_sort_by = "date"
+
+    normalized_sort_dir = (sort_dir or "desc").lower()
+    if normalized_sort_dir not in {"asc", "desc"}:
+        normalized_sort_dir = "desc"
+    return normalized_sort_by, normalized_sort_dir
+
+
+def _normalize_compliance_min(compliance_min: float | None) -> float | None:
+    if compliance_min is None:
+        return None
+    return min(max(float(compliance_min), 0.0), 1.0)
 
 
 def _build_game_navigation_payload(
@@ -411,6 +436,9 @@ async def fetch_games(
     sort_by: str = "date",
     sort_dir: str = "desc",
 ) -> list[dict[str, Any]]:
+    normalized_sort_by, normalized_sort_dir = _normalize_games_sort(sort_by, sort_dir)
+    normalized_compliance_min = _normalize_compliance_min(compliance_min)
+
     if SETTINGS.data_backend == "postgres":
         return await _fetch_games_postgres(
             limit,
@@ -421,9 +449,9 @@ async def fetch_games(
             player=player,
             date_from=date_from,
             date_to=date_to,
-            compliance_min=compliance_min,
-            sort_by=sort_by,
-            sort_dir=sort_dir,
+            compliance_min=normalized_compliance_min,
+            sort_by=normalized_sort_by,
+            sort_dir=normalized_sort_dir,
         )
     return await asyncio.to_thread(
         _fetch_games_sqlite,
@@ -435,9 +463,9 @@ async def fetch_games(
         player=player,
         date_from=date_from,
         date_to=date_to,
-        compliance_min=compliance_min,
-        sort_by=sort_by,
-        sort_dir=sort_dir,
+        compliance_min=normalized_compliance_min,
+        sort_by=normalized_sort_by,
+        sort_dir=normalized_sort_dir,
     )
 
 

@@ -1,10 +1,65 @@
-from backend.read_api import _apply_games_filters
+from backend.read_api import _apply_games_filters, _normalize_compliance_min, _normalize_games_sort, _sort_games
 
 
-def test_games_filter_compliance_min_and_player() -> None:
+def test_games_filter_combination_date_result_line_player_and_compliance() -> None:
     rows = [
-        {"id": 1, "compliance": "FULLY_COMPLIANT", "white": "Alpha", "black": "B", "date": "2024.01.01"},
-        {"id": 2, "compliance": "NON_COMPLIANT", "white": "C", "black": "D", "date": "2024.01.02"},
+        {
+            "id": 1,
+            "date": "2024.01.01",
+            "result": "1-0",
+            "line_id": "line-a",
+            "compliance": "FULLY_COMPLIANT",
+            "white": "Alpha",
+            "black": "Beta",
+        },
+        {
+            "id": 2,
+            "date": "2024.01.03",
+            "result": "1-0",
+            "line_id": "line-a",
+            "compliance": "PARTIALLY_COMPLIANT",
+            "white": "Gamma",
+            "black": "Alpha",
+        },
+        {
+            "id": 3,
+            "date": "2024.01.02",
+            "result": "0-1",
+            "line_id": "line-b",
+            "compliance": "FULLY_COMPLIANT",
+            "white": "Alpha",
+            "black": "Delta",
+        },
     ]
-    filtered = _apply_games_filters(rows, compliance_min=0.5, player="alpha")
-    assert [row["id"] for row in filtered] == [1]
+
+    filtered = _apply_games_filters(
+        rows,
+        result="1-0",
+        line_id="line-a",
+        player="alpha",
+        date_from="2024.01.02",
+        date_to="2024.01.03",
+        compliance_min=0.5,
+    )
+    assert [row["id"] for row in filtered] == [2]
+
+
+def test_games_default_ordering_date_desc_with_id_tiebreaker() -> None:
+    rows = [
+        {"id": 1, "date": "2024.01.02", "result": "1-0", "compliance": "FULLY_COMPLIANT"},
+        {"id": 3, "date": "2024.01.02", "result": "1-0", "compliance": "FULLY_COMPLIANT"},
+        {"id": 2, "date": "2024.01.01", "result": "0-1", "compliance": "NON_COMPLIANT"},
+    ]
+    ordered = _sort_games(rows, "date", "desc")
+    assert [row["id"] for row in ordered] == [3, 1, 2]
+
+
+def test_games_sort_and_compliance_min_normalization() -> None:
+    assert _normalize_games_sort(None, None) == ("date", "desc")
+    assert _normalize_games_sort("unknown", "sideways") == ("date", "desc")
+    assert _normalize_games_sort("RESULT", "ASC") == ("result", "asc")
+
+    assert _normalize_compliance_min(None) is None
+    assert _normalize_compliance_min(-1.0) == 0.0
+    assert _normalize_compliance_min(0.25) == 0.25
+    assert _normalize_compliance_min(2.0) == 1.0

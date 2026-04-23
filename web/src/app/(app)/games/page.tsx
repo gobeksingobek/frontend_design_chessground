@@ -5,15 +5,14 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { PageContainer, PageSection } from "@/components/app-shell";
-import { DEFAULT_GAMES_TABLE_STATE, GamesTable, type GamesTableState } from "@/components/games/games-table";
+import { applyStoredGamesTableState, DEFAULT_GAMES_TABLE_STATE, GamesTable, type GamesTableState } from "@/components/games/games-table";
 import { Button } from "@/components/ui/button";
 import { DetailPane } from "@/components/ui/page-patterns";
 import { SectionHeader } from "@/components/ui/section-header";
 import { CaptionText, CardTitle, MutedText } from "@/components/ui/typography";
 
-function parseState(params: URLSearchParams): GamesTableState {
-  return {
-    ...DEFAULT_GAMES_TABLE_STATE,
+export function parseGamesPageState(params: URLSearchParams): GamesTableState {
+  return applyStoredGamesTableState({
     result: params.get("result") ?? "",
     compliance: params.get("compliance") ?? "",
     complianceMin: params.get("compliance_min") ?? "",
@@ -23,21 +22,27 @@ function parseState(params: URLSearchParams): GamesTableState {
     dateTo: params.get("date_to") ?? "",
     sortBy: (params.get("sort_by") as GamesTableState["sortBy"]) || DEFAULT_GAMES_TABLE_STATE.sortBy,
     sortDir: (params.get("sort_dir") as GamesTableState["sortDir"]) || DEFAULT_GAMES_TABLE_STATE.sortDir,
-  };
+  });
+}
+
+export function buildGamesPageQueryParams(state: GamesTableState): URLSearchParams {
+  const nextParams = new URLSearchParams();
+  Object.entries(state).forEach(([key, value]) => {
+    if (value) nextParams.set(key.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`), value);
+  });
+  return nextParams;
 }
 
 function GamesPageContent() {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const state = useMemo(() => parseState(new URLSearchParams(params.toString())), [params]);
+  const state = useMemo(() => parseGamesPageState(new URLSearchParams(params.toString())), [params]);
 
   function onStateChange(next: GamesTableState) {
-    const nextParams = new URLSearchParams();
-    Object.entries(next).forEach(([key, value]) => {
-      if (value) nextParams.set(key.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`), value);
-    });
-    router.replace(`${pathname}?${nextParams.toString()}`);
+    const nextParams = buildGamesPageQueryParams(next);
+    const query = nextParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname);
   }
 
   const activeFilterEntries = [
