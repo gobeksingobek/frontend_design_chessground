@@ -1,12 +1,32 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildRatingBandSummary, normalizeBandSizeByGuardrails, normalizeStatsRows, resolveColumns, summarizePivot } from "@/components/stats/stats-table";
+import {
+  buildRatingBandSummary,
+  normalizeBandSizeByGuardrails,
+  normalizeStatsRows,
+  resolveColumns,
+  resolveDetailTab,
+  resolveSelectedRowIndex,
+  summarizePivot,
+} from "./stats-table-helpers.ts";
 
 test("drill-down row normalization supports bucket payload", () => {
   const rows = normalizeStatsRows({ buckets: [{ bucket: "2024-01", total_games: 2 }] });
   assert.equal(rows.length, 1);
   assert.equal(rows[0].bucket, "2024-01");
+});
+
+test("row selection clamps to available rows", () => {
+  assert.equal(resolveSelectedRowIndex(3, 2), 1);
+  assert.equal(resolveSelectedRowIndex(-1, 2), 0);
+  assert.equal(resolveSelectedRowIndex(0, 0), 0);
+});
+
+test("history tab requires history payload availability", () => {
+  assert.equal(resolveDetailTab("history", false), "detail");
+  assert.equal(resolveDetailTab("history", true), "history");
+  assert.equal(resolveDetailTab("detail", true), "detail");
 });
 
 test("pivot swap changes summary key distribution", () => {
