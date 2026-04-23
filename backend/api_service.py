@@ -27,6 +27,7 @@ from backend import repertoire_import
 from backend.queue import enqueue_job, ensure_consumer_group, redis_client
 from backend.read_api import (
     ALLOWED_RATING_BAND_SIZES,
+    build_tree_contract_payload,
     fetch_analysis_runs,
     fetch_game_detail,
     fetch_games,
@@ -281,6 +282,9 @@ class TreeBrowseResponse(BaseModel):
 
 class TreeCoverageResponse(BaseModel):
     pos_id: int
+    my_side_only: bool
+    repertoire_children: list[TreeBrowseMoveResponse]
+    game_children: list[dict[str, Any]]
     total_repertoire_moves: int
     covered_by_games: int
     coverage_pct: float
@@ -288,6 +292,9 @@ class TreeCoverageResponse(BaseModel):
 
 class TreeBranchMetricsResponse(BaseModel):
     pos_id: int
+    my_side_only: bool
+    repertoire_children: list[TreeBrowseMoveResponse]
+    game_children: list[dict[str, Any]]
     top_repertoire_branches: list[dict[str, Any]]
     top_game_branches: list[dict[str, Any]]
 
@@ -1708,12 +1715,13 @@ async def get_lines_tree_browse(
 ) -> TreeBrowseResponse:
     repertoire_rows = await _fetch_tree_repertoire_children_backend(pos_id, my_side_only, request)
     game_rows = await _fetch_tree_game_children_backend(pos_id, my_side_only, request)
-    return TreeBrowseResponse(
+    payload = build_tree_contract_payload(
         pos_id=pos_id,
         my_side_only=my_side_only,
-        repertoire_children=[TreeBrowseMoveResponse(**row) for row in repertoire_rows],
-        game_children=game_rows,
+        repertoire_rows=repertoire_rows,
+        game_rows=game_rows,
     )
+    return TreeBrowseResponse(**payload)
 
 
 @app.get("/lines/tree/coverage", response_model=TreeCoverageResponse)
@@ -1725,17 +1733,13 @@ async def get_lines_tree_coverage(
 ) -> TreeCoverageResponse:
     repertoire_rows = await _fetch_tree_repertoire_children_backend(pos_id, my_side_only, request)
     game_rows = await _fetch_tree_game_children_backend(pos_id, my_side_only, request)
-    rep_moves = {str(row.get("uci_move") or "") for row in repertoire_rows if row.get("uci_move")}
-    game_moves = {str(row.get("uci_move") or "") for row in game_rows if row.get("uci_move")}
-    covered = len(rep_moves & game_moves)
-    total = len(rep_moves)
-    coverage_pct = (covered / total * 100.0) if total else 0.0
-    return TreeCoverageResponse(
+    payload = build_tree_contract_payload(
         pos_id=pos_id,
-        total_repertoire_moves=total,
-        covered_by_games=covered,
-        coverage_pct=coverage_pct,
+        my_side_only=my_side_only,
+        repertoire_rows=repertoire_rows,
+        game_rows=game_rows,
     )
+    return TreeCoverageResponse(**payload)
 
 
 @app.get("/lines/tree/branch-metrics", response_model=TreeBranchMetricsResponse)
@@ -1747,13 +1751,13 @@ async def get_lines_tree_branch_metrics(
 ) -> TreeBranchMetricsResponse:
     repertoire_rows = await _fetch_tree_repertoire_children_backend(pos_id, my_side_only, request)
     game_rows = await _fetch_tree_game_children_backend(pos_id, my_side_only, request)
-    repertoire_sorted = sorted(repertoire_rows, key=lambda row: int(row.get("weight") or 0), reverse=True)
-    game_sorted = sorted(game_rows, key=lambda row: int(row.get("games") or 0), reverse=True)
-    return TreeBranchMetricsResponse(
+    payload = build_tree_contract_payload(
         pos_id=pos_id,
-        top_repertoire_branches=repertoire_sorted[:10],
-        top_game_branches=game_sorted[:10],
+        my_side_only=my_side_only,
+        repertoire_rows=repertoire_rows,
+        game_rows=game_rows,
     )
+    return TreeBranchMetricsResponse(**payload)
 
 
 def _require_postgres_trainer_sessions() -> None:
