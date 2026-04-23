@@ -45,6 +45,42 @@ def save_runtime_settings_payload(
     return update_runtime_settings(settings_ini_path, payload)
 
 
+def _normalize_analysis_run_entry(entry: Any) -> dict[str, Any]:
+    if isinstance(entry, dict):
+        source = entry
+    else:
+        source = {
+            "run_id": getattr(entry, "run_id", None) or getattr(entry, "job_id", None),
+            "run_type": getattr(entry, "run_type", None),
+            "status": getattr(entry, "status", None) or getattr(entry, "state", None),
+            "started_at": getattr(entry, "started_at", None),
+            "finished_at": getattr(entry, "finished_at", None),
+            "error_reason": getattr(entry, "error_reason", None) or getattr(entry, "error", None),
+        }
+
+    return {
+        "run_id": source.get("run_id") or source.get("job_id") or "",
+        "run_type": source.get("run_type") or "",
+        "status": source.get("status") or source.get("state") or "running",
+        "started_at": source.get("started_at") or "",
+        "finished_at": source.get("finished_at"),
+        "error_reason": source.get("error_reason") or source.get("error"),
+    }
+
+
+def normalize_analysis_runs(entries: list[Any], limit: int = 10) -> list[dict[str, Any]]:
+    bounded_limit = min(max(limit, 1), 50)
+    normalized = [_normalize_analysis_run_entry(entry) for entry in entries]
+    normalized.sort(key=lambda row: (str(row.get("started_at") or ""), str(row.get("run_id") or "")), reverse=True)
+    return normalized[:bounded_limit]
+
+
+async def fetch_analysis_runs(runtime: Any, limit: int = 10) -> dict[str, Any]:
+    runtime_payload = runtime.runs(limit=50)
+    entries = list(getattr(runtime_payload, "runs", []))
+    return {"runs": normalize_analysis_runs(entries, limit=limit)}
+
+
 def _normalize_insight_row(data: dict[str, Any]) -> dict[str, Any]:
     payload = data.get("data") if isinstance(data.get("data"), dict) else {}
     refs = payload.get("source_refs") if isinstance(payload, dict) else None

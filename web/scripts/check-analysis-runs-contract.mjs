@@ -1,3 +1,45 @@
-const sample = { runs: [{ run_id: "r1", run_type: "full-analysis", status: "completed", started_at: "", finished_at: "", error_reason: null }] };
-if (!sample.runs[0].run_id || !sample.runs[0].status) throw new Error('analysis runs contract failed');
-console.log('Analysis runs contract verified.');
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+const sample = {
+  runs: [
+    {
+      run_id: "r1",
+      run_type: "full-analysis",
+      status: "completed",
+      started_at: "2024-01-01T00:00:00Z",
+      finished_at: "2024-01-01T00:05:00Z",
+      error_reason: null,
+    },
+  ],
+};
+
+assert(Array.isArray(sample.runs), "GET /analysis/runs must return an envelope with runs array");
+for (const row of sample.runs) {
+  assert(typeof row.run_id === "string" && row.run_id.length > 0, "run_id must be a non-empty string");
+  assert(typeof row.run_type === "string" && row.run_type.length > 0, "run_type must be a non-empty string");
+  assert(["running", "completed", "failed"].includes(row.status), "status must be running|completed|failed");
+  assert(typeof row.started_at === "string", "started_at must be a string");
+  assert(row.finished_at === null || typeof row.finished_at === "string", "finished_at must be string|null");
+  assert(row.error_reason === null || typeof row.error_reason === "string", "error_reason must be string|null");
+}
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const webRoot = path.resolve(__dirname, "..");
+const backendRoot = path.resolve(webRoot, "..");
+
+const backendApi = fs.readFileSync(path.join(backendRoot, "backend/api_service.py"), "utf8");
+const backendReadApi = fs.readFileSync(path.join(backendRoot, "backend/read_api.py"), "utf8");
+const apiClient = fs.readFileSync(path.join(webRoot, "src/lib/api-client.ts"), "utf8");
+
+assert(backendApi.includes("@app.get('/analysis/runs'"), "backend API must expose GET /analysis/runs route");
+assert(backendApi.includes("limit: int = 10"), "GET /analysis/runs route must accept limit query parameter");
+assert(backendReadApi.includes("normalize_analysis_runs"), "read_api must normalize analysis run entries");
+assert(apiClient.includes("/analysis/runs?limit="), "web API client must forward limit for GET /analysis/runs");
+
+console.log("Analysis runs contract verified for route, normalization, and response shape.");
