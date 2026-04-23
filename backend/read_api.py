@@ -13,6 +13,26 @@ from analysis import statistics
 from storage import queries
 
 TIME_USAGE_PIVOTS = {"self_vs_opp", "in_book_vs_out_of_book"}
+RATING_BAND_MIN_SIZE = 50
+RATING_BAND_MAX_SIZE = 400
+RATING_BAND_STEP = 50
+RATING_BAND_DEFAULT_SIZE = 100
+ALLOWED_RATING_BAND_SIZES = list(range(RATING_BAND_MIN_SIZE, RATING_BAND_MAX_SIZE + RATING_BAND_STEP, RATING_BAND_STEP))
+
+
+def normalize_rating_band_size(band_size: int) -> int:
+    if band_size < RATING_BAND_MIN_SIZE or band_size > RATING_BAND_MAX_SIZE:
+        return RATING_BAND_DEFAULT_SIZE
+    if (band_size - RATING_BAND_MIN_SIZE) % RATING_BAND_STEP != 0:
+        return RATING_BAND_DEFAULT_SIZE
+    return band_size
+
+
+def _compute_percentile(values: list[float], quantile: float) -> float | None:
+    if not values:
+        return None
+    index = int((len(values) - 1) * quantile)
+    return values[index]
 
 
 def get_runtime_settings_payload(settings_ini_path: Path) -> dict[str, Any]:
@@ -962,6 +982,26 @@ async def fetch_rating_band_stats(band_size: int) -> list[dict[str, Any]]:
     if SETTINGS.data_backend == "postgres":
         return await _fetch_rating_band_stats_postgres(band_size)
     return await asyncio.to_thread(_fetch_rating_band_stats_sqlite, band_size)
+
+
+async def fetch_rating_band_stats_payload(band_size: int) -> dict[str, Any]:
+    normalized_band_size = normalize_rating_band_size(band_size)
+    buckets = await fetch_rating_band_stats(normalized_band_size)
+    total_games = sum(int(row.get("total_games") or 0) for row in buckets)
+    compliance_rates = sorted(
+        [float(row["compliance_rate"]) for row in buckets if row.get("compliance_rate") is not None]
+    )
+    return {
+        "band_size": normalized_band_size,
+        "allowed_band_sizes": ALLOWED_RATING_BAND_SIZES,
+        "percentiles": {
+            "p25_compliance_rate": _compute_percentile(compliance_rates, 0.25),
+            "p50_compliance_rate": _compute_percentile(compliance_rates, 0.5),
+            "p75_compliance_rate": _compute_percentile(compliance_rates, 0.75),
+        },
+        "totals": {"total_games": total_games, "bucket_count": len(buckets)},
+        "buckets": buckets,
+    }
 
 
 async def fetch_insights() -> list[dict[str, Any]]:

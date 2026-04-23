@@ -26,6 +26,7 @@ from backend import db
 from backend import repertoire_import
 from backend.queue import enqueue_job, ensure_consumer_group, redis_client
 from backend.read_api import (
+    ALLOWED_RATING_BAND_SIZES,
     fetch_game_detail,
     fetch_games,
     fetch_insights,
@@ -33,10 +34,11 @@ from backend.read_api import (
     fetch_line_stats_history,
     fetch_lines_stats,
     fetch_overview_summary,
-    fetch_rating_band_stats,
+    fetch_rating_band_stats_payload,
     fetch_review_items,
     fetch_time_usage_stats,
     get_runtime_settings_payload,
+    normalize_rating_band_size,
     save_runtime_settings_payload,
 )
 from backend.settings import SETTINGS
@@ -1679,26 +1681,10 @@ async def get_time_usage_stats(
 
 @app.get("/rating-bands/stats", response_model=RatingBandStatsResponse)
 async def get_rating_band_stats(band_size: int = 100, _: str = Depends(require_auth)) -> RatingBandStatsResponse:
-    allowed_band_sizes = [50, 100, 150, 200, 250, 300, 350, 400]
-    normalized = band_size if band_size in allowed_band_sizes else 100
-    buckets = await fetch_rating_band_stats(normalized)
-
-    total_games = sum(int(row.get("total_games") or 0) for row in buckets)
-    compliance_rates = sorted([float(row["compliance_rate"]) for row in buckets if row.get("compliance_rate") is not None])
-
-    def pct(values: list[float], q: float) -> float | None:
-        if not values:
-            return None
-        idx = int((len(values) - 1) * q)
-        return values[idx]
-
-    return RatingBandStatsResponse(
-        band_size=normalized,
-        allowed_band_sizes=allowed_band_sizes,
-        percentiles={"p25_compliance_rate": pct(compliance_rates, 0.25), "p50_compliance_rate": pct(compliance_rates, 0.5), "p75_compliance_rate": pct(compliance_rates, 0.75)},
-        totals={"total_games": total_games, "bucket_count": len(buckets)},
-        buckets=buckets,
-    )
+    payload = await fetch_rating_band_stats_payload(band_size)
+    payload["band_size"] = normalize_rating_band_size(int(payload.get("band_size", band_size)))
+    payload["allowed_band_sizes"] = ALLOWED_RATING_BAND_SIZES
+    return RatingBandStatsResponse(**payload)
 
 
 @app.get("/insights", response_model=list[dict[str, Any]])
