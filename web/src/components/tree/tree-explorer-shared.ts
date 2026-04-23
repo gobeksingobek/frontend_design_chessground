@@ -21,7 +21,7 @@ export function toCanonicalTreeSnapshot(
   return {
     posId: Number(source?.pos_id ?? 1),
     coveragePct: Number(coverage?.coverage_pct ?? 0),
-    repertoireCount: Number((browse?.repertoire_children ?? metrics?.repertoire_children ?? []).length),
-    gameCount: Number((browse?.game_children ?? metrics?.game_children ?? []).length),
+    repertoireCount: Number((browse?.repertoire_children ?? coverage?.repertoire_children ?? metrics?.repertoire_children ?? []).length),
+    gameCount: Number((browse?.game_children ?? coverage?.game_children ?? metrics?.game_children ?? []).length),
   };
 }

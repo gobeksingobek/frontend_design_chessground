@@ -28,3 +28,16 @@ test("tree canonical schema keeps endpoint identity and coverage", () => {
   assert.equal(snapshot.repertoireCount, 2);
   assert.equal(snapshot.gameCount, 1);
 });
+
+test("tree canonical schema falls back to mirrored coverage counts", () => {
+  const snapshot = toCanonicalTreeSnapshot(
+    null,
+    { pos_id: 9, coverage_pct: 62.5, repertoire_children: [{}, {}, {}], game_children: [{}, {}] },
+    null,
+  );
+
+  assert.equal(snapshot.posId, 9);
+  assert.equal(snapshot.coveragePct, 62.5);
+  assert.equal(snapshot.repertoireCount, 3);
+  assert.equal(snapshot.gameCount, 2);
+});
