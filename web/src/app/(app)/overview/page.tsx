@@ -12,6 +12,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { BodyText, CaptionText, CardTitle, FieldLabel, MutedText } from "@/components/ui/typography";
 import { cn } from "@/lib/cn";
 import { getAnalysisProgress, getAnalysisRuns, getAnalysisStatus, getOverviewSummary, runEngineOnlyAnalysis, runFetchGames, runFullAnalysis, runSmokeTest } from "@/lib/api-client";
+import type { AnalysisRunHistoryEntry } from "@/lib/types";
 
 function formatRunType(value: string | null | undefined): string {
   if (!value) return "N/A";
@@ -23,6 +24,19 @@ function formatTs(value: string | null | undefined): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
+}
+
+export type RunAction = "full" | "engine" | "fetch" | "smoke";
+
+export function actionForRunType(runType: string): RunAction {
+  if (runType === "engine-only-analysis") return "engine";
+  if (runType === "fetch-games") return "fetch";
+  if (runType === "smoke-test") return "smoke";
+  return "full";
+}
+
+export function runActionLabel(run: AnalysisRunHistoryEntry): string {
+  return run.status === "failed" ? `Retry ${formatRunType(run.run_type)}` : `Run ${formatRunType(run.run_type)} again`;
 }
 
 const KPI_CONFIG = [
@@ -74,6 +88,8 @@ export default function OverviewPage() {
 
   const completedRuns = runs?.runs?.filter((run) => run.status === "completed").length ?? 0;
   const failedRuns = runs?.runs?.filter((run) => run.status === "failed").length ?? 0;
+  const latestRun = runs?.runs?.[0] ?? null;
+  const recentFinishedRun = runs?.runs?.find((run) => run.status !== "running") ?? null;
 
   const rightRail = (
     <>
@@ -174,6 +190,18 @@ export default function OverviewPage() {
             </DetailPane>
 
             <DetailPane title="Run timeline" description="Recent jobs are ordered as an operational timeline so you can spot interruptions, finishes, and follow-up work quickly.">
+              <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
+                  <CaptionText>Current run</CaptionText>
+                  <BodyText className="mt-2">{latestRun ? `${formatRunType(latestRun.run_type)} · ${latestRun.status}` : "No runs yet"}</BodyText>
+                  {latestRun ? <MutedText>{formatTs(latestRun.started_at)}</MutedText> : null}
+                </div>
+                <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
+                  <CaptionText>Most recent finished run</CaptionText>
+                  <BodyText className="mt-2">{recentFinishedRun ? `${formatRunType(recentFinishedRun.run_type)} · ${recentFinishedRun.status}` : "No finished runs yet"}</BodyText>
+                  {recentFinishedRun?.finished_at ? <MutedText>{formatTs(recentFinishedRun.finished_at)}</MutedText> : null}
+                </div>
+              </div>
               {(runs?.runs.length ?? 0) === 0 ? (
                 <EmptyState title="No analysis runs yet" description="Start a pipeline action to populate the timeline and monitor recent job history here." />
               ) : (
@@ -191,6 +219,16 @@ export default function OverviewPage() {
                         </div>
                         <BodyText className="text-muted-foreground">Started {formatTs(run.started_at)}{run.finished_at ? ` · Finished ${formatTs(run.finished_at)}` : " · In progress"}</BodyText>
                         {run.error_reason ? <BodyText className="font-medium text-warning">Issue: {run.error_reason}</BodyText> : null}
+                        <div className="pt-1">
+                          <Button
+                            variant={run.status === "failed" ? "secondary" : "outline"}
+                            size="sm"
+                            disabled={isRunning || runMutation.isPending || run.status === "running"}
+                            onClick={() => runMutation.mutate(actionForRunType(run.run_type))}
+                          >
+                            {runActionLabel(run)}
+                          </Button>
+                        </div>
                       </div>
                     </li>
                   ))}

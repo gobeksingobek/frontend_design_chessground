@@ -27,6 +27,7 @@ from backend import repertoire_import
 from backend.queue import enqueue_job, ensure_consumer_group, redis_client
 from backend.read_api import (
     ALLOWED_RATING_BAND_SIZES,
+    fetch_analysis_runs,
     fetch_game_detail,
     fetch_games,
     fetch_insights,
@@ -1412,7 +1413,8 @@ async def get_analysis_progress(request: Request, _: str = Depends(require_auth)
 @app.get('/analysis/runs', response_model=AnalysisRunHistoryResponse)
 async def get_analysis_runs(request: Request, limit: int = 10, _: str = Depends(require_auth)) -> AnalysisRunHistoryResponse:
     runtime: AnalysisRuntimeManager = request.app.state.analysis_runtime
-    return runtime.runs(limit=limit)
+    payload = await fetch_analysis_runs(runtime, limit=limit)
+    return AnalysisRunHistoryResponse.model_validate(payload)
 
 
 @app.get('/auth/validate', response_model=AuthValidateResponse, responses={401: {"model": ErrorResponse}})
