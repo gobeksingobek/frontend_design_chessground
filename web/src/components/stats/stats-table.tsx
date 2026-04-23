@@ -13,6 +13,42 @@ import { cn } from "@/lib/cn";
 
 type StatsPayload = StatsRow[] | { buckets: StatsRow[] };
 type PivotOption = { value: string; label: string };
+export type RatingBandGuardrails = {
+  min: number;
+  max: number;
+  step: number;
+  allowedBandSizes: number[];
+  fallback: number;
+};
+export type RatingBandMetadata = {
+  band_size?: number;
+  allowed_band_sizes?: number[];
+  percentiles?: Record<string, number | null>;
+  totals?: Record<string, number>;
+};
+
+export function normalizeBandSizeByGuardrails(bandSize: number, guardrails: RatingBandGuardrails): number {
+  const candidate = Number.isFinite(bandSize) ? Math.floor(bandSize) : guardrails.fallback;
+  if (candidate < guardrails.min || candidate > guardrails.max) return guardrails.fallback;
+  if ((candidate - guardrails.min) % guardrails.step !== 0) return guardrails.fallback;
+  if (!guardrails.allowedBandSizes.includes(candidate)) return guardrails.fallback;
+  return candidate;
+}
+
+export function buildRatingBandSummary(metadata: RatingBandMetadata | undefined): Array<{ label: string; value: string }> {
+  if (!metadata) return [];
+  const totals = metadata.totals ?? {};
+  const percentiles = metadata.percentiles ?? {};
+  const p50 = percentiles.p50_compliance_rate;
+  const p75 = percentiles.p75_compliance_rate;
+  return [
+    { label: "Band size", value: String(metadata.band_size ?? "—") },
+    { label: "Total games", value: String(totals.total_games ?? 0) },
+    { label: "Bucket count", value: String(totals.bucket_count ?? 0) },
+    { label: "Median compliance", value: p50 == null ? "—" : `${(p50 * 100).toFixed(1)}%` },
+    { label: "P75 compliance", value: p75 == null ? "—" : `${(p75 * 100).toFixed(1)}%` },
+  ];
+}
 
 export function resolveColumns(rows: StatsRow[], columnModel: string[] | undefined): string[] {
   if (rows.length === 0) return [];
