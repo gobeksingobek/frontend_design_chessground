@@ -4,34 +4,13 @@ import { Suspense, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { buildGamesPageQueryParams, parseGamesPageState } from "./page-state";
 import { PageContainer, PageSection } from "@/components/app-shell";
-import { applyStoredGamesTableState, DEFAULT_GAMES_TABLE_STATE, GamesTable, type GamesTableState } from "@/components/games/games-table";
+import { GamesTable, type GamesTableState } from "@/components/games/games-table";
 import { Button } from "@/components/ui/button";
 import { DetailPane } from "@/components/ui/page-patterns";
 import { SectionHeader } from "@/components/ui/section-header";
 import { CaptionText, CardTitle, MutedText } from "@/components/ui/typography";
-
-export function parseGamesPageState(params: URLSearchParams): GamesTableState {
-  return applyStoredGamesTableState({
-    result: params.get("result") ?? "",
-    compliance: params.get("compliance") ?? "",
-    complianceMin: params.get("compliance_min") ?? "",
-    lineId: params.get("line_id") ?? "",
-    player: params.get("player") ?? "",
-    dateFrom: params.get("date_from") ?? "",
-    dateTo: params.get("date_to") ?? "",
-    sortBy: (params.get("sort_by") as GamesTableState["sortBy"]) || DEFAULT_GAMES_TABLE_STATE.sortBy,
-    sortDir: (params.get("sort_dir") as GamesTableState["sortDir"]) || DEFAULT_GAMES_TABLE_STATE.sortDir,
-  });
-}
-
-export function buildGamesPageQueryParams(state: GamesTableState): URLSearchParams {
-  const nextParams = new URLSearchParams();
-  Object.entries(state).forEach(([key, value]) => {
-    if (value) nextParams.set(key.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`), value);
-  });
-  return nextParams;
-}
 
 function GamesPageContent() {
   const params = useSearchParams();

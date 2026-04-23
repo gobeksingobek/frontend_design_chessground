@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { actionForRunType, formatRunTypeLabel as formatRunType, runActionLabel } from "./page-helpers";
 import { PageContainer, PageSection } from "@/components/app-shell";
 import { SidelineTable } from "@/components/sideline-table";
 import { Badge } from "@/components/ui/badge";
@@ -12,31 +13,13 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { BodyText, CaptionText, CardTitle, FieldLabel, MutedText } from "@/components/ui/typography";
 import { cn } from "@/lib/cn";
 import { getAnalysisProgress, getAnalysisRuns, getAnalysisStatus, getOverviewSummary, runEngineOnlyAnalysis, runFetchGames, runFullAnalysis, runSmokeTest } from "@/lib/api-client";
-import type { AnalysisRunHistoryEntry } from "@/lib/types";
-
-function formatRunType(value: string | null | undefined): string {
-  if (!value) return "N/A";
-  return value.replaceAll("-", " ");
-}
+ 
 
 function formatTs(value: string | null | undefined): string {
   if (!value) return "N/A";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
-}
-
-export type RunAction = "full" | "engine" | "fetch" | "smoke";
-
-export function actionForRunType(runType: string): RunAction {
-  if (runType === "engine-only-analysis") return "engine";
-  if (runType === "fetch-games") return "fetch";
-  if (runType === "smoke-test") return "smoke";
-  return "full";
-}
-
-export function runActionLabel(run: AnalysisRunHistoryEntry): string {
-  return run.status === "failed" ? `Retry ${formatRunType(run.run_type)}` : `Run ${formatRunType(run.run_type)} again`;
 }
 
 const KPI_CONFIG = [
