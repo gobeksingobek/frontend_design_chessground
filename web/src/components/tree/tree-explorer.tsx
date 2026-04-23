@@ -20,14 +20,33 @@ export function TreeExplorer({ layout = "workspace" }: { layout?: TreeExplorerLa
     isError,
     errorMessage,
   } = useTreeExplorerData();
+  const adaptedBrowse = browse ?? (metrics
+    ? {
+      pos_id: metrics.pos_id,
+      my_side_only: metrics.my_side_only,
+      repertoire_children: metrics.repertoire_children,
+      game_children: metrics.game_children,
+    }
+    : undefined);
+  const adaptedCoverage = coverage ?? (metrics
+    ? {
+      pos_id: metrics.pos_id,
+      my_side_only: metrics.my_side_only,
+      repertoire_children: metrics.repertoire_children,
+      game_children: metrics.game_children,
+      total_repertoire_moves: metrics.repertoire_children.length,
+      covered_by_games: 0,
+      coverage_pct: 0,
+    }
+    : undefined);
 
   return (
     <TreeExplorerView
       layout={layout}
       posId={posId}
       onPosIdChange={setPosId}
-      browse={browse}
-      coverage={coverage}
+      browse={adaptedBrowse}
+      coverage={adaptedCoverage}
       metrics={metrics}
       selectedMoveUci={resolvedSelectedMove}
       onSelectMove={setSelectedMoveUci}

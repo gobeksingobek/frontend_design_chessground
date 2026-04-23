@@ -81,6 +81,68 @@ async def fetch_analysis_runs(runtime: Any, limit: int = 10) -> dict[str, Any]:
     return {"runs": normalize_analysis_runs(entries, limit=limit)}
 
 
+def _normalize_tree_repertoire_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "uci_move": str(row.get("uci_move") or ""),
+        "san_move": row.get("san_move"),
+        "next_pos_id": row.get("next_pos_id"),
+        "weight": int(row.get("weight") or 0),
+        "is_priority_edge": int(row.get("is_priority_edge") or 0),
+        "is_user_mainline": int(row.get("is_user_mainline") or 0),
+        "is_sideline_pending": int(row.get("is_sideline_pending") or 0),
+    }
+
+
+def _normalize_tree_game_row(row: dict[str, Any]) -> dict[str, Any]:
+    games = int(row.get("games") or 0)
+    wins = int(row.get("wins") or 0)
+    draws = int(row.get("draws") or 0)
+    losses = int(row.get("losses") or 0)
+    score_pct = row.get("score_pct")
+    if score_pct is None:
+        score_pct = ((wins + 0.5 * draws) / games * 100.0) if games > 0 else 0.0
+    return {
+        "uci_move": str(row.get("uci_move") or ""),
+        "san_move": row.get("san_move"),
+        "next_pos_id": row.get("next_pos_id"),
+        "games": games,
+        "wins": wins,
+        "draws": draws,
+        "losses": losses,
+        "avg_opp_elo": row.get("avg_opp_elo"),
+        "score_pct": float(score_pct or 0.0),
+    }
+
+
+def build_tree_contract_payload(
+    *,
+    pos_id: int,
+    my_side_only: bool,
+    repertoire_rows: list[dict[str, Any]],
+    game_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    repertoire_children = [_normalize_tree_repertoire_row(row) for row in repertoire_rows]
+    game_children = [_normalize_tree_game_row(row) for row in game_rows]
+    rep_moves = {row["uci_move"] for row in repertoire_children if row["uci_move"]}
+    game_moves = {row["uci_move"] for row in game_children if row["uci_move"]}
+    covered_by_games = len(rep_moves & game_moves)
+    total_repertoire_moves = len(rep_moves)
+    coverage_pct = (covered_by_games / total_repertoire_moves * 100.0) if total_repertoire_moves else 0.0
+    top_repertoire_branches = sorted(repertoire_children, key=lambda row: int(row.get("weight") or 0), reverse=True)[:10]
+    top_game_branches = sorted(game_children, key=lambda row: int(row.get("games") or 0), reverse=True)[:10]
+    return {
+        "pos_id": int(pos_id),
+        "my_side_only": bool(my_side_only),
+        "repertoire_children": repertoire_children,
+        "game_children": game_children,
+        "total_repertoire_moves": total_repertoire_moves,
+        "covered_by_games": covered_by_games,
+        "coverage_pct": float(coverage_pct),
+        "top_repertoire_branches": top_repertoire_branches,
+        "top_game_branches": top_game_branches,
+    }
+
+
 def _normalize_insight_row(data: dict[str, Any]) -> dict[str, Any]:
     payload = data.get("data") if isinstance(data.get("data"), dict) else {}
     refs = payload.get("source_refs") if isinstance(payload, dict) else None

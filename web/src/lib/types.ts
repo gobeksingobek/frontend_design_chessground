@@ -197,6 +197,9 @@ export interface TreeBrowseResponse {
 
 export interface TreeCoverageResponse {
   pos_id: number;
+  my_side_only: boolean;
+  repertoire_children: TreeBrowseMove[];
+  game_children: TreeGameMove[];
   total_repertoire_moves: number;
   covered_by_games: number;
   coverage_pct: number;
@@ -204,6 +207,9 @@ export interface TreeCoverageResponse {
 
 export interface TreeBranchMetricsResponse {
   pos_id: number;
+  my_side_only: boolean;
+  repertoire_children: TreeBrowseMove[];
+  game_children: TreeGameMove[];
   top_repertoire_branches: TreeBrowseMove[];
   top_game_branches: TreeGameMove[];
 }
