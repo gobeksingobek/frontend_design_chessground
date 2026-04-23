@@ -72,9 +72,9 @@ export function StatsTable({
     setSelectedIndex((current) => resolveSelectedRowIndex(current, rows.length));
   }, [rows.length]);
 
-  const detailQuery = useQuery({
+  const detailQuery = useQuery<StatsRow>({
     queryKey: [detailQueryKey ?? "stats-row-detail", selectedRowId ?? "none"],
-    queryFn: () => fetchDetail?.(selectedRowId ?? "") ?? Promise.resolve({}),
+    queryFn: () => fetchDetail?.(selectedRowId ?? "") ?? Promise.resolve({} as StatsRow),
     enabled: Boolean(fetchDetail && selectedRowId),
   });
 
