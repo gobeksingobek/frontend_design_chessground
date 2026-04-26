@@ -35,12 +35,15 @@ export default function RatingBandsPage() {
   }, [statsQuery.data?.allowed_band_sizes]);
   const safeBandSize = useMemo(() => normalizeBandSizeByGuardrails(normalizedBandSize, metadataGuardrails), [metadataGuardrails, normalizedBandSize]);
   const summaryBlocks = useMemo(() => buildRatingBandSummary(statsQuery.data), [statsQuery.data]);
+  const handleBandSizeChange = (nextValue: number) => {
+    setBandSize(normalizeBandSizeByGuardrails(nextValue, metadataGuardrails));
+  };
 
   return (
     <PageContainer title="Rating Bands" description="Compare performance by rating segments and adjust the resolution of the report.">
       <PageSection>
         <SectionHeader title="Rating band trends" description="Use the shared intro layout, then adjust the report resolution before scanning the table." />
-        <label className="grid max-w-xs gap-2 rounded-2xl border border-border bg-panel px-4 py-4 text-sm text-text-subtle shadow-soft">Band size<Select value={safeBandSize} onChange={(e) => setBandSize(Number(e.target.value))}>{metadataGuardrails.allowedBandSizes.map((size) => <option key={size} value={size}>{size}</option>)}</Select></label>
+        <label className="grid max-w-xs gap-2 rounded-2xl border border-border bg-panel px-4 py-4 text-sm text-text-subtle shadow-soft">Band size<Select value={safeBandSize} onChange={(e) => handleBandSizeChange(Number(e.target.value))}>{metadataGuardrails.allowedBandSizes.map((size) => <option key={size} value={size}>{size}</option>)}</Select></label>
         {summaryBlocks.length > 0 ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">{summaryBlocks.map((item) => <StatCard key={item.label} label={item.label} value={item.value} />)}</div> : null}
         <StatsTable title="Rating bands" description="Aggregated stats by white/black rating bands." queryKey={["rating-band-stats", String(safeBandSize)]} queryFn={() => listRatingBandStats(safeBandSize)} />
       </PageSection>

@@ -16,6 +16,7 @@ sys.modules.setdefault("multipart", multipart_module)
 sys.modules.setdefault("multipart.multipart", multipart_submodule)
 
 from backend import api_service
+from backend import read_api
 
 
 def test_rating_band_guardrails_contract(monkeypatch) -> None:
@@ -65,3 +66,33 @@ def test_rating_band_guardrails_min_max_step(monkeypatch) -> None:
     assert bad_step.band_size == 100
     assert good_step.band_size == 150
     assert good_step.allowed_band_sizes == [50, 100, 150, 200, 250, 300, 350, 400]
+
+
+def test_rating_band_payload_recomputes_when_band_size_changes(monkeypatch) -> None:
+    captured_sizes: list[int] = []
+
+    async def fake_fetch_stats(band_size: int):
+        captured_sizes.append(band_size)
+        if band_size == 100:
+            return [
+                {"white_band": "1500-1599", "black_band": "1400-1499", "total_games": 2, "compliance_rate": 0.25},
+                {"white_band": "1600-1699", "black_band": "1500-1599", "total_games": 3, "compliance_rate": 0.75},
+            ]
+        return [
+            {"white_band": "1400-1599", "black_band": "1400-1599", "total_games": 5, "compliance_rate": 0.5},
+        ]
+
+    monkeypatch.setattr(read_api, "fetch_rating_band_stats", fake_fetch_stats)
+
+    payload_100 = asyncio.run(read_api.fetch_rating_band_stats_payload(100))
+    payload_200 = asyncio.run(read_api.fetch_rating_band_stats_payload(200))
+
+    assert captured_sizes == [100, 200]
+    assert payload_100["band_size"] == 100
+    assert payload_200["band_size"] == 200
+    assert payload_100["totals"] == {"total_games": 5, "bucket_count": 2}
+    assert payload_200["totals"] == {"total_games": 5, "bucket_count": 1}
+    assert payload_100["percentiles"]["p50_compliance_rate"] == 0.25
+    assert payload_200["percentiles"]["p50_compliance_rate"] == 0.5
+    assert payload_100["allowed_band_sizes"] == read_api.ALLOWED_RATING_BAND_SIZES
+    assert payload_200["allowed_band_sizes"] == read_api.ALLOWED_RATING_BAND_SIZES

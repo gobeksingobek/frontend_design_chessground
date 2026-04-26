@@ -88,6 +88,19 @@ test("band-size guardrails enforce min/max/step", () => {
   assert.equal(normalizeBandSizeByGuardrails(150, guardrails), 150);
 });
 
+test("band-size guardrails enforce allowed selector options", () => {
+  const guardrails = {
+    min: 50,
+    max: 400,
+    step: 50,
+    allowedBandSizes: [50, 100, 200, 300, 400],
+    fallback: 100,
+  };
+
+  assert.equal(normalizeBandSizeByGuardrails(150, guardrails), 100);
+  assert.equal(normalizeBandSizeByGuardrails(200, guardrails), 200);
+});
+
 test("summary blocks update from metadata payload", () => {
   const summary = buildRatingBandSummary({
     band_size: 150,
