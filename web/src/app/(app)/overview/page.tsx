@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { actionForRunType, formatRunTypeLabel as formatRunType, runActionLabel } from "./page-helpers";
+import { actionForRunType, canTriggerRunAction, formatRunTypeLabel as formatRunType, runActionLabel, summarizeRunTimeline } from "./page-helpers";
 import { PageContainer, PageSection } from "@/components/app-shell";
 import { SidelineTable } from "@/components/sideline-table";
 import { Badge } from "@/components/ui/badge";
@@ -71,8 +71,7 @@ export default function OverviewPage() {
 
   const completedRuns = runs?.runs?.filter((run) => run.status === "completed").length ?? 0;
   const failedRuns = runs?.runs?.filter((run) => run.status === "failed").length ?? 0;
-  const latestRun = runs?.runs?.[0] ?? null;
-  const recentFinishedRun = runs?.runs?.find((run) => run.status !== "running") ?? null;
+  const { latestRun, recentFinishedRun } = summarizeRunTimeline(runs?.runs);
 
   const rightRail = (
     <>
@@ -206,7 +205,7 @@ export default function OverviewPage() {
                           <Button
                             variant={run.status === "failed" ? "secondary" : "outline"}
                             size="sm"
-                            disabled={isRunning || runMutation.isPending || run.status === "running"}
+                            disabled={!canTriggerRunAction(run, isRunning, runMutation.isPending)}
                             onClick={() => runMutation.mutate(actionForRunType(run.run_type))}
                           >
                             {runActionLabel(run)}

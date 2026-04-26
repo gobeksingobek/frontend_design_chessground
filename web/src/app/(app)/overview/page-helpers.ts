@@ -7,6 +7,11 @@ function formatRunType(value: string | null | undefined): string {
 
 export type RunAction = "full" | "engine" | "fetch" | "smoke";
 
+export interface RunTimelineSummary {
+  latestRun: AnalysisRunHistoryEntry | null;
+  recentFinishedRun: AnalysisRunHistoryEntry | null;
+}
+
 export function actionForRunType(runType: string): RunAction {
   if (runType === "engine-only-analysis") return "engine";
   if (runType === "fetch-games") return "fetch";
@@ -20,4 +25,17 @@ export function runActionLabel(run: AnalysisRunHistoryEntry): string {
 
 export function formatRunTypeLabel(value: string | null | undefined): string {
   return formatRunType(value);
+}
+
+export function summarizeRunTimeline(runs: AnalysisRunHistoryEntry[] | null | undefined): RunTimelineSummary {
+  const allRuns = runs ?? [];
+  return {
+    latestRun: allRuns[0] ?? null,
+    recentFinishedRun: allRuns.find((run) => run.status !== "running") ?? null,
+  };
+}
+
+export function canTriggerRunAction(run: AnalysisRunHistoryEntry, isRunning: boolean, mutationPending: boolean): boolean {
+  if (isRunning || mutationPending) return false;
+  return run.status !== "running";
 }

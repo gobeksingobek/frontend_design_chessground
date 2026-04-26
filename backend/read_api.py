@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 from typing import Any
 
 import asyncpg
@@ -73,20 +74,37 @@ def _normalize_analysis_run_entry(entry: Any) -> dict[str, Any]:
             "error_reason": getattr(entry, "error_reason", None) or getattr(entry, "error", None),
         }
 
+    raw_status = str(source.get("status") or source.get("state") or "running").strip().lower()
+    status = raw_status if raw_status in {"running", "completed", "failed"} else "running"
+
     return {
-        "run_id": source.get("run_id") or source.get("job_id") or "",
-        "run_type": source.get("run_type") or "",
-        "status": source.get("status") or source.get("state") or "running",
-        "started_at": source.get("started_at") or "",
+        "run_id": str(source.get("run_id") or source.get("job_id") or ""),
+        "run_type": str(source.get("run_type") or ""),
+        "status": status,
+        "started_at": str(source.get("started_at") or ""),
         "finished_at": source.get("finished_at"),
         "error_reason": source.get("error_reason") or source.get("error"),
     }
 
 
+def _analysis_run_sort_key(row: dict[str, Any]) -> tuple[str, str]:
+    started_at = str(row.get("started_at") or "").strip()
+    parsed_started_at = None
+    if started_at:
+        try:
+            parsed_started_at = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+        except ValueError:
+            parsed_started_at = None
+
+    if parsed_started_at is not None:
+        return (parsed_started_at.isoformat(), str(row.get("run_id") or ""))
+    return (started_at, str(row.get("run_id") or ""))
+
+
 def normalize_analysis_runs(entries: list[Any], limit: int = 10) -> list[dict[str, Any]]:
     bounded_limit = min(max(limit, 1), 50)
     normalized = [_normalize_analysis_run_entry(entry) for entry in entries]
-    normalized.sort(key=lambda row: (str(row.get("started_at") or ""), str(row.get("run_id") or "")), reverse=True)
+    normalized.sort(key=_analysis_run_sort_key, reverse=True)
     return normalized[:bounded_limit]
 
 
