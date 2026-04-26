@@ -15,7 +15,7 @@ const PIVOT_OPTIONS: Array<{ value: TimeUsagePivot; label: string }> = [
 
 const COLUMN_MODELS: Record<TimeUsagePivot, string[]> = {
   self_vs_opp: ["bucket", "total_games", "total_moves", "avg_time_spent_seconds", "avg_time_spent_fraction"],
-  in_book_vs_out_of_book: ["bucket", "total_games", "total_moves", "avg_time_spent_seconds", "avg_time_spent_fraction"],
+  in_book_vs_out_of_book: ["bucket", "total_moves", "avg_time_spent_fraction", "avg_time_spent_seconds", "total_games"],
 };
 
 export default function TimeUsagePage() {

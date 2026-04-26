@@ -64,9 +64,13 @@ export function StatsTable({
   const [pivotColumn, setPivotColumn] = useState<string>("");
   const [detailTab, setDetailTab] = useState<DetailTab>("detail");
   const rows = useMemo<StatsRow[]>(() => normalizeStatsRows(data), [data]);
+  const activePivot = useMemo(() => {
+    const payloadPivot = typeof (data as { pivot?: unknown } | undefined)?.pivot === "string" ? String((data as { pivot?: string }).pivot) : undefined;
+    return payloadPivot ?? pivotValue;
+  }, [data, pivotValue]);
   const columns = useMemo(
-    () => resolveColumns(rows, pivotValue && columnModelsByPivot ? columnModelsByPivot[pivotValue] : undefined),
-    [rows, pivotValue, columnModelsByPivot],
+    () => resolveColumns(rows, activePivot && columnModelsByPivot ? columnModelsByPivot[activePivot] : undefined),
+    [rows, activePivot, columnModelsByPivot],
   );
   const selected = useMemo(() => {
     if (rows.length === 0) return null;
@@ -80,6 +84,11 @@ export function StatsTable({
   useEffect(() => {
     setSelectedIndex((current) => resolveSelectedRowIndex(current, rows.length));
   }, [rows.length]);
+
+  useEffect(() => {
+    if (!pivotColumn || columns.includes(pivotColumn)) return;
+    setPivotColumn("");
+  }, [columns, pivotColumn]);
 
   useEffect(() => {
     onRowSelectionChange?.(selected, selectedRowId);
