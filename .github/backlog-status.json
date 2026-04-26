@@ -72,12 +72,12 @@
     },
     {
       "id": "GMD-02",
-      "status": "Open",
+      "status": "Done",
       "endpoint_contract_files": [
         "backend/read_api.py"
       ],
       "api_test_commands": [
-        "pytest tests/test_game_details_api_regression.py -k neighbor_fields"
+        "pytest tests/test_game_details_api_regression.py"
       ],
       "ui_test_commands": [
         "npm --prefix web run test:ui-regression -- game-detail"

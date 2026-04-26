@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { applyStoredGamesTableState, buildGamesQueryKey, DEFAULT_GAMES_TABLE_STATE } from "./games-table.tsx";
-import { buildGamesPageQueryParams, parseGamesPageState } from "../../app/(app)/games/page-state";
+import { buildGamesPageQueryParams, parseGamesPageState } from "../../app/(app)/games/page-state.ts";
 
 test("games table query key includes full filter and sorting controls", () => {
   const state = {

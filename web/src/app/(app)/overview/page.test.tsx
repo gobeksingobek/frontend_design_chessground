@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { actionForRunType, runActionLabel } from "./page-helpers";
+import { actionForRunType, runActionLabel } from "./page-helpers.ts";
 
 test("overview timeline action wiring maps run types to retry actions", () => {
   assert.equal(actionForRunType("full-analysis"), "full");
