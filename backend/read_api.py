@@ -20,6 +20,12 @@ RATING_BAND_DEFAULT_SIZE = 100
 ALLOWED_RATING_BAND_SIZES = list(range(RATING_BAND_MIN_SIZE, RATING_BAND_MAX_SIZE + RATING_BAND_STEP, RATING_BAND_STEP))
 
 
+def _validate_time_usage_pivot(pivot: str) -> str:
+    if pivot not in TIME_USAGE_PIVOTS:
+        raise ValueError(f"Invalid time usage pivot: {pivot}")
+    return pivot
+
+
 def normalize_rating_band_size(band_size: int) -> int:
     if band_size < RATING_BAND_MIN_SIZE or band_size > RATING_BAND_MAX_SIZE:
         return RATING_BAND_DEFAULT_SIZE
@@ -971,17 +977,16 @@ def _build_time_usage_stats_payload(
     time_rows: list[dict[str, Any]],
     pivot: str,
 ) -> dict[str, Any]:
-    if pivot not in TIME_USAGE_PIVOTS:
-        raise ValueError(f"Invalid time usage pivot: {pivot}")
+    normalized_pivot = _validate_time_usage_pivot(pivot)
 
     game_totals = {
         "self_vs_opp": {"Self", "Opponent"},
         "in_book_vs_out_of_book": {"In book", "Out of book"},
     }
-    bucket_game_ids: dict[str, set[int]] = {bucket: set() for bucket in game_totals[pivot]}
+    bucket_game_ids: dict[str, set[int]] = {bucket: set() for bucket in game_totals[normalized_pivot]}
     bucket_totals: dict[str, dict[str, float | int]] = {
         bucket: {"total_moves": 0, "time_total_seconds": 0.0, "time_fraction_total": 0.0, "time_fraction_count": 0}
-        for bucket in game_totals[pivot]
+        for bucket in game_totals[normalized_pivot]
     }
 
     for row in time_rows:
@@ -990,7 +995,7 @@ def _build_time_usage_stats_payload(
         time_spent = row.get("time_spent_seconds")
         if time_spent is None:
             continue
-        if pivot == "self_vs_opp":
+        if normalized_pivot == "self_vs_opp":
             bucket_name = "Self" if row.get("is_self") else "Opponent"
         else:
             if not row.get("is_self"):
@@ -1025,7 +1030,7 @@ def _build_time_usage_stats_payload(
         "total_games": len({int(game["id"]) for game in games}),
         "total_moves": sum(int(bucket["total_moves"]) for bucket in bucket_totals.values()),
     }
-    return {"pivot": pivot, "buckets": buckets, "totals": totals}
+    return {"pivot": normalized_pivot, "buckets": buckets, "totals": totals}
 
 
 def _fetch_time_usage_stats_sqlite(pivot: str) -> dict[str, Any]:
@@ -1043,6 +1048,8 @@ def _fetch_time_usage_stats_sqlite(pivot: str) -> dict[str, Any]:
 
 
 async def fetch_time_usage_stats(pivot: str) -> dict[str, Any]:
+    normalized_pivot = _validate_time_usage_pivot(pivot)
+
     if SETTINGS.data_backend == "postgres":
         conn = await asyncpg.connect(SETTINGS.postgres_dsn)
         try:
@@ -1081,8 +1088,13 @@ async def fetch_time_usage_stats(pivot: str) -> dict[str, Any]:
         finally:
             await conn.close()
         eval_at_exit = {int(row["game_id"]): row["post_eval_cp"] for row in eval_rows}
-        return _build_time_usage_stats_payload([dict(row) for row in games], eval_at_exit, [dict(row) for row in time_rows], pivot)
-    return await asyncio.to_thread(_fetch_time_usage_stats_sqlite, pivot)
+        return _build_time_usage_stats_payload(
+            [dict(row) for row in games],
+            eval_at_exit,
+            [dict(row) for row in time_rows],
+            normalized_pivot,
+        )
+    return await asyncio.to_thread(_fetch_time_usage_stats_sqlite, normalized_pivot)
 
 
 async def fetch_line_stats_detail(line_id: str) -> dict[str, Any] | None:

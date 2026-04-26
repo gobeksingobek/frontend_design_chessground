@@ -52,17 +52,17 @@ test("pivot swap changes summary key distribution", () => {
   assert.equal(byResult[0].count, 2);
 });
 
-test("pivot toggle swaps column model", () => {
+test("pivot toggle swaps visible time-usage columns by pivot", () => {
   const rows = normalizeStatsRows({
     buckets: [
       { bucket: "Self", total_games: 10, total_moves: 120, avg_time_spent_seconds: 13.2, avg_time_spent_fraction: 0.08 },
     ],
   });
   const selfVsOppColumns = resolveColumns(rows, ["bucket", "total_games", "total_moves"]);
-  const inBookColumns = resolveColumns(rows, ["bucket", "avg_time_spent_seconds", "avg_time_spent_fraction"]);
+  const inBookColumns = resolveColumns(rows, ["bucket", "avg_time_spent_fraction", "avg_time_spent_seconds"]);
 
   assert.deepEqual(selfVsOppColumns, ["bucket", "total_games", "total_moves"]);
-  assert.deepEqual(inBookColumns, ["bucket", "avg_time_spent_seconds", "avg_time_spent_fraction"]);
+  assert.deepEqual(inBookColumns, ["bucket", "avg_time_spent_fraction", "avg_time_spent_seconds"]);
 });
 
 test("band-size change keeps rows consumable", () => {
