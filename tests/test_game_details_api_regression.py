@@ -285,3 +285,54 @@ def test_get_game_navigation_schema_nullable_fields(monkeypatch) -> None:
     assert result.navigation.bookmarked_ply_ids == []
     assert result.navigation.can_jump_start is False
     assert result.navigation.can_jump_end is False
+
+
+def test_get_game_navigation_preserves_bookmarks_and_jump_flags(monkeypatch) -> None:
+    async def fake_fetch_game_detail(game_id: int):
+        assert game_id == 88
+        return {
+            "header": {"id": 88},
+            "moves": [
+                {
+                    "ply": 1,
+                    "pos_id": 1,
+                    "fen": "startpos",
+                    "san_move": "e4",
+                    "uci_move": "e2e4",
+                    "repertoire_class": "IN_REPERTOIRE_MAIN",
+                    "is_self": 1,
+                    "clock_seconds": 590.0,
+                    "time_spent_seconds": 10.0,
+                    "time_spent_fraction": 0.02,
+                    "pre_eval_cp": 20,
+                    "post_eval_cp": 25,
+                    "best_uci": "e2e4",
+                    "your_cpl": 5,
+                    "rep_cpl": 5,
+                    "quality_label": "best",
+                }
+            ],
+            "prev_game_id": 89,
+            "next_game_id": 87,
+            "prev_game_label": "Prev vs Player (2024.01.03)",
+            "next_game_label": "Next vs Player (2024.01.01)",
+            "navigation": {
+                "current_game_id": 88,
+                "prev_game_id": 89,
+                "next_game_id": 87,
+                "bookmarked_ply_ids": [2, 3],
+                "can_jump_start": True,
+                "can_jump_end": False,
+            },
+        }
+
+    monkeypatch.setattr(api_service, "fetch_game_detail", fake_fetch_game_detail)
+
+    result = asyncio.run(api_service.get_game(88, _="dev-user"))
+
+    assert result.navigation.current_game_id == 88
+    assert result.navigation.prev_game_id == 89
+    assert result.navigation.next_game_id == 87
+    assert result.navigation.bookmarked_ply_ids == [2, 3]
+    assert result.navigation.can_jump_start is True
+    assert result.navigation.can_jump_end is False

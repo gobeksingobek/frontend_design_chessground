@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { applyCursorKey, buildGameRouteQuery, isCursorNavigationKey } from "@/components/games/game-detail";
+import { applyCursorKey, buildGameRouteQuery, isCursorNavigationKey, resolveCursorIndexForPly } from "@/components/games/game-detail";
 
 test("applyCursorKey moves cursor next and prev", () => {
   assert.equal(applyCursorKey("ArrowRight", 0, 4), 1);
@@ -38,6 +38,17 @@ test("isCursorNavigationKey marks keys that should retain focus", () => {
   assert.equal(isCursorNavigationKey("ArrowLeft"), true);
   assert.equal(isCursorNavigationKey("ArrowRight"), true);
   assert.equal(isCursorNavigationKey("Enter"), false);
+});
+
+test("resolveCursorIndexForPly keeps selected ply stable when moves rerender", () => {
+  const moves = [{ ply: 1 }, { ply: 2 }, { ply: 3 }, { ply: 4 }];
+  assert.equal(resolveCursorIndexForPly(moves, 3, 1), 3);
+});
+
+test("resolveCursorIndexForPly clamps to deterministic fallback when selected ply is missing", () => {
+  const moves = [{ ply: 1 }, { ply: 2 }, { ply: 4 }];
+  assert.equal(resolveCursorIndexForPly(moves, 3, 9), 3);
+  assert.equal(resolveCursorIndexForPly(moves, null, -3), 0);
 });
 
 test("buildGameRouteQuery preserves tab and orientation with ply", () => {

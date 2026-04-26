@@ -18,6 +18,14 @@ import { getGame } from "@/lib/api-client";
 
 export function applyCursorKey(key: string, current: number, max: number): number { if (key === "ArrowRight") return Math.min(max, current + 1); if (key === "ArrowLeft") return Math.max(0, current - 1); if (key === "ArrowUp" || key === "End") return max; if (key === "ArrowDown" || key === "Home") return 0; return current; }
 export function isCursorNavigationKey(key: string): boolean { return key === "ArrowRight" || key === "ArrowLeft" || key === "ArrowUp" || key === "ArrowDown" || key === "Home" || key === "End"; }
+export function resolveCursorIndexForPly(moves: Array<{ ply: number }>, selectedPly: number | null, fallbackCursor: number): number {
+  if (!moves.length) return 0;
+  if (selectedPly !== null) {
+    const nextIndex = moves.findIndex((move) => move.ply === selectedPly);
+    if (nextIndex >= 0) return nextIndex + 1;
+  }
+  return Math.min(Math.max(fallbackCursor, 0), moves.length);
+}
 function shouldIgnoreKeyboardEvent(event: KeyboardEvent | ReactKeyboardEvent): boolean { const target = event.target; if (!(target instanceof HTMLElement)) return false; const tagName = target.tagName; if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return true; return target.isContentEditable; }
 function metadataEntries(header: Record<string, unknown> | null | undefined) { if (!header) return []; return Object.entries(header).filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== ""); }
 export function buildGameRouteQuery(selectedPly: number | null, activeTab: "board" | "moves", orientation: "white" | "black") {
@@ -46,6 +54,8 @@ export function GameDetail({
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const initializedGameIdRef = useRef<number | null>(null);
+  const selectedPlyRef = useRef<number | null>(null);
+  const shouldRestoreContainerFocusRef = useRef(false);
   const [cursorIndex, setCursorIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<"board" | "moves">(initialTab);
   const [orientation, setOrientation] = useState<"white" | "black">(initialOrientation);
@@ -56,18 +66,21 @@ export function GameDetail({
   useEffect(() => {
     if (!moves.length) {
       setCursorIndex(0);
+      selectedPlyRef.current = null;
       return;
     }
-    if (initializedGameIdRef.current === gameId) return;
-    initializedGameIdRef.current = gameId;
-    if (initialPly !== null) {
-      const moveIndex = moves.findIndex((move) => move.ply === initialPly);
-      if (moveIndex >= 0) {
-        setCursorIndex(moveIndex + 1);
-        return;
-      }
+    if (initializedGameIdRef.current !== gameId) {
+      initializedGameIdRef.current = gameId;
+      const initialCursor = resolveCursorIndexForPly(moves, initialPly, 0);
+      setCursorIndex(initialCursor);
+      selectedPlyRef.current = initialCursor > 0 ? moves[initialCursor - 1]?.ply ?? null : null;
+      return;
     }
-    setCursorIndex(0);
+    setCursorIndex((current) => {
+      const nextCursor = resolveCursorIndexForPly(moves, selectedPlyRef.current, current);
+      selectedPlyRef.current = nextCursor > 0 ? moves[nextCursor - 1]?.ply ?? null : null;
+      return nextCursor;
+    });
   }, [gameId, initialPly, moves]);
 
   const selectedMove = useMemo(() => (cursorIndex === 0 ? null : moves[cursorIndex - 1] ?? null), [moves, cursorIndex]);
@@ -82,14 +95,19 @@ export function GameDetail({
   const navigatePrev = useCallback(() => { setCursorIndex((current) => Math.max(0, current - 1)); }, []);
   const navigateStart = useCallback(() => { setCursorIndex(0); }, []);
   const navigateEnd = useCallback(() => { setCursorIndex(moves.length); }, [moves.length]);
-  const retainContainerFocus = useCallback((key: string) => {
-    if (!isCursorNavigationKey(key)) return;
-    const container = containerRef.current;
-    if (!container) return;
-    if (typeof document !== "undefined" && document.activeElement === container) {
-      container.focus();
+  useEffect(() => {
+    if (!moves.length || cursorIndex === 0) {
+      selectedPlyRef.current = null;
+      return;
     }
-  }, []);
+    selectedPlyRef.current = moves[cursorIndex - 1]?.ply ?? null;
+  }, [cursorIndex, moves]);
+
+  useEffect(() => {
+    if (!shouldRestoreContainerFocusRef.current) return;
+    shouldRestoreContainerFocusRef.current = false;
+    containerRef.current?.focus();
+  }, [cursorIndex]);
 
   const nav = data?.navigation;
   const prevGameId = nav?.prev_game_id ?? data?.prev_game_id ?? null;
@@ -110,10 +128,12 @@ export function GameDetail({
     const nextCursor = applyCursorKey(event.key, cursorIndex, moves.length);
     if (nextCursor !== cursorIndex) {
       event.preventDefault();
+      if (typeof document !== "undefined" && document.activeElement === containerRef.current) {
+        shouldRestoreContainerFocusRef.current = true;
+      }
       setCursorIndex(nextCursor);
-      retainContainerFocus(event.key);
     }
-  }, [activeTab, cursorIndex, moves.length, nextGameId, orientation, prevGameId, retainContainerFocus, router, selectedPly]);
+  }, [activeTab, cursorIndex, moves.length, nextGameId, orientation, prevGameId, router, selectedPly]);
 
   if (isLoading) return <MutedText>Loading game detail...</MutedText>;
   if (error) return <BodyText className="font-medium text-danger">Failed to load game detail: {(error as Error).message}</BodyText>;
