@@ -11,7 +11,16 @@ import { Table, TableBody, TableContainer, TableHead, TableRow, Td, Th } from "@
 import { Tabs } from "@/components/ui/tabs";
 import { cn } from "@/lib/cn";
 import type { StatsRow } from "@/lib/types";
-import { normalizeStatsRows, resolveColumns, resolveSelectedRowIndex, summarizePivot, type StatsPayload } from "./stats-table-helpers";
+import {
+  normalizeStatsRows,
+  resolveColumns,
+  resolveDetailTab,
+  resolveSelectedRowId,
+  resolveSelectedRowIndex,
+  summarizePivot,
+  type DetailTab,
+  type StatsPayload,
+} from "./stats-table-helpers";
 
 type PivotOption = { value: string; label: string };
 
@@ -30,6 +39,8 @@ export function StatsTable({
   historyQueryKey,
   fetchDetail,
   fetchHistory,
+  onRowSelectionChange,
+  onDetailTabChange,
 }: {
   title: string;
   description: string;
@@ -45,10 +56,13 @@ export function StatsTable({
   historyQueryKey?: string;
   fetchDetail?: (rowId: string) => Promise<StatsRow>;
   fetchHistory?: (rowId: string) => Promise<{ line_id: string; buckets: StatsRow[]; totals: Record<string, number> }>;
+  onRowSelectionChange?: (row: StatsRow | null, rowId: string | null) => void;
+  onDetailTabChange?: (tab: DetailTab) => void;
 }) {
   const { data, isLoading, error } = useQuery({ queryKey, queryFn });
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [pivotColumn, setPivotColumn] = useState<string>("");
+  const [detailTab, setDetailTab] = useState<DetailTab>("detail");
   const rows = useMemo<StatsRow[]>(() => normalizeStatsRows(data), [data]);
   const columns = useMemo(
     () => resolveColumns(rows, pivotValue && columnModelsByPivot ? columnModelsByPivot[pivotValue] : undefined),
@@ -59,18 +73,25 @@ export function StatsTable({
     const rowIndex = resolveSelectedRowIndex(selectedIndex, rows.length);
     return rows[rowIndex] ?? null;
   }, [rows, selectedIndex]);
-  const selectedRowId = useMemo(() => {
-    if (!selected || !rowIdField) return null;
-    const candidate = selected[rowIdField];
-    if (candidate == null) return null;
-    return String(candidate);
-  }, [selected, rowIdField]);
+  const selectedRowId = useMemo(() => resolveSelectedRowId(selected, rowIdField), [selected, rowIdField]);
   const pivot = useMemo(() => (!pivotColumn || !columns.includes(pivotColumn) ? [] : summarizePivot(rows, pivotColumn)), [rows, pivotColumn, columns]);
   const canShowHistory = Boolean(fetchHistory && selectedRowId);
 
   useEffect(() => {
     setSelectedIndex((current) => resolveSelectedRowIndex(current, rows.length));
   }, [rows.length]);
+
+  useEffect(() => {
+    onRowSelectionChange?.(selected, selectedRowId);
+  }, [selected, selectedRowId, onRowSelectionChange]);
+
+  useEffect(() => {
+    const normalizedTab = resolveDetailTab(detailTab, canShowHistory);
+    if (normalizedTab !== detailTab) {
+      setDetailTab(normalizedTab);
+      onDetailTabChange?.(normalizedTab);
+    }
+  }, [detailTab, canShowHistory, onDetailTabChange]);
 
   const detailQuery = useQuery<StatsRow>({
     queryKey: [detailQueryKey ?? "stats-row-detail", selectedRowId ?? "none"],
@@ -133,7 +154,12 @@ export function StatsTable({
                 {selected ? (
                   <Tabs
                     key={selectedRowId ?? "detail-pane"}
-                    defaultValue="detail"
+                    value={detailTab}
+                    onValueChange={(nextTab) => {
+                      const normalized = resolveDetailTab(nextTab, canShowHistory);
+                      setDetailTab(normalized);
+                      onDetailTabChange?.(normalized);
+                    }}
                     items={[
                       {
                         id: "detail",

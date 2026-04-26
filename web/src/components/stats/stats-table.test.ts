@@ -7,6 +7,7 @@ import {
   normalizeStatsRows,
   resolveColumns,
   resolveDetailTab,
+  resolveSelectedRowId,
   resolveSelectedRowIndex,
   summarizePivot,
 } from "./stats-table-helpers.ts";
@@ -23,10 +24,17 @@ test("row selection clamps to available rows", () => {
   assert.equal(resolveSelectedRowIndex(0, 0), 0);
 });
 
+test("row selection resolves row id from configured field", () => {
+  assert.equal(resolveSelectedRowId({ key: "line-a" }, "key"), "line-a");
+  assert.equal(resolveSelectedRowId({ line_id: "line-b" }, "key"), null);
+  assert.equal(resolveSelectedRowId(null, "key"), null);
+});
+
 test("history tab requires history payload availability", () => {
   assert.equal(resolveDetailTab("history", false), "detail");
   assert.equal(resolveDetailTab("history", true), "history");
   assert.equal(resolveDetailTab("detail", true), "detail");
+  assert.equal(resolveDetailTab("anything-else", true), "detail");
 });
 
 test("pivot swap changes summary key distribution", () => {
