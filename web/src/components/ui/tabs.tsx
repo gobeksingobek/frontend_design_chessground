@@ -11,10 +11,29 @@ export interface TabItem {
   content: ReactNode;
 }
 
-export function Tabs({ items, defaultValue, className }: { items: TabItem[]; defaultValue?: string; className?: string }) {
+export function Tabs({
+  items,
+  defaultValue,
+  value,
+  onValueChange,
+  className,
+}: {
+  items: TabItem[];
+  defaultValue?: string;
+  value?: string;
+  onValueChange?: (value: string) => void;
+  className?: string;
+}) {
   const initial = defaultValue ?? items[0]?.id ?? "";
-  const [active, setActive] = useState(initial);
+  const [internalActive, setInternalActive] = useState(initial);
+  const active = value ?? internalActive;
   const current = items.find((item) => item.id == active) ?? items[0];
+  const setActive = (next: string) => {
+    if (value == null) {
+      setInternalActive(next);
+    }
+    onValueChange?.(next);
+  };
 
   return (
     <div className={cn("grid gap-4", className)}>

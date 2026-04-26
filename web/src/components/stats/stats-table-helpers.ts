@@ -18,6 +18,7 @@ export type RatingBandMetadata = {
 };
 
 type DetailTab = "detail" | "history";
+export type { DetailTab };
 
 export function normalizeBandSizeByGuardrails(bandSize: number, guardrails: RatingBandGuardrails): number {
   const candidate = Number.isFinite(bandSize) ? Math.floor(bandSize) : guardrails.fallback;
@@ -68,6 +69,13 @@ export function summarizePivot(rows: StatsRow[], pivotColumn: string): Array<{ k
 export function resolveSelectedRowIndex(selectedIndex: number, rowCount: number): number {
   if (rowCount <= 0) return 0;
   return Math.min(Math.max(0, selectedIndex), rowCount - 1);
+}
+
+export function resolveSelectedRowId(selected: StatsRow | null, rowIdField: string | undefined): string | null {
+  if (!selected || !rowIdField) return null;
+  const candidate = selected[rowIdField];
+  if (candidate == null) return null;
+  return String(candidate);
 }
 
 export function resolveDetailTab(nextTab: string, hasHistoryTab: boolean): DetailTab {
