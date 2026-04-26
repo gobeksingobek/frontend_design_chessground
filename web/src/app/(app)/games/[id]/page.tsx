@@ -7,6 +7,13 @@ function readSingleParam(value: string | string[] | undefined): string | undefin
   return value;
 }
 
+function parseSelectedPly(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
 export default function GameDetailPage({
   params,
   searchParams,
@@ -18,9 +25,9 @@ export default function GameDetailPage({
   const plyParam = readSingleParam(searchParams.ply);
   const tabParam = readSingleParam(searchParams.tab);
   const orientationParam = readSingleParam(searchParams.orientation);
-  const initialPly = plyParam ? Number(plyParam) : null;
+  const initialPly = parseSelectedPly(plyParam);
   const initialTab = tabParam === "moves" ? "moves" : "board";
   const initialOrientation = orientationParam === "black" ? "black" : "white";
   if (!Number.isFinite(gameId)) return <p className="text-sm text-danger">Invalid game id.</p>;
-  return <PageContainer title={`Game ${gameId}`} description="Inspect move quality, evaluation changes, and sideline opportunities for a single game."><PageSection><SectionHeader title={`Game ${gameId}`} description="Inspect move quality, evaluation changes, and sideline opportunities." /><GameDetail key={`game-${gameId}`} gameId={gameId} initialPly={Number.isFinite(initialPly) ? initialPly : null} initialTab={initialTab} initialOrientation={initialOrientation} /></PageSection></PageContainer>;
+  return <PageContainer title={`Game ${gameId}`} description="Inspect move quality, evaluation changes, and sideline opportunities for a single game."><PageSection><SectionHeader title={`Game ${gameId}`} description="Inspect move quality, evaluation changes, and sideline opportunities." /><GameDetail key={`game-${gameId}`} gameId={gameId} initialPly={initialPly} initialTab={initialTab} initialOrientation={initialOrientation} /></PageSection></PageContainer>;
 }

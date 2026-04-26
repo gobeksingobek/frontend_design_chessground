@@ -260,15 +260,44 @@ def _build_game_navigation_payload(
     moves: list[dict[str, Any]],
     prev_game_id: int | None,
     next_game_id: int | None,
+    navigation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     has_moves = len(moves) > 0
+    raw_bookmarked = None
+    if isinstance(navigation, dict):
+        raw_bookmarked = navigation.get("bookmarked_ply_ids")
+
+    if raw_bookmarked is None:
+        raw_bookmarked = [move.get("ply") for move in moves if move.get("is_bookmarked")]
+
+    bookmarked_ply_ids: list[int] = []
+    if isinstance(raw_bookmarked, list):
+        for value in raw_bookmarked:
+            try:
+                ply = int(value)
+            except (TypeError, ValueError):
+                continue
+            if ply > 0 and ply not in bookmarked_ply_ids:
+                bookmarked_ply_ids.append(ply)
+
+    if isinstance(navigation, dict):
+        current_game_id = navigation.get("current_game_id")
+        if current_game_id is None:
+            current_game_id = game_id
+        can_jump_start = navigation.get("can_jump_start")
+        can_jump_end = navigation.get("can_jump_end")
+    else:
+        current_game_id = game_id
+        can_jump_start = None
+        can_jump_end = None
+
     return {
-        "current_game_id": int(game_id),
+        "current_game_id": int(current_game_id) if current_game_id is not None else int(game_id),
         "prev_game_id": prev_game_id,
         "next_game_id": next_game_id,
-        "bookmarked_ply_ids": [],
-        "can_jump_start": has_moves,
-        "can_jump_end": has_moves,
+        "bookmarked_ply_ids": bookmarked_ply_ids,
+        "can_jump_start": bool(can_jump_start) if isinstance(can_jump_start, bool) else has_moves,
+        "can_jump_end": bool(can_jump_end) if isinstance(can_jump_end, bool) else has_moves,
     }
 
 
