@@ -34,6 +34,15 @@ def normalize_rating_band_size(band_size: int) -> int:
     return band_size
 
 
+def rating_band_guardrails_payload() -> dict[str, int | list[int]]:
+    return {
+        "min": RATING_BAND_MIN_SIZE,
+        "max": RATING_BAND_MAX_SIZE,
+        "step": RATING_BAND_STEP,
+        "allowed_band_sizes": ALLOWED_RATING_BAND_SIZES,
+    }
+
+
 def _compute_percentile(values: list[float], quantile: float) -> float | None:
     if not values:
         return None
@@ -1170,9 +1179,10 @@ async def fetch_rating_band_stats_payload(band_size: int) -> dict[str, Any]:
     compliance_rates = sorted(
         [float(row["compliance_rate"]) for row in buckets if row.get("compliance_rate") is not None]
     )
+    payload = rating_band_guardrails_payload()
     return {
         "band_size": normalized_band_size,
-        "allowed_band_sizes": ALLOWED_RATING_BAND_SIZES,
+        "allowed_band_sizes": payload["allowed_band_sizes"],
         "percentiles": {
             "p25_compliance_rate": _compute_percentile(compliance_rates, 0.25),
             "p50_compliance_rate": _compute_percentile(compliance_rates, 0.5),
