@@ -138,7 +138,7 @@
     },
     {
       "id": "OVR-01",
-      "status": "In progress",
+      "status": "Done",
       "endpoint_contract_files": [
         "backend/read_api.py"
       ],
