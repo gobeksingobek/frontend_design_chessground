@@ -44,6 +44,16 @@ def test_games_filter_combination_date_result_line_player_and_compliance() -> No
     assert [row["id"] for row in filtered] == [2]
 
 
+def test_games_filter_combination_result_and_date_window() -> None:
+    rows = [
+        {"id": 1, "date": "2024.01.01", "result": "1-0", "compliance": "FULLY_COMPLIANT", "line_id": "l1", "white": "A", "black": "B"},
+        {"id": 2, "date": "2024.01.02", "result": "1/2-1/2", "compliance": "FULLY_COMPLIANT", "line_id": "l1", "white": "A", "black": "B"},
+        {"id": 3, "date": "2024.01.03", "result": "1-0", "compliance": "FULLY_COMPLIANT", "line_id": "l2", "white": "A", "black": "B"},
+    ]
+    filtered = _apply_games_filters(rows, result="1-0", date_from="2024.01.02", date_to="2024.01.03")
+    assert [row["id"] for row in filtered] == [3]
+
+
 def test_games_default_ordering_date_desc_with_id_tiebreaker() -> None:
     rows = [
         {"id": 1, "date": "2024.01.02", "result": "1-0", "compliance": "FULLY_COMPLIANT"},
@@ -52,6 +62,17 @@ def test_games_default_ordering_date_desc_with_id_tiebreaker() -> None:
     ]
     ordered = _sort_games(rows, "date", "desc")
     assert [row["id"] for row in ordered] == [3, 1, 2]
+
+
+def test_games_default_ordering_when_sort_args_invalid() -> None:
+    rows = [
+        {"id": 2, "date": "2024.01.01", "result": "1-0", "compliance": "FULLY_COMPLIANT"},
+        {"id": 1, "date": "2024.01.02", "result": "0-1", "compliance": "NON_COMPLIANT"},
+    ]
+    sort_by, sort_dir = _normalize_games_sort("bad", "bad")
+    assert (sort_by, sort_dir) == ("date", "desc")
+    ordered = _sort_games(rows, sort_by, sort_dir)
+    assert [row["id"] for row in ordered] == [1, 2]
 
 
 def test_games_sort_and_compliance_min_normalization() -> None:

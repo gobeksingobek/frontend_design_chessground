@@ -1623,8 +1623,12 @@ async def list_games(
 ) -> list[GameOverviewResponse]:
     bounded_limit = min(max(limit, 1), 200)
     bounded_offset = max(offset, 0)
-    normalized_sort_by = sort_by if sort_by in {"date", "result", "compliance", "id"} else "date"
-    normalized_sort_dir = sort_dir if sort_dir in {"asc", "desc"} else "desc"
+    normalized_sort_by = (sort_by or "date").lower()
+    if normalized_sort_by not in {"date", "result", "compliance", "id"}:
+        normalized_sort_by = "date"
+    normalized_sort_dir = (sort_dir or "desc").lower()
+    if normalized_sort_dir not in {"asc", "desc"}:
+        normalized_sort_dir = "desc"
     rows = await fetch_games(
         limit=bounded_limit,
         offset=bounded_offset,
