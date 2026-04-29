@@ -44,6 +44,13 @@ test("games page state persists and restores via query params", () => {
   assert.equal(restored.sortDir, "asc");
 });
 
+test("default empty state does not persist noisy query params", () => {
+  const params = buildGamesPageQueryParams(DEFAULT_GAMES_TABLE_STATE);
+  assert.equal(params.toString(), "sort_by=date&sort_dir=desc");
+  const restored = parseGamesPageState(params);
+  assert.deepEqual(restored, DEFAULT_GAMES_TABLE_STATE);
+});
+
 test("invalid persisted sort settings fall back to deterministic defaults", () => {
   const restored = applyStoredGamesTableState({ sortBy: "invalid" as never, sortDir: "down" as never });
   assert.equal(restored.sortBy, "date");
