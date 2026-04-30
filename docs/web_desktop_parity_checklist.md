@@ -81,6 +81,25 @@ Desktop dependency should be removed only when all backlog tasks above are marke
 npm --prefix web run test:ui-regression
 ```
 
+
+### Backlog status sync and evidence policy
+
+For every parity **task completion** update, keep `docs/web_desktop_parity_checklist.md` (human-readable state) and `.github/backlog-status.json` (machine-readable state) in the same PR.
+
+Before changing any task status to `Done`, verify the matching `.github/backlog-status.json` task has non-empty evidence arrays for:
+
+- `endpoint_contract_files`
+- `api_test_commands`
+- `ui_test_commands`
+- `contract_check_commands`
+
+Validation expectations for parity status transitions:
+
+1. Run `python scripts/verify_parity_backlog.py` locally (or equivalent CI job) and ensure it passes.
+2. Ensure `.github/workflows/parity-evidence.yml` remains green for touched task IDs.
+3. If any task is `Done`, include `npm --prefix web run test:ui-regression` in release-confidence checks (see `docs/release_cutover_checklist.md`).
+4. In PR descriptions, include task IDs, status transitions, exact commands run, and CI URL evidence for auditability.
+
 ### Done criteria per row
 
 A row should move to `Done` only when all of the following are true:

@@ -217,5 +217,31 @@
         "node web/scripts/check-settings-contract.mjs"
       ]
     }
-  ]
+  ],
+  "governance": {
+    "sync_requirements": [
+      "Update docs/web_desktop_parity_checklist.md and .github/backlog-status.json together in the same PR for task completion changes."
+    ],
+    "required_evidence_arrays_before_done": [
+      "endpoint_contract_files",
+      "api_test_commands",
+      "ui_test_commands",
+      "contract_check_commands"
+    ],
+    "validation_commands": [
+      "python scripts/verify_parity_backlog.py"
+    ],
+    "release_confidence_commands_when_any_done": [
+      "npm --prefix web run test:ui-regression"
+    ],
+    "ci_workflow_required_green": [
+      ".github/workflows/parity-evidence.yml"
+    ],
+    "pr_audit_fields": [
+      "task IDs",
+      "status transitions",
+      "exact commands run",
+      "CI URL evidence"
+    ]
+  }
 }
