@@ -8,6 +8,8 @@ test("settings page defines grouped section order", () => {
     SECTIONS.map((section) => section.title),
     ["Paths", "Engine", "Profile", "Fetch"],
   );
+  assert.ok(SECTIONS.find((section) => section.title === "Engine")?.fields.includes("engineProfile"));
+  assert.ok(SECTIONS.find((section) => section.title === "Profile")?.fields.includes("ratingBandSize"));
 });
 
 test("maps backend runtime validation errors to form fields", () => {
@@ -21,5 +23,5 @@ test("maps backend runtime validation errors to form fields", () => {
   );
 
   assert.equal(mapped.daysBack, "Must be between 1 and 3650");
-  assert.equal(mapped.engineDepth, "Expected integer");
+  assert.equal(mapped.engineDepth, "Invalid value type");
 });
