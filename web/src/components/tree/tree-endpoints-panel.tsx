@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { toCanonicalTreeSnapshot } from "@/components/tree/tree-explorer-shared";
+import { toCanonicalTreeContract, toCanonicalTreeSnapshot } from "@/components/tree/tree-explorer-shared";
 import { UtilityPanel } from "@/components/ui/page-patterns";
 import { Input } from "@/components/ui/input";
 import { BodyText, MutedText } from "@/components/ui/typography";
@@ -14,16 +14,15 @@ export function TreeEndpointsPanel() {
   const browse = useQuery({ queryKey: ["line-tree", "browse", posId], queryFn: () => getLineTreeBrowse(posId, true) });
   const coverage = useQuery({ queryKey: ["line-tree", "coverage", posId], queryFn: () => getLineTreeCoverage(posId, true) });
   const metrics = useQuery({ queryKey: ["line-tree", "branch-metrics", posId], queryFn: () => getLineTreeBranchMetrics(posId, true) });
-  const canonical = toCanonicalTreeSnapshot(browse.data, coverage.data, metrics.data);
-  const idsAgree = [browse.data?.pos_id, coverage.data?.pos_id, metrics.data?.pos_id]
-    .filter((value): value is number => typeof value === "number")
-    .every((value) => value === canonical.posId);
+  const canonicalContract = toCanonicalTreeContract({ browse: browse.data, coverage: coverage.data, metrics: metrics.data });
+  const canonical = toCanonicalTreeSnapshot(canonicalContract.browse, canonicalContract.coverage, canonicalContract.metrics);
+  const idsAgree = [canonicalContract.browse.pos_id, canonicalContract.coverage.pos_id, canonicalContract.metrics.pos_id].every((value) => value === canonical.posId);
 
   return (
     <UtilityPanel
       eyebrow="Endpoint probe"
       title="Tree endpoint explorer"
-      description="Use the same browse and coverage endpoints independently while the main module stays focused on the branch presentation."
+      description="Use the canonical /lines/tree/* contract adapter for browse, coverage, and branch metrics endpoint probes."
     >
       <label className="grid gap-2 text-sm text-muted-foreground">
         Position id
