@@ -1,5 +1,6 @@
 "use client";
 
+import { toCanonicalTreeContract, toCanonicalTreeSnapshot } from "@/components/tree/tree-explorer-shared";
 import { TreeExplorerView, type TreeExplorerLayout } from "@/components/tree/tree-explorer-view";
 import { useTreeExplorerData } from "@/components/tree/use-tree-explorer-data";
 
@@ -8,46 +9,17 @@ export type { TreeExplorerLayout } from "@/components/tree/tree-explorer-view";
 export { toCanonicalTreeSnapshot } from "@/components/tree/tree-explorer-shared";
 
 export function TreeExplorer({ layout = "workspace" }: { layout?: TreeExplorerLayout }) {
-  const {
-    posId,
-    setPosId,
-    browse,
-    coverage,
-    metrics,
-    resolvedSelectedMove,
-    setSelectedMoveUci,
-    isLoading,
-    isError,
-    errorMessage,
-  } = useTreeExplorerData();
-  const adaptedBrowse = browse ?? (metrics
-    ? {
-      pos_id: metrics.pos_id,
-      my_side_only: metrics.my_side_only,
-      repertoire_children: metrics.repertoire_children,
-      game_children: metrics.game_children,
-    }
-    : undefined);
-  const adaptedCoverage = coverage ?? (metrics
-    ? {
-      pos_id: metrics.pos_id,
-      my_side_only: metrics.my_side_only,
-      repertoire_children: metrics.repertoire_children,
-      game_children: metrics.game_children,
-      total_repertoire_moves: metrics.repertoire_children.length,
-      covered_by_games: 0,
-      coverage_pct: 0,
-    }
-    : undefined);
+  const { posId, setPosId, browse, coverage, metrics, resolvedSelectedMove, setSelectedMoveUci, isLoading, isError, errorMessage } = useTreeExplorerData();
+  const canonical = toCanonicalTreeContract({ browse, coverage, metrics });
 
   return (
     <TreeExplorerView
       layout={layout}
-      posId={posId}
+      posId={posId || toCanonicalTreeSnapshot(canonical.browse, canonical.coverage, canonical.metrics).posId}
       onPosIdChange={setPosId}
-      browse={adaptedBrowse}
-      coverage={adaptedCoverage}
-      metrics={metrics}
+      browse={canonical.browse}
+      coverage={canonical.coverage}
+      metrics={canonical.metrics}
       selectedMoveUci={resolvedSelectedMove}
       onSelectMove={setSelectedMoveUci}
       isLoading={isLoading}

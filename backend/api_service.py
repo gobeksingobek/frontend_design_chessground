@@ -1710,6 +1710,17 @@ async def list_review_items(_: str = Depends(require_auth)) -> list[dict[str, An
     return await fetch_review_items()
 
 
+async def _fetch_lines_tree_contract_payload(pos_id: int, my_side_only: bool, request: Request) -> dict[str, Any]:
+    repertoire_rows = await _fetch_tree_repertoire_children_backend(pos_id, my_side_only, request)
+    game_rows = await _fetch_tree_game_children_backend(pos_id, my_side_only, request)
+    return build_tree_contract_payload(
+        pos_id=pos_id,
+        my_side_only=my_side_only,
+        repertoire_rows=repertoire_rows,
+        game_rows=game_rows,
+    )
+
+
 @app.get("/lines/tree/browse", response_model=TreeBrowseResponse)
 async def get_lines_tree_browse(
     pos_id: int = 1,
@@ -1717,14 +1728,7 @@ async def get_lines_tree_browse(
     request: Request = None,
     _: str = Depends(require_auth),
 ) -> TreeBrowseResponse:
-    repertoire_rows = await _fetch_tree_repertoire_children_backend(pos_id, my_side_only, request)
-    game_rows = await _fetch_tree_game_children_backend(pos_id, my_side_only, request)
-    payload = build_tree_contract_payload(
-        pos_id=pos_id,
-        my_side_only=my_side_only,
-        repertoire_rows=repertoire_rows,
-        game_rows=game_rows,
-    )
+    payload = await _fetch_lines_tree_contract_payload(pos_id, my_side_only, request)
     return TreeBrowseResponse(**payload)
 
 
@@ -1735,14 +1739,7 @@ async def get_lines_tree_coverage(
     request: Request = None,
     _: str = Depends(require_auth),
 ) -> TreeCoverageResponse:
-    repertoire_rows = await _fetch_tree_repertoire_children_backend(pos_id, my_side_only, request)
-    game_rows = await _fetch_tree_game_children_backend(pos_id, my_side_only, request)
-    payload = build_tree_contract_payload(
-        pos_id=pos_id,
-        my_side_only=my_side_only,
-        repertoire_rows=repertoire_rows,
-        game_rows=game_rows,
-    )
+    payload = await _fetch_lines_tree_contract_payload(pos_id, my_side_only, request)
     return TreeCoverageResponse(**payload)
 
 
@@ -1753,15 +1750,19 @@ async def get_lines_tree_branch_metrics(
     request: Request = None,
     _: str = Depends(require_auth),
 ) -> TreeBranchMetricsResponse:
-    repertoire_rows = await _fetch_tree_repertoire_children_backend(pos_id, my_side_only, request)
-    game_rows = await _fetch_tree_game_children_backend(pos_id, my_side_only, request)
-    payload = build_tree_contract_payload(
-        pos_id=pos_id,
-        my_side_only=my_side_only,
-        repertoire_rows=repertoire_rows,
-        game_rows=game_rows,
-    )
+    payload = await _fetch_lines_tree_contract_payload(pos_id, my_side_only, request)
     return TreeBranchMetricsResponse(**payload)
+
+
+@app.get("/tree/explorer", response_model=TreeCoverageResponse, deprecated=True)
+async def get_tree_explorer_legacy(
+    pos_id: int = 1,
+    my_side_only: bool = True,
+    request: Request = None,
+    _: str = Depends(require_auth),
+) -> TreeCoverageResponse:
+    payload = await _fetch_lines_tree_contract_payload(pos_id, my_side_only, request)
+    return TreeCoverageResponse(**payload)
 
 
 def _require_postgres_trainer_sessions() -> None:
