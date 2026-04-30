@@ -121,7 +121,6 @@ _RUNTIME_INT_FIELDS: dict[str, tuple[int, int | None]] = {
     "engine_max_time_ms": (1, None),
     "missing_coverage_proposal_threshold": (1, None),
 }
-_RUNTIME_REQUIRED_FIELDS = {"chesscom_usernames", "lichess_usernames", "variants", "days_back"}
 _RUNTIME_ALLOWED_FIELDS = _RUNTIME_LIST_FIELDS | _RUNTIME_STR_FIELDS | _RUNTIME_BOOL_FIELDS | set(_RUNTIME_INT_FIELDS)
 
 
@@ -162,10 +161,6 @@ def _validate_runtime_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], 
     unknown_fields = sorted(set(payload) - _RUNTIME_ALLOWED_FIELDS)
     for field in unknown_fields:
         errors.append(RuntimeFieldError(field=field, code="unknown_field", message="Unknown field"))
-
-    for field in sorted(_RUNTIME_REQUIRED_FIELDS):
-        if field not in payload:
-            errors.append(RuntimeFieldError(field=field, code="required", message="Field is required"))
 
     for field, value in payload.items():
         if field in _RUNTIME_LIST_FIELDS:
@@ -259,7 +254,9 @@ def load_runtime_settings(settings_ini_path: Path) -> dict[str, Any]:
 
 
 def update_runtime_settings(settings_ini_path: Path, payload: dict[str, Any]) -> tuple[dict[str, Any] | None, list[RuntimeFieldError]]:
-    normalized, errors = _validate_runtime_payload(payload)
+    current_settings = load_runtime_settings(settings_ini_path)
+    merged_payload = {**current_settings, **payload}
+    normalized, errors = _validate_runtime_payload(merged_payload)
     if errors:
         return None, errors
 

@@ -62,8 +62,20 @@ def test_settings_runtime_round_trip_for_desktop_groups(tmp_path: Path) -> None:
         "engine_threads": 3,
         "engine_hash_mb": 64,
         "engine_max_time_ms": 700,
+        "engine_workers": 2,
+        "engine_worker_cap": 6,
+        "engine_mode": "fixed",
+        "engine_profile": "balanced",
+        "enable_engine_cache": False,
+        "incremental_analysis": False,
+        "engine_cache_prune_non_active": False,
+        "review_top_n": 40,
+        "tabiya_top_n": 15,
+        "matching_mode": "LENIENT",
+        "missing_coverage_proposal_threshold": 8,
         "player_name": "bob",
         "player_names": ["bob", "bobby"],
+        "rating_band_size": 150,
     }
     saved, errors = save_runtime_settings_payload(ini_path, payload)
 
@@ -72,6 +84,10 @@ def test_settings_runtime_round_trip_for_desktop_groups(tmp_path: Path) -> None:
     assert saved["variants"] == ["rapid", "blitz"]
     assert saved["games_dir"] == "/new-games"
     assert saved["player_name"] == "bob"
+    assert saved["engine_workers"] == 2
+    assert saved["engine_mode"] == "fixed"
+    assert saved["enable_engine_cache"] is False
+    assert saved["rating_band_size"] == 150
 
 
 def test_settings_runtime_validation_errors_include_codes(tmp_path: Path) -> None:
@@ -95,3 +111,14 @@ def test_settings_runtime_validation_errors_include_codes(tmp_path: Path) -> Non
     assert by_field["variants"].code == "min_items"
     assert by_field["days_back"].code == "range"
     assert by_field["engine_depth"].code == "type"
+
+
+def test_settings_runtime_partial_update_uses_backward_safe_defaults(tmp_path: Path) -> None:
+    ini_path = tmp_path / "settings.ini"
+    _write_ini(ini_path)
+    saved, errors = save_runtime_settings_payload(ini_path, {"engine_depth": 22})
+    assert errors == []
+    assert saved is not None
+    assert saved["engine_depth"] == 22
+    assert saved["days_back"] == 120
+    assert saved["variants"] == ["blitz", "rapid"]
