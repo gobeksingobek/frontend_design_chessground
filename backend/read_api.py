@@ -176,12 +176,29 @@ def build_tree_contract_payload(
     }
 
 
+def _normalize_source_ref(ref: Any) -> dict[str, str] | None:
+    if not isinstance(ref, dict):
+        return None
+
+    ref_type = str(ref.get("type") or "").strip()
+    ref_id = str(ref.get("id") or "").strip()
+    label = str(ref.get("label") or "").strip()
+    if not ref_type or not ref_id:
+        return None
+    if not label:
+        label = f"{ref_type}:{ref_id}"
+    return {"type": ref_type, "id": ref_id, "label": label}
+
+
 def _normalize_insight_row(data: dict[str, Any]) -> dict[str, Any]:
     payload = data.get("data") if isinstance(data.get("data"), dict) else {}
     refs = payload.get("source_refs") if isinstance(payload, dict) else None
+    normalized_refs: list[dict[str, str]] = []
+    if isinstance(refs, list):
+        normalized_refs = [normalized for ref in refs if (normalized := _normalize_source_ref(ref)) is not None]
     data["priority_score"] = float(payload.get("priority_score") or 0) if isinstance(payload, dict) else 0.0
     data["confidence"] = float(payload.get("confidence") or 0) if isinstance(payload, dict) else 0.0
-    data["source_refs"] = refs if isinstance(refs, list) else []
+    data["source_refs"] = normalized_refs
     return data
 
 

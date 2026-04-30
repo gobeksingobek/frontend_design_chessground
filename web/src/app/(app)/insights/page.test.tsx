@@ -21,3 +21,15 @@ test("evidence drawer toggles open and close", () => {
   assert.equal(nextEvidenceDrawerState("insight-1", "insight-1"), null);
   assert.equal(nextEvidenceDrawerState("insight-1", "insight-2"), "insight-2");
 });
+
+test("evidence interaction switches the open insight panel", () => {
+  let openInsight: string | null = null;
+  openInsight = nextEvidenceDrawerState(openInsight, "insight-a");
+  assert.equal(openInsight, "insight-a");
+
+  openInsight = nextEvidenceDrawerState(openInsight, "insight-b");
+  assert.equal(openInsight, "insight-b");
+
+  openInsight = nextEvidenceDrawerState(openInsight, "insight-b");
+  assert.equal(openInsight, null);
+});
