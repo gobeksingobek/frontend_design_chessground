@@ -160,7 +160,7 @@ Key analysis options:
 - Select a game to view a live board, eval bar, and per-move table with quality colors.
 - Arrow keys: Right/Left to step moves, Up/Down to jump to end/start.
 - The repertoire prompt shows the line up to your deviation and the expected move at that ply.
-- Use Create sideline at deviation for `YOU_DEVIATED` games (currently a placeholder; persistence is coming next).
+- Use the web game-detail side panel to queue sideline analysis from a selected move with an available FEN.
 - Use Reanalyze game to rematch the game (no engine) after repertoire changes.
 
 ### Lines

@@ -508,10 +508,10 @@ class RuntimeSettingsUpdateRequest(BaseModel):
     incremental_analysis: bool | None = None
     review_top_n: int | None = Field(default=None, ge=1)
     tabiya_top_n: int | None = Field(default=None, ge=1)
-    engine_workers: int | None = Field(default=None, ge=1)
+    engine_workers: int | None = Field(default=None, ge=0)
     engine_worker_cap: int | None = Field(default=None, ge=1)
     engine_threads: int | None = Field(default=None, ge=1)
-    engine_hash_mb: int | None = Field(default=None, ge=1)
+    engine_hash_mb: int | None = Field(default=None, ge=0)
     engine_mode: str | None = None
     engine_max_time_ms: int | None = Field(default=None, ge=1)
     engine_profile: str | None = None
