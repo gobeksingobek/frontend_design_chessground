@@ -804,7 +804,7 @@ def fetch_tree_repertoire_children(
             SELECT lp.uci_move,
                    MIN(lp.san_move) AS san_move,
                    lp.next_pos_id,
-                   COUNT(*) AS weight,
+                   COALESCE(MAX(re.weight), COUNT(*)) AS weight,
                    MAX(CASE WHEN rl.is_priority = 1 THEN 1 ELSE 0 END) AS is_priority_edge,
                    MAX(CASE WHEN re.is_user_mainline = 1 THEN 1 ELSE 0 END) AS is_user_mainline,
                    SUM(
@@ -1006,6 +1006,90 @@ def fetch_tree_position_games(
         (int(pos_id), uci_move, int(limit)),
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def fetch_position_intelligence_summary(conn: sqlite3.Connection, pos_id: int, limit: int = 8) -> dict:
+    position = conn.execute(
+        """
+        SELECT id AS pos_id, fen_norm AS fen, side_to_move
+        FROM positions
+        WHERE id = ?
+        """,
+        (int(pos_id),),
+    ).fetchone()
+
+    totals = conn.execute(
+        """
+        SELECT COUNT(DISTINCT gp.game_id) AS games,
+               SUM(CASE WHEN g.result = '1-0' AND g.player_color = 'white' THEN 1
+                        WHEN g.result = '0-1' AND g.player_color = 'black' THEN 1
+                        ELSE 0 END) AS wins,
+               SUM(CASE WHEN g.result = '1/2-1/2' THEN 1 ELSE 0 END) AS draws,
+               SUM(CASE WHEN g.result = '0-1' AND g.player_color = 'white' THEN 1
+                        WHEN g.result = '1-0' AND g.player_color = 'black' THEN 1
+                        ELSE 0 END) AS losses,
+               SUM(CASE WHEN m.deviation_ply_opp = gp.ply THEN 1 ELSE 0 END) AS opponent_deviation_count
+        FROM game_positions gp
+        JOIN games g ON g.id = gp.game_id
+        LEFT JOIN matches m ON m.game_id = gp.game_id
+        WHERE gp.pos_id = ?
+        """,
+        (int(pos_id),),
+    ).fetchone()
+
+    evals = conn.execute(
+        """
+        SELECT AVG(ap.post_eval_cp) AS avg_exit_eval_cp,
+               AVG(ap.your_cpl) AS avg_your_cpl,
+               AVG(ap.rep_cpl) AS avg_rep_cpl
+        FROM analysis_ply ap
+        WHERE ap.pos_id = ?
+        """,
+        (int(pos_id),),
+    ).fetchone()
+
+    latest_engine = conn.execute(
+        """
+        SELECT best_uci, eval_cp, depth, engine_id, analyzed_at
+        FROM engine_cache
+        WHERE pos_id = ?
+        ORDER BY depth DESC, analyzed_at DESC
+        LIMIT 1
+        """,
+        (int(pos_id),),
+    ).fetchone()
+
+    recent_games = conn.execute(
+        """
+        SELECT g.id AS game_id,
+               g.date,
+               g.white,
+               g.black,
+               g.result,
+               g.player_color,
+               gp.ply,
+               gp.san_move,
+               gp.uci_move,
+               gp.repertoire_class,
+               ap.post_eval_cp,
+               ap.your_cpl
+        FROM game_positions gp
+        JOIN games g ON g.id = gp.game_id
+        LEFT JOIN analysis_ply ap ON ap.game_id = gp.game_id AND ap.ply = gp.ply
+        WHERE gp.pos_id = ?
+        ORDER BY g.date DESC, g.id DESC, gp.ply ASC
+        LIMIT ?
+        """,
+        (int(pos_id), int(limit)),
+    ).fetchall()
+
+    return {
+        "position": dict(position) if position else {"pos_id": int(pos_id), "fen": None, "side_to_move": None},
+        "totals": dict(totals) if totals else {},
+        "evals": dict(evals) if evals else {},
+        "latest_engine": dict(latest_engine) if latest_engine else None,
+        "recent_games": [dict(row) for row in recent_games],
+    }
 
 
 def ensure_trainer_state(conn: sqlite3.Connection) -> None:

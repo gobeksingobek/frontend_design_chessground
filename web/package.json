@@ -18,6 +18,7 @@
     "check:games-list-contract": "node scripts/check-games-list-contract.mjs",
     "check:insights-contract": "node scripts/check-insights-contract.mjs",
     "check:tree-contract": "node scripts/check-tree-contract.mjs",
+    "check:position-intelligence-contract": "node scripts/check-position-intelligence-contract.mjs",
     "check:settings-contract": "node scripts/check-settings-contract.mjs",
     "check:game-detail-contract": "node scripts/check-game-detail-contract.mjs"
   },

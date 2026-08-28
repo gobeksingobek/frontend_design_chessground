@@ -214,6 +214,63 @@ export interface TreeBranchMetricsResponse {
   top_game_branches: TreeGameMove[];
 }
 
+export interface PositionIntelligenceResponse {
+  pos_id: number;
+  my_side_only: boolean;
+  position: {
+    pos_id: number;
+    fen: string | null;
+    side_to_move: string | null;
+  };
+  repertoire_continuations: TreeBrowseMove[];
+  game_continuations: TreeGameMove[];
+  coverage: {
+    total_repertoire_moves: number;
+    covered_by_games: number;
+    coverage_pct: number;
+    total_games: number;
+    opponent_deviation_count: number;
+    played_repertoire_moves: number;
+    played_non_repertoire_moves: number;
+  };
+  outcome_summary: {
+    games: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    score_pct: number;
+  };
+  evaluation_summary: {
+    avg_exit_eval_cp: number | null;
+    avg_your_cpl: number | null;
+    avg_rep_cpl: number | null;
+    latest_eval_cp: number | null;
+    best_uci: string | null;
+    depth: number | null;
+    engine_id: string | null;
+  };
+  recent_games: Array<{
+    game_id: number;
+    date: string | null;
+    white: string | null;
+    black: string | null;
+    result: string | null;
+    player_color: string | null;
+    ply: number;
+    san_move: string | null;
+    uci_move: string | null;
+    repertoire_class: string | null;
+    post_eval_cp: number | null;
+    your_cpl: number | null;
+  }>;
+  evidence: {
+    repertoire_move_count: number;
+    game_move_count: number;
+    recent_game_count: number;
+    matters: string[];
+  };
+}
+
 export interface TrainerQueueItem {
   line_id: string;
   side_to_play: string;

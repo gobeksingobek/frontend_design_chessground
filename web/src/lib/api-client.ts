@@ -7,6 +7,7 @@ import type {
   GameDetail,
   GameOverview,
   OverviewSummary,
+  PositionIntelligenceResponse,
   SidelineCreateRequest,
   SidelineResponse,
   StatsRow,
@@ -336,6 +337,15 @@ export async function getLineTreeBranchMetrics(posId = 1, mySideOnly = true): Pr
     cache: "no-store",
   });
   return unwrap<TreeBranchMetricsResponse>(response);
+}
+
+export async function getPositionIntelligence(posId = 1, mySideOnly = true): Promise<PositionIntelligenceResponse> {
+  const response = await fetch(`${API_BASE_URL}/positions/${posId}/intelligence?my_side_only=${mySideOnly}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<PositionIntelligenceResponse>(response);
 }
 
 

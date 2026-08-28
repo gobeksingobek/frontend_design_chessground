@@ -5,10 +5,10 @@ import { type ReactNode, useMemo, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BodyText, CardTitle, MutedText } from "@/components/ui/typography";
-import type { TreeBranchMetricsResponse, TreeBrowseMove, TreeBrowseResponse, TreeCoverageResponse, TreeGameMove } from "@/lib/types";
+import { BodyText, CaptionText, CardTitle, MutedText } from "@/components/ui/typography";
+import type { PositionIntelligenceResponse, TreeBranchMetricsResponse, TreeBrowseMove, TreeBrowseResponse, TreeCoverageResponse, TreeGameMove } from "@/lib/types";
 import { cn } from "@/lib/cn";
-import { toCanonicalTreeSnapshot } from "./tree-explorer-shared";
+import { toCanonicalTreeSnapshot, toNavigablePositionId, toPositionIntelligencePanelState } from "./tree-explorer-shared";
 
 export type TreeExplorerLayout = "workspace" | "utility" | "stacked";
 
@@ -19,6 +19,7 @@ type BranchRow = {
   move: string;
   detail: string;
   meta: string;
+  nextPosId?: number | null;
   emphasis?: boolean;
   icon: "repertoire" | "games" | "favorite";
 };
@@ -35,6 +36,7 @@ function toRepertoireRows(moves: TreeBrowseMove[]): BranchRow[] {
     move: move.san_move ?? move.uci_move,
     detail: move.is_user_mainline ? "Main repertoire path" : move.is_priority_edge ? "Priority branch" : "Tracked response",
     meta: move.uci_move,
+    nextPosId: move.next_pos_id,
     emphasis: Boolean(index === 0 || move.is_user_mainline),
     icon: "repertoire",
   }));
@@ -46,6 +48,7 @@ function toGameRows(moves: TreeGameMove[]): BranchRow[] {
     move: move.san_move ?? move.uci_move,
     detail: `${move.games} games · ${Math.round(move.score_pct)}% score · ${move.avg_opp_elo ? `avg ${Math.round(move.avg_opp_elo)}` : "observed line"}`,
     meta: move.uci_move,
+    nextPosId: move.next_pos_id,
     emphasis: index === 0,
     icon: index < 2 ? "favorite" : "games",
   }));
@@ -57,6 +60,7 @@ export function TreeExplorerView({
   browse,
   coverage,
   metrics,
+  intelligence,
   selectedMoveUci,
   onSelectMove,
   isLoading,
@@ -68,6 +72,7 @@ export function TreeExplorerView({
   browse?: TreeBrowseResponse;
   coverage?: TreeCoverageResponse;
   metrics?: TreeBranchMetricsResponse;
+  intelligence?: PositionIntelligenceResponse;
   selectedMoveUci?: string | null;
   onSelectMove?: (uciMove: string | null) => void;
   isLoading?: boolean;
@@ -167,6 +172,7 @@ export function TreeExplorerView({
             rows={whiteRows}
             selectedMoveUci={selectedMoveUci}
             onSelectMove={onSelectMove}
+            onOpenPosition={onPosIdChange}
           />
           <BranchPanel
             title="Black Repertoire"
@@ -174,6 +180,7 @@ export function TreeExplorerView({
             rows={activeTab === "favorites" ? favoriteRows : blackRows}
             selectedMoveUci={selectedMoveUci}
             onSelectMove={onSelectMove}
+            onOpenPosition={onPosIdChange}
           />
           <div className="grid gap-5">
             <InfoCard title="Info & Tools">
@@ -185,6 +192,7 @@ export function TreeExplorerView({
                 </div>
               </div>
             </InfoCard>
+            <PositionIntelligenceCard intelligence={intelligence} />
             <InfoCard title="Tips">
               <ul className="grid gap-3 pl-5 text-sm leading-6 text-slate-300/85 marker:text-sky-300">
                 <li>Focus on the first high-priority continuations.</li>
@@ -223,12 +231,14 @@ function BranchPanel({
   rows,
   selectedMoveUci,
   onSelectMove,
+  onOpenPosition,
 }: {
   title: string;
   subtitle: string;
   rows: BranchRow[];
   selectedMoveUci?: string | null;
   onSelectMove?: (uciMove: string | null) => void;
+  onOpenPosition?: (posId: number) => void;
 }) {
   return (
     <section className="rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(15,23,42,0.22))] px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl md:px-6 md:py-6">
@@ -240,6 +250,7 @@ function BranchPanel({
         {rows.length > 0 ? (
           rows.map((row, index) => {
             const selected = selectedMoveUci ? row.meta === selectedMoveUci : index === 0;
+            const nextPosId = toNavigablePositionId(row.nextPosId);
             return (
               <div key={row.key} className="relative pl-14">
                 <span className={cn("absolute left-6 top-0 w-px bg-slate-500/45", index === rows.length - 1 ? "h-8" : "h-[calc(100%+1rem)]")} />
@@ -266,6 +277,15 @@ function BranchPanel({
                   </div>
                   <p className="text-sm font-medium text-slate-300/80">{row.meta}</p>
                 </button>
+                {nextPosId ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenPosition?.(nextPosId)}
+                    className="mt-2 text-sm font-medium text-sky-200 transition hover:text-sky-100"
+                  >
+                    Open position #{nextPosId}
+                  </button>
+                ) : null}
               </div>
             );
           })
@@ -285,6 +305,74 @@ function InfoCard({ title, children, className }: { title: string; children: Rea
       </div>
       {children}
     </section>
+  );
+}
+
+function PositionIntelligenceCard({ intelligence }: { intelligence?: PositionIntelligenceResponse }) {
+  const panel = toPositionIntelligencePanelState(intelligence);
+
+  return (
+    <InfoCard title="Position Intelligence">
+      {intelligence ? (
+        <div className="grid gap-4">
+          <div className="grid grid-cols-2 gap-3">
+            <GlassMetric label="Coverage" value={`${Math.round(intelligence.coverage.coverage_pct)}%`} detail={`${intelligence.coverage.covered_by_games}/${intelligence.coverage.total_repertoire_moves} rep moves`} />
+            <GlassMetric label="Games" value={String(intelligence.outcome_summary.games)} detail={`${intelligence.outcome_summary.wins}-${intelligence.outcome_summary.draws}-${intelligence.outcome_summary.losses} · ${Math.round(intelligence.outcome_summary.score_pct)}% score`} />
+            <GlassMetric label="Deviations" value={String(intelligence.coverage.played_non_repertoire_moves)} detail={`${intelligence.coverage.opponent_deviation_count} opp exits`} />
+            <GlassMetric label="Avg exit eval" value={intelligence.evaluation_summary.avg_exit_eval_cp === null ? "-" : String(Math.round(intelligence.evaluation_summary.avg_exit_eval_cp))} detail={intelligence.evaluation_summary.best_uci ? `Best ${intelligence.evaluation_summary.best_uci}` : "Persisted evals"} />
+            <GlassMetric label="Avg CPL" value={intelligence.evaluation_summary.avg_your_cpl === null ? "-" : String(Math.round(intelligence.evaluation_summary.avg_your_cpl))} detail={intelligence.evaluation_summary.avg_rep_cpl === null ? "No repertoire baseline" : `Rep CPL ${Math.round(intelligence.evaluation_summary.avg_rep_cpl)}`} />
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-300/85">
+            Position #{intelligence.position.pos_id} · {intelligence.position.side_to_move === "w" ? "White" : intelligence.position.side_to_move === "b" ? "Black" : "Unknown"} to move
+          </div>
+
+          <MiniMoveList title="Repertoire expects" moves={panel.topRepertoireMoves} empty="No repertoire continuations." />
+          <MiniMoveList title="Games actually play" moves={panel.topGameMoves} empty="No game continuations." />
+
+          {panel.matters.length > 0 ? (
+            <div className="grid gap-2">
+              <CaptionText>Why this position matters</CaptionText>
+              <ul className="grid gap-2 pl-4 text-sm leading-5 text-slate-300/85 marker:text-sky-300">
+                {panel.matters.map((reason) => <li key={reason}>{reason}</li>)}
+              </ul>
+            </div>
+          ) : (
+            <MutedText className="text-sm">Low-signal position: no game, deviation, or CPL evidence is persisted yet.</MutedText>
+          )}
+
+          {panel.recentGameLabels.length > 0 ? (
+            <div className="grid gap-2">
+              <CaptionText>Recent evidence</CaptionText>
+              <div className="grid gap-2">
+                {panel.recentGameLabels.map((label) => (
+                  <div key={label} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-300/85">
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <MutedText className="text-sm">Loading persisted position evidence...</MutedText>
+      )}
+    </InfoCard>
+  );
+}
+
+function MiniMoveList({ title, moves, empty }: { title: string; moves: string[]; empty: string }) {
+  return (
+    <div className="grid gap-2">
+      <CaptionText>{title}</CaptionText>
+      {moves.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {moves.map((move) => <span key={move} className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-sm font-medium text-slate-100">{move}</span>)}
+        </div>
+      ) : (
+        <MutedText className="text-sm">{empty}</MutedText>
+      )}
+    </div>
   );
 }
 

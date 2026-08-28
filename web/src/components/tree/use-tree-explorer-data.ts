@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { getLineTreeBranchMetrics, getLineTreeBrowse, getLineTreeCoverage } from "@/lib/api-client";
-import type { TreeBranchMetricsResponse, TreeBrowseResponse, TreeCoverageResponse } from "@/lib/types";
+import { getLineTreeBranchMetrics, getLineTreeBrowse, getLineTreeCoverage, getPositionIntelligence } from "@/lib/api-client";
+import type { PositionIntelligenceResponse, TreeBranchMetricsResponse, TreeBrowseResponse, TreeCoverageResponse } from "@/lib/types";
 
 export interface UseTreeExplorerDataResult {
   posId: number;
@@ -14,6 +14,7 @@ export interface UseTreeExplorerDataResult {
   browse: TreeBrowseResponse | undefined;
   coverage: TreeCoverageResponse | undefined;
   metrics: TreeBranchMetricsResponse | undefined;
+  intelligence: PositionIntelligenceResponse | undefined;
   resolvedSelectedMove: string | null;
   isLoading: boolean;
   isError: boolean;
@@ -36,6 +37,10 @@ export function useTreeExplorerData(initialPosId = 1): UseTreeExplorerDataResult
     queryKey: ["tree", "metrics", posId],
     queryFn: () => getLineTreeBranchMetrics(posId, true),
   });
+  const intelligenceQuery = useQuery({
+    queryKey: ["tree", "position-intelligence", posId],
+    queryFn: () => getPositionIntelligence(posId, true),
+  });
 
   const defaultSelectedMove = useMemo(
     () =>
@@ -45,7 +50,7 @@ export function useTreeExplorerData(initialPosId = 1): UseTreeExplorerDataResult
     [browseQuery.data],
   );
 
-  const errorMessage = [browseQuery.error, coverageQuery.error, metricsQuery.error]
+  const errorMessage = [browseQuery.error, coverageQuery.error, metricsQuery.error, intelligenceQuery.error]
     .find((error): error is Error => error instanceof Error)
     ?.message ?? null;
 
@@ -60,9 +65,10 @@ export function useTreeExplorerData(initialPosId = 1): UseTreeExplorerDataResult
     browse: browseQuery.data,
     coverage: coverageQuery.data,
     metrics: metricsQuery.data,
+    intelligence: intelligenceQuery.data,
     resolvedSelectedMove: selectedMoveUci ?? defaultSelectedMove,
-    isLoading: browseQuery.isLoading || coverageQuery.isLoading || metricsQuery.isLoading,
-    isError: browseQuery.isError || coverageQuery.isError || metricsQuery.isError,
+    isLoading: browseQuery.isLoading || coverageQuery.isLoading || metricsQuery.isLoading || intelligenceQuery.isLoading,
+    isError: browseQuery.isError || coverageQuery.isError || metricsQuery.isError || intelligenceQuery.isError,
     errorMessage,
   };
 }

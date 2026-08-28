@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { applyCursorKey, buildGameRouteQuery, isCursorNavigationKey, resolveCursorIndexForPly } from "@/components/games/game-detail";
+import { applyCursorKey, buildGameRouteQuery, buildTreePositionRouteQuery, isCursorNavigationKey, resolveCursorIndexForPly } from "@/components/games/game-detail";
 
 test("applyCursorKey moves cursor next and prev", () => {
   assert.equal(applyCursorKey("ArrowRight", 0, 4), 1);
@@ -64,4 +64,9 @@ test("buildGameRouteQuery omits ply when on initial position", () => {
     tab: "board",
     orientation: "white",
   });
+});
+
+test("buildTreePositionRouteQuery deep-links game moves into tree position intelligence", () => {
+  assert.deepEqual(buildTreePositionRouteQuery(42), { pos_id: "42" });
+  assert.deepEqual(buildTreePositionRouteQuery(0), { pos_id: "1" });
 });

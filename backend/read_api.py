@@ -142,7 +142,7 @@ def _normalize_tree_game_row(row: dict[str, Any]) -> dict[str, Any]:
         "wins": wins,
         "draws": draws,
         "losses": losses,
-        "avg_opp_elo": row.get("avg_opp_elo"),
+        "avg_opp_elo": _safe_float(row.get("avg_opp_elo")),
         "score_pct": float(score_pct or 0.0),
     }
 
@@ -173,6 +173,99 @@ def build_tree_contract_payload(
         "coverage_pct": float(coverage_pct),
         "top_repertoire_branches": top_repertoire_branches,
         "top_game_branches": top_game_branches,
+    }
+
+
+def _safe_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def build_position_intelligence_payload(
+    *,
+    pos_id: int,
+    my_side_only: bool,
+    repertoire_rows: list[dict[str, Any]],
+    game_rows: list[dict[str, Any]],
+    summary: dict[str, Any],
+) -> dict[str, Any]:
+    tree = build_tree_contract_payload(
+        pos_id=pos_id,
+        my_side_only=my_side_only,
+        repertoire_rows=repertoire_rows,
+        game_rows=game_rows,
+    )
+    position = dict(summary.get("position") or {})
+    totals = dict(summary.get("totals") or {})
+    evals = dict(summary.get("evals") or {})
+    latest_engine = summary.get("latest_engine") if isinstance(summary.get("latest_engine"), dict) else None
+    recent_games = list(summary.get("recent_games") or [])
+
+    games = int(totals.get("games") or 0)
+    wins = int(totals.get("wins") or 0)
+    draws = int(totals.get("draws") or 0)
+    losses = int(totals.get("losses") or 0)
+    score_pct = ((wins + 0.5 * draws) / games * 100.0) if games > 0 else 0.0
+    repertoire_moves = {row["uci_move"] for row in tree["repertoire_children"] if row.get("uci_move")}
+    game_moves = {row["uci_move"] for row in tree["game_children"] if row.get("uci_move")}
+    deviations = [row for row in tree["game_children"] if row.get("uci_move") and row.get("uci_move") not in repertoire_moves]
+
+    reasons: list[str] = []
+    if games:
+        reasons.append(f"{games} recent-game samples reach this position")
+    if deviations:
+        reasons.append(f"{sum(int(row.get('games') or 0) for row in deviations)} games deviate from repertoire moves")
+    if tree["total_repertoire_moves"]:
+        reasons.append(f"{tree['covered_by_games']} of {tree['total_repertoire_moves']} repertoire continuations are covered by games")
+    if _safe_float(evals.get("avg_your_cpl")) is not None:
+        reasons.append("Persisted move analysis includes CPL evidence")
+
+    return {
+        "pos_id": int(pos_id),
+        "my_side_only": bool(my_side_only),
+        "position": {
+            "pos_id": int(position.get("pos_id") or pos_id),
+            "fen": position.get("fen"),
+            "side_to_move": position.get("side_to_move"),
+        },
+        "repertoire_continuations": tree["repertoire_children"],
+        "game_continuations": tree["game_children"],
+        "coverage": {
+            "total_repertoire_moves": tree["total_repertoire_moves"],
+            "covered_by_games": tree["covered_by_games"],
+            "coverage_pct": tree["coverage_pct"],
+            "total_games": games,
+            "opponent_deviation_count": int(totals.get("opponent_deviation_count") or 0),
+            "played_repertoire_moves": len(repertoire_moves & game_moves),
+            "played_non_repertoire_moves": len(game_moves - repertoire_moves),
+        },
+        "outcome_summary": {
+            "games": games,
+            "wins": wins,
+            "draws": draws,
+            "losses": losses,
+            "score_pct": float(score_pct),
+        },
+        "evaluation_summary": {
+            "avg_exit_eval_cp": _safe_float(evals.get("avg_exit_eval_cp")),
+            "avg_your_cpl": _safe_float(evals.get("avg_your_cpl")),
+            "avg_rep_cpl": _safe_float(evals.get("avg_rep_cpl")),
+            "latest_eval_cp": _safe_float(latest_engine.get("eval_cp")) if latest_engine else None,
+            "best_uci": latest_engine.get("best_uci") if latest_engine else None,
+            "depth": latest_engine.get("depth") if latest_engine else None,
+            "engine_id": latest_engine.get("engine_id") if latest_engine else None,
+        },
+        "recent_games": recent_games,
+        "evidence": {
+            "repertoire_move_count": len(repertoire_moves),
+            "game_move_count": len(game_moves),
+            "recent_game_count": len(recent_games),
+            "matters": reasons,
+        },
     }
 
 

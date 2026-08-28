@@ -35,6 +35,9 @@ export function buildGameRouteQuery(selectedPly: number | null, activeTab: "boar
     orientation,
   };
 }
+export function buildTreePositionRouteQuery(posId: number) {
+  return { pos_id: String(posId || 1) };
+}
 function buildGameHref(gameId: number, selectedPly: number | null, activeTab: "board" | "moves", orientation: "white" | "black") {
   const params = new URLSearchParams(buildGameRouteQuery(selectedPly, activeTab, orientation));
   return `/games/${gameId}?${params.toString()}`;
@@ -209,6 +212,7 @@ export function GameDetail({
                 hasEvalData ? <div className="grid gap-4 xl:grid-cols-1"><EvalBar evalCp={selectedMove.pre_eval_cp} title="Before move" /><EvalBar evalCp={selectedMove.post_eval_cp} title="After move" /></div> : <DetailPane title="Eval panel" description="No pre/post eval values are available for the selected move."><MutedText>Evaluation data will appear here when engine scores are available.</MutedText></DetailPane>
               ) : null}
               {selectedMove?.fen ? <BodyText className="rounded-xl border border-border/70 bg-background/60 px-4 py-3"><Link className="font-medium text-primary hover:text-secondary" href={{ pathname: "/analysis", query: { game_id: String(gameId), move_ply: String(selectedMove.ply), fen: selectedMove.fen } }}>Open in /analysis with this position</Link></BodyText> : null}
+              {selectedMove ? <BodyText className="rounded-xl border border-border/70 bg-background/60 px-4 py-3"><Link className="font-medium text-primary hover:text-secondary" href={{ pathname: "/tree", query: buildTreePositionRouteQuery(selectedMove.pos_id) }}>Open position #{selectedMove.pos_id} in tree intelligence</Link></BodyText> : null}
               {selectedMove?.fen ? <SidelineAnalysisForm key={`${selectedMove.ply}-${selectedMove.fen}`} title="Queue sideline from this game move" initialGameId={String(gameId)} initialMovePly={selectedMove.ply} initialFen={selectedMove.fen} lockedFields={{ gameId: true, movePly: true, fen: true }} /> : <EmptyState title="Select a move to analyze" description="Choose a move with an available FEN to queue a quick sideline evaluation from this game." />}
             </div>
           </div>
@@ -233,7 +237,7 @@ export function GameDetail({
           <TableContainer className="max-h-[42rem] overflow-auto">
             <Table>
               <TableHead className="sticky top-0 z-10 bg-elevated/95 backdrop-blur">
-                <tr><Th>Ply</Th><Th>SAN</Th><Th>UCI</Th><Th>Class</Th><Th>Quality</Th><Th>Your CPL</Th></tr>
+                <tr><Th>Ply</Th><Th>SAN</Th><Th>UCI</Th><Th>Class</Th><Th>Quality</Th><Th>Your CPL</Th><Th>Position</Th></tr>
               </TableHead>
               <TableBody>
                 {moves.map((move) => (
@@ -244,6 +248,7 @@ export function GameDetail({
                     <Td className={move.ply === selectedPly ? "text-selection-foreground" : undefined}>{move.repertoire_class ?? "-"}</Td>
                     <Td><MoveQualityBadge label={move.quality_label} /></Td>
                     <Td className={cn(move.ply === selectedPly && "text-selection-foreground", move.your_cpl !== null && move.your_cpl > 120 ? "text-danger" : "text-success", "font-medium")}>{move.your_cpl ?? "-"}</Td>
+                    <Td><Link className="font-medium text-primary hover:text-secondary" href={{ pathname: "/tree", query: buildTreePositionRouteQuery(move.pos_id) }}>#{move.pos_id}</Link></Td>
                   </tr>
                 ))}
               </TableBody>

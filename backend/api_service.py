@@ -27,6 +27,7 @@ from backend import repertoire_import
 from backend.queue import enqueue_job, ensure_consumer_group, redis_client
 from backend.read_api import (
     ALLOWED_RATING_BAND_SIZES,
+    build_position_intelligence_payload,
     build_tree_contract_payload,
     fetch_analysis_runs,
     fetch_game_detail,
@@ -297,6 +298,19 @@ class TreeBranchMetricsResponse(BaseModel):
     game_children: list[dict[str, Any]]
     top_repertoire_branches: list[dict[str, Any]]
     top_game_branches: list[dict[str, Any]]
+
+
+class PositionIntelligenceResponse(BaseModel):
+    pos_id: int
+    my_side_only: bool
+    position: dict[str, Any]
+    repertoire_continuations: list[TreeBrowseMoveResponse]
+    game_continuations: list[dict[str, Any]]
+    coverage: dict[str, Any]
+    outcome_summary: dict[str, Any]
+    evaluation_summary: dict[str, Any]
+    recent_games: list[dict[str, Any]]
+    evidence: dict[str, Any]
 
 
 class TrainerQueueEntry(BaseModel):
@@ -578,37 +592,27 @@ async def _fetch_tree_repertoire_children_backend(
 
     req = _require_postgres_request(request)
     async with req.app.state.db_pool.acquire() as conn:
-        rows = await conn.fetch(
+        has_repertoire_edges = bool(await conn.fetchval("SELECT to_regclass('public.repertoire_edges') IS NOT NULL"))
+        has_sideline_queue = bool(await conn.fetchval("SELECT to_regclass('public.sideline_queue') IS NOT NULL"))
+        repertoire_edge_join = (
             """
-            WITH repertoire_rows AS (
-                SELECT lp.uci_move,
-                       MIN(lp.san_move) AS san_move,
-                       lp.next_pos_id,
-                       COUNT(*)::int AS weight,
-                       MAX(CASE WHEN rl.is_priority = 1 THEN 1 ELSE 0 END)::int AS is_priority_edge,
-                       MAX(CASE WHEN re.is_user_mainline = 1 THEN 1 ELSE 0 END)::int AS is_user_mainline,
-                       SUM(
-                           CASE
-                               WHEN (
-                                   (rl.side_to_play = 'white' AND MOD(lp.ply, 2) = 1)
-                                   OR
-                                   (rl.side_to_play = 'black' AND MOD(lp.ply, 2) = 0)
-                               )
-                               THEN 1
-                               ELSE 0
-                           END
-                       )::int AS self_count,
-                       0::int AS is_sideline_pending
-                FROM line_positions lp
-                JOIN repertoire_lines rl
-                  ON rl.line_id = lp.line_id
                 LEFT JOIN repertoire_edges re
                   ON re.pos_id = lp.pos_id
                  AND re.uci_move = lp.uci_move
                  AND re.next_pos_id = lp.next_pos_id
-                WHERE lp.pos_id = $1
-                GROUP BY lp.uci_move, lp.next_pos_id
-            ),
+            """
+            if has_repertoire_edges
+            else ""
+        )
+        weight_expr = "COALESCE(MAX(re.weight), COUNT(*))::int" if has_repertoire_edges else "COUNT(*)::int"
+        user_mainline_expr = (
+            "MAX(CASE WHEN re.is_user_mainline = 1 THEN 1 ELSE 0 END)::int"
+            if has_repertoire_edges
+            else "0::int"
+        )
+        pending_sideline_cte = (
+            """
+            ,
             pending_sidelines AS (
                 SELECT sq.move_uci AS uci_move,
                        sq.move_uci AS san_move,
@@ -627,12 +631,52 @@ async def _fetch_tree_repertoire_children_backend(
                       WHERE rr.uci_move = sq.move_uci
                   )
             )
-            SELECT uci_move, san_move, next_pos_id, weight, is_priority_edge, is_user_mainline, self_count, is_sideline_pending
-            FROM repertoire_rows
-            WHERE ($2 = 0 OR self_count > 0)
+            """
+            if has_sideline_queue
+            else ""
+        )
+        pending_sideline_union = (
+            """
             UNION ALL
             SELECT uci_move, san_move, next_pos_id, weight, is_priority_edge, is_user_mainline, self_count, is_sideline_pending
             FROM pending_sidelines
+            """
+            if has_sideline_queue
+            else ""
+        )
+        rows = await conn.fetch(
+            f"""
+            WITH repertoire_rows AS (
+                SELECT lp.uci_move,
+                       MIN(lp.san_move) AS san_move,
+                       lp.next_pos_id,
+                       {weight_expr} AS weight,
+                       MAX(CASE WHEN rl.is_priority = 1 THEN 1 ELSE 0 END)::int AS is_priority_edge,
+                       {user_mainline_expr} AS is_user_mainline,
+                       SUM(
+                           CASE
+                               WHEN (
+                                   (rl.side_to_play = 'white' AND MOD(lp.ply, 2) = 1)
+                                   OR
+                                   (rl.side_to_play = 'black' AND MOD(lp.ply, 2) = 0)
+                               )
+                               THEN 1
+                               ELSE 0
+                           END
+                       )::int AS self_count,
+                       0::int AS is_sideline_pending
+                FROM line_positions lp
+                JOIN repertoire_lines rl
+                  ON rl.line_id = lp.line_id
+                {repertoire_edge_join}
+                WHERE lp.pos_id = $1
+                GROUP BY lp.uci_move, lp.next_pos_id
+            )
+            {pending_sideline_cte}
+            SELECT uci_move, san_move, next_pos_id, weight, is_priority_edge, is_user_mainline, self_count, is_sideline_pending
+            FROM repertoire_rows
+            WHERE ($2 = 0 OR self_count > 0)
+            {pending_sideline_union}
             ORDER BY is_sideline_pending DESC, weight DESC, uci_move
             """,
             int(pos_id),
@@ -705,6 +749,105 @@ async def _fetch_tree_game_children_backend(
         entry["score_pct"] = ((wins + 0.5 * draws) / total * 100.0) if total > 0 else 0.0
         out.append(entry)
     return out
+
+
+async def _fetch_position_intelligence_summary_backend(
+    pos_id: int,
+    request: Request | None,
+    limit: int = 8,
+) -> dict[str, Any]:
+    if SETTINGS.data_backend != "postgres":
+        return await _with_sqlite(queries.fetch_position_intelligence_summary, pos_id, limit=limit)
+
+    req = _require_postgres_request(request)
+    async with req.app.state.db_pool.acquire() as conn:
+        position = await conn.fetchrow(
+            """
+            SELECT id AS pos_id,
+                   fen_norm AS fen,
+                   CASE
+                       WHEN array_length(string_to_array(fen_norm, ' '), 1) >= 2
+                       THEN split_part(fen_norm, ' ', 2)
+                       ELSE NULL
+                   END AS side_to_move
+            FROM positions
+            WHERE id = $1
+            """,
+            int(pos_id),
+        )
+        totals = await conn.fetchrow(
+            """
+            SELECT COUNT(DISTINCT gp.game_id)::int AS games,
+                   SUM(CASE WHEN g.result = '1-0' AND g.player_color = 'white' THEN 1
+                            WHEN g.result = '0-1' AND g.player_color = 'black' THEN 1
+                            ELSE 0 END)::int AS wins,
+                   SUM(CASE WHEN g.result = '1/2-1/2' THEN 1 ELSE 0 END)::int AS draws,
+                   SUM(CASE WHEN g.result = '0-1' AND g.player_color = 'white' THEN 1
+                            WHEN g.result = '1-0' AND g.player_color = 'black' THEN 1
+                            ELSE 0 END)::int AS losses,
+                   SUM(CASE WHEN m.deviation_ply_opp = gp.ply THEN 1 ELSE 0 END)::int AS opponent_deviation_count
+            FROM game_positions gp
+            JOIN games g ON g.id = gp.game_id
+            LEFT JOIN matches m ON m.game_id = gp.game_id
+            WHERE gp.pos_id = $1
+            """,
+            int(pos_id),
+        )
+        evals = await conn.fetchrow(
+            """
+            SELECT AVG(ap.post_eval_cp) AS avg_exit_eval_cp,
+                   AVG(ap.your_cpl) AS avg_your_cpl,
+                   AVG(ap.rep_cpl) AS avg_rep_cpl
+            FROM analysis_ply ap
+            WHERE ap.pos_id = $1
+            """,
+            int(pos_id),
+        )
+        has_engine_cache = bool(await conn.fetchval("SELECT to_regclass('public.engine_cache') IS NOT NULL"))
+        latest_engine = None
+        if has_engine_cache:
+            latest_engine = await conn.fetchrow(
+                """
+                SELECT best_uci, eval_cp, depth, engine_id, analyzed_at
+                FROM engine_cache
+                WHERE pos_id = $1
+                ORDER BY depth DESC, analyzed_at DESC
+                LIMIT 1
+                """,
+                int(pos_id),
+            )
+        recent_games = await conn.fetch(
+            """
+            SELECT g.id AS game_id,
+                   g.date,
+                   g.white,
+                   g.black,
+                   g.result,
+                   g.player_color,
+                   gp.ply,
+                   gp.san_move,
+                   gp.uci_move,
+                   gp.repertoire_class,
+                   ap.post_eval_cp,
+                   ap.your_cpl
+            FROM game_positions gp
+            JOIN games g ON g.id = gp.game_id
+            LEFT JOIN analysis_ply ap ON ap.game_id = gp.game_id AND ap.ply = gp.ply
+            WHERE gp.pos_id = $1
+            ORDER BY g.date DESC, g.id DESC, gp.ply ASC
+            LIMIT $2
+            """,
+            int(pos_id),
+            int(limit),
+        )
+
+    return {
+        "position": dict(position) if position else {"pos_id": int(pos_id), "fen": None, "side_to_move": None},
+        "totals": dict(totals) if totals else {},
+        "evals": dict(evals) if evals else {},
+        "latest_engine": dict(latest_engine) if latest_engine else None,
+        "recent_games": [dict(row) for row in recent_games],
+    }
 
 
 async def _fetch_review_propositions_backend(
@@ -1721,6 +1864,19 @@ async def _fetch_lines_tree_contract_payload(pos_id: int, my_side_only: bool, re
     )
 
 
+async def _fetch_position_intelligence_payload(pos_id: int, my_side_only: bool, request: Request) -> dict[str, Any]:
+    repertoire_rows = await _fetch_tree_repertoire_children_backend(pos_id, my_side_only, request)
+    game_rows = await _fetch_tree_game_children_backend(pos_id, my_side_only, request)
+    summary = await _fetch_position_intelligence_summary_backend(pos_id, request)
+    return build_position_intelligence_payload(
+        pos_id=pos_id,
+        my_side_only=my_side_only,
+        repertoire_rows=repertoire_rows,
+        game_rows=game_rows,
+        summary=summary,
+    )
+
+
 @app.get("/lines/tree/browse", response_model=TreeBrowseResponse)
 async def get_lines_tree_browse(
     pos_id: int = 1,
@@ -1752,6 +1908,17 @@ async def get_lines_tree_branch_metrics(
 ) -> TreeBranchMetricsResponse:
     payload = await _fetch_lines_tree_contract_payload(pos_id, my_side_only, request)
     return TreeBranchMetricsResponse(**payload)
+
+
+@app.get("/positions/{pos_id}/intelligence", response_model=PositionIntelligenceResponse)
+async def get_position_intelligence(
+    pos_id: int,
+    my_side_only: bool = True,
+    request: Request = None,
+    _: str = Depends(require_auth),
+) -> PositionIntelligenceResponse:
+    payload = await _fetch_position_intelligence_payload(pos_id, my_side_only, request)
+    return PositionIntelligenceResponse(**payload)
 
 
 @app.get("/tree/explorer", response_model=TreeCoverageResponse, deprecated=True)
