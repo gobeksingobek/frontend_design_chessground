@@ -24,6 +24,14 @@ def compute_game_hash(tags: dict, moves_uci: list[str]) -> str:
     return hasher.hexdigest()
 
 
+def fetch_existing_game_hashes(conn: sqlite3.Connection) -> set[str]:
+    """Return the game identities already stored by the local analysis database."""
+    rows = conn.execute(
+        "SELECT pgn_hash FROM games WHERE pgn_hash IS NOT NULL AND pgn_hash <> ''"
+    ).fetchall()
+    return {str(row[0]) for row in rows}
+
+
 def fetch_game_overview(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
         """

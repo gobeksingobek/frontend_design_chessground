@@ -36,7 +36,15 @@ CREATE TABLE IF NOT EXISTS sideline_requests (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS runtime_settings (
+    scope TEXT PRIMARY KEY,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 """
+
+RUNTIME_SETTINGS_SCOPE = "default"
 
 
 async def create_pool() -> asyncpg.Pool:
@@ -76,6 +84,30 @@ async def apply_analysis_schema(conn: asyncpg.Connection) -> None:
     if not sql_path.exists():
         raise RuntimeError(f"Schema file not found: {sql_path}")
     await conn.execute(sql_path.read_text(encoding="utf-8"))
+
+
+async def fetch_runtime_settings(pool: asyncpg.Pool) -> dict[str, Any] | None:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT payload FROM runtime_settings WHERE scope = $1",
+            RUNTIME_SETTINGS_SCOPE,
+        )
+    return dict(row["payload"]) if row is not None else None
+
+
+async def save_runtime_settings(pool: asyncpg.Pool, payload: dict[str, Any]) -> dict[str, Any]:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO runtime_settings(scope, payload, updated_at)
+            VALUES ($1, $2::jsonb, NOW())
+            ON CONFLICT (scope) DO UPDATE
+            SET payload = EXCLUDED.payload, updated_at = NOW()
+            """,
+            RUNTIME_SETTINGS_SCOPE,
+            json.dumps(payload),
+        )
+    return payload
 
 
 async def insert_sideline_request(

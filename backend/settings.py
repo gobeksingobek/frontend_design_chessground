@@ -95,6 +95,7 @@ class RuntimeFieldError:
 
 
 _RUNTIME_LIST_FIELDS = {"chesscom_usernames", "lichess_usernames", "variants", "player_names"}
+ALLOWED_FETCH_VARIANTS = {"bullet", "blitz", "rapid", "daily"}
 _RUNTIME_STR_FIELDS = {
     "repertoire_dir",
     "games_dir",
@@ -171,6 +172,15 @@ def _validate_runtime_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], 
             if field == "variants" and not cleaned:
                 errors.append(RuntimeFieldError(field=field, code="min_items", message="At least one variant is required"))
                 continue
+            if field == "variants":
+                unsupported = sorted(set(cleaned) - ALLOWED_FETCH_VARIANTS)
+                if unsupported:
+                    errors.append(RuntimeFieldError(
+                        field=field,
+                        code="unsupported_variant",
+                        message=f"Unsupported variant(s): {', '.join(unsupported)}. Allowed: bullet, blitz, rapid, daily",
+                    ))
+                    continue
             normalized[field] = cleaned
             continue
 
@@ -255,8 +265,7 @@ def load_runtime_settings(settings_ini_path: Path) -> dict[str, Any]:
 
 def update_runtime_settings(settings_ini_path: Path, payload: dict[str, Any]) -> tuple[dict[str, Any] | None, list[RuntimeFieldError]]:
     current_settings = load_runtime_settings(settings_ini_path)
-    merged_payload = {**current_settings, **payload}
-    normalized, errors = _validate_runtime_payload(merged_payload)
+    normalized, errors = merge_runtime_settings_payload(current_settings, payload)
     if errors:
         return None, errors
 
@@ -318,3 +327,12 @@ def update_runtime_settings(settings_ini_path: Path, payload: dict[str, Any]) ->
         config.write(file)
 
     return load_runtime_settings(settings_ini_path), []
+
+
+def merge_runtime_settings_payload(
+    current_settings: dict[str, Any], payload: dict[str, Any]
+) -> tuple[dict[str, Any] | None, list[RuntimeFieldError]]:
+    normalized, errors = _validate_runtime_payload({**current_settings, **payload})
+    if errors:
+        return None, errors
+    return normalized, []

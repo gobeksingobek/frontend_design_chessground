@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from io import StringIO
 from pathlib import Path
 
 import chess
@@ -62,78 +63,89 @@ def load_games_from_dir(
     pgn_files = file_paths or _iter_pgn_files(root)
     for pgn_path in pgn_files:
         with pgn_path.open("r", encoding="utf-8", errors="replace") as handle:
-            while True:
-                game = chess.pgn.read_game(handle)
-                if game is None:
-                    break
+            games.extend(_load_games_from_handle(handle, player_names, str(pgn_path)))
 
-                tags = dict(game.headers)
-                player_color = _resolve_player_color(tags, player_names)
-                if player_color is None:
-                    continue
+    return games
 
-                time_control = tags.get("TimeControl")
-                base_seconds, increment_seconds = clock_parser.parse_time_control(time_control)
-                is_daily = _is_daily_game(tags)
 
-                board = game.board()
-                moves: list[dict] = []
-                moves_uci: list[str] = []
+def load_games_from_pgn_text(pgn_text: str, player_names: list[str], source_pgn: str) -> list[dict]:
+    """Parse remote PGN text using the same normalization as file imports."""
+    return _load_games_from_handle(StringIO(pgn_text), player_names, source_pgn)
 
-                for node in game.mainline():
-                    move = node.move
-                    ply = board.ply() + 1
-                    move_uci = move.uci()
-                    move_san = board.san(move)
-                    is_white_move = board.turn == chess.WHITE
-                    is_self = (player_color == "white" and is_white_move) or (
-                        player_color == "black" and not is_white_move
-                    )
-                    clock_seconds = clock_parser.parse_clock_seconds(node.comment)
 
-                    moves.append(
-                        {
-                            "ply": ply,
-                            "move_uci": move_uci,
-                            "move_san": move_san,
-                            "is_self": is_self,
-                            "is_white": is_white_move,
-                            "clock_seconds": clock_seconds,
-                            "time_spent_seconds": None,
-                        }
-                    )
-                    moves_uci.append(move_uci)
-                    board.push(move)
+def _load_games_from_handle(handle, player_names: list[str], source_pgn: str) -> list[dict]:
+    games: list[dict] = []
+    while True:
+        game = chess.pgn.read_game(handle)
+        if game is None:
+            break
 
-                last_white = base_seconds
-                last_black = base_seconds
-                for move in moves:
-                    current_clock = move.get("clock_seconds")
-                    if move["is_white"]:
-                        move["time_spent_seconds"] = clock_parser.compute_time_spent(
-                            last_white, current_clock, increment_seconds
-                        )
-                        if current_clock is not None:
-                            last_white = current_clock
-                    else:
-                        move["time_spent_seconds"] = clock_parser.compute_time_spent(
-                            last_black, current_clock, increment_seconds
-                        )
-                        if current_clock is not None:
-                            last_black = current_clock
-                    move.pop("is_white", None)
+        tags = dict(game.headers)
+        player_color = _resolve_player_color(tags, player_names)
+        if player_color is None:
+            continue
 
-                games.append(
-                    {
-                        "tags": tags,
-                        "moves": moves,
-                        "moves_uci": moves_uci,
-                        "player_color": player_color,
-                        "is_daily": is_daily,
-                        "time_control": time_control,
-                        "date": _parse_pgn_date(tags.get("Date")),
-                        "source_pgn": str(pgn_path),
-                    }
+        time_control = tags.get("TimeControl")
+        base_seconds, increment_seconds = clock_parser.parse_time_control(time_control)
+        is_daily = _is_daily_game(tags)
+
+        board = game.board()
+        moves: list[dict] = []
+        moves_uci: list[str] = []
+
+        for node in game.mainline():
+            move = node.move
+            ply = board.ply() + 1
+            move_uci = move.uci()
+            move_san = board.san(move)
+            is_white_move = board.turn == chess.WHITE
+            is_self = (player_color == "white" and is_white_move) or (
+                player_color == "black" and not is_white_move
+            )
+            clock_seconds = clock_parser.parse_clock_seconds(node.comment)
+
+            moves.append(
+                {
+                    "ply": ply,
+                    "move_uci": move_uci,
+                    "move_san": move_san,
+                    "is_self": is_self,
+                    "is_white": is_white_move,
+                    "clock_seconds": clock_seconds,
+                    "time_spent_seconds": None,
+                }
+            )
+            moves_uci.append(move_uci)
+            board.push(move)
+
+        last_white = base_seconds
+        last_black = base_seconds
+        for move in moves:
+            current_clock = move.get("clock_seconds")
+            if move["is_white"]:
+                move["time_spent_seconds"] = clock_parser.compute_time_spent(
+                    last_white, current_clock, increment_seconds
                 )
+                if current_clock is not None:
+                    last_white = current_clock
+            else:
+                move["time_spent_seconds"] = clock_parser.compute_time_spent(
+                    last_black, current_clock, increment_seconds
+                )
+                if current_clock is not None:
+                    last_black = current_clock
+            move.pop("is_white", None)
 
+        games.append(
+            {
+                "tags": tags,
+                "moves": moves,
+                "moves_uci": moves_uci,
+                "player_color": player_color,
+                "is_daily": is_daily,
+                "time_control": time_control,
+                "date": _parse_pgn_date(tags.get("Date")),
+                "source_pgn": source_pgn,
+            }
+        )
     return games

@@ -23,7 +23,7 @@ except ModuleNotFoundError:  # pragma: no cover - package import fallback
 USER_AGENT = "RepertoireAnalyzer/1.0"
 CHESSCOM_ARCHIVES_URL = "https://api.chess.com/pub/player/{username}/games/archives"
 LICHESS_EXPORT_URL = "https://lichess.org/api/games/user/{username}"
-ALLOWED_FETCH_VARIANTS = {"blitz", "rapid", "daily"}
+ALLOWED_FETCH_VARIANTS = {"bullet", "blitz", "rapid", "daily"}
 
 
 @dataclass
@@ -171,8 +171,10 @@ def fetch_games(
     lichess_usernames: list[str],
     variants: list[str],
     days_back: int,
-    state_path: Path,
+    state_path: Path | None,
     existing_pgn_hashes: set[str] | None = None,
+    write_files: bool = True,
+    on_new_games=None,
 ) -> list[FetchSummary]:
     summaries: list[FetchSummary] = []
     variants_set = _variant_set(variants)
@@ -181,7 +183,7 @@ def fetch_games(
 
     now = datetime.now(timezone.utc)
     since_floor = now - timedelta(days=days_back)
-    state = _load_state(state_path)
+    state = _load_state(state_path) if state_path else {}
     known_hashes = set(existing_pgn_hashes or set())
 
     chesscom_root = games_dir / "chesscom"
@@ -199,6 +201,8 @@ def fetch_games(
                 now=now,
                 state=state,
                 existing_pgn_hashes=known_hashes,
+                write_files=write_files,
+                on_new_games=on_new_games,
             )
         )
 
@@ -212,10 +216,13 @@ def fetch_games(
                 now=now,
                 state=state,
                 existing_pgn_hashes=known_hashes,
+                write_files=write_files,
+                on_new_games=on_new_games,
             )
         )
 
-    _save_state(state_path, state)
+    if state_path:
+        _save_state(state_path, state)
     return summaries
 
 
@@ -228,6 +235,8 @@ def _fetch_chesscom_user(
     now: datetime,
     state: dict,
     existing_pgn_hashes: set[str],
+    write_files: bool,
+    on_new_games,
 ) -> FetchSummary:
     summary = FetchSummary(source="chesscom", username=username)
     try:
@@ -280,14 +289,17 @@ def _fetch_chesscom_user(
 
         new_chunks = _filter_new_games(pgn_chunks, existing_pgn_hashes, summary)
         if new_chunks:
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            if out_path.exists() and out_path.stat().st_size > 0:
-                with out_path.open("a", encoding="utf-8") as handle:
-                    handle.write("\n\n")
-                    handle.write("\n\n".join(new_chunks))
-                    handle.write("\n")
-            else:
-                out_path.write_text("\n\n".join(new_chunks) + "\n", encoding="utf-8")
+            if write_files:
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                if out_path.exists() and out_path.stat().st_size > 0:
+                    with out_path.open("a", encoding="utf-8") as handle:
+                        handle.write("\n\n")
+                        handle.write("\n\n".join(new_chunks))
+                        handle.write("\n")
+                else:
+                    out_path.write_text("\n\n".join(new_chunks) + "\n", encoding="utf-8")
+            if on_new_games:
+                on_new_games("chesscom", username, new_chunks)
             summary.fetched_files += 1
             summary.games_written += len(new_chunks)
         else:
@@ -307,6 +319,8 @@ def _fetch_lichess_user(
     now: datetime,
     state: dict,
     existing_pgn_hashes: set[str],
+    write_files: bool,
+    on_new_games,
 ) -> FetchSummary:
     summary = FetchSummary(source="lichess", username=username)
 
@@ -318,6 +332,7 @@ def _fetch_lichess_user(
         return summary
 
     perf_map = {
+        "bullet": "bullet",
         "blitz": "blitz",
         "rapid": "rapid",
         "daily": "correspondence",
@@ -371,10 +386,13 @@ def _fetch_lichess_user(
         state[state_key] = {"last_fetch": _dt_to_iso(now)}
         return summary
 
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
-    out_path = output_dir / f"{username}_{timestamp}.pgn"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text("\n\n".join(new_chunks) + "\n", encoding="utf-8")
+    if write_files:
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        out_path = output_dir / f"{username}_{timestamp}.pgn"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text("\n\n".join(new_chunks) + "\n", encoding="utf-8")
+    if on_new_games:
+        on_new_games("lichess", username, new_chunks)
 
     summary.fetched_files += 1
     summary.games_written = len(new_chunks)

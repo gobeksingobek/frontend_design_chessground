@@ -23,6 +23,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import AliasChoices, BaseModel, Field
 
 from backend import db
+from backend import fetch_import
 from backend import repertoire_import
 from backend.queue import enqueue_job, ensure_consumer_group, redis_client
 from backend.read_api import (
@@ -44,7 +45,7 @@ from backend.read_api import (
     normalize_rating_band_size,
     save_runtime_settings_payload,
 )
-from backend.settings import SETTINGS
+from backend.settings import SETTINGS, merge_runtime_settings_payload
 from analysis import game_fetcher
 from analysis import pipeline as analysis_pipeline
 from analysis import smoke_test as smoke_test_module
@@ -1176,8 +1177,7 @@ async def _execute_review_action_backend(
         },
     }
 
-def _load_runtime_config() -> RuntimeConfig:
-    payload = get_runtime_settings_payload(SETTINGS_INI_PATH)
+def _runtime_config_from_payload(payload: dict[str, Any]) -> RuntimeConfig:
     return RuntimeConfig(
         repertoire_dir=str(payload["repertoire_dir"]),
         games_dir=str(payload["games_dir"]),
@@ -1208,6 +1208,19 @@ def _load_runtime_config() -> RuntimeConfig:
         fetch_variants=list(payload["variants"]),
         fetch_days_back=int(payload["days_back"]),
     )
+
+
+def _load_runtime_config() -> RuntimeConfig:
+    return _runtime_config_from_payload(get_runtime_settings_payload(SETTINGS_INI_PATH))
+
+
+async def _load_postgres_runtime_settings(pool: asyncpg.Pool) -> dict[str, Any]:
+    persisted = await db.fetch_runtime_settings(pool)
+    if persisted is not None:
+        return persisted
+    seeded = get_runtime_settings_payload(SETTINGS_INI_PATH)
+    await db.save_runtime_settings(pool, seeded)
+    return seeded
 
 
 def _runtime_settings_response(cfg: RuntimeConfig) -> RuntimeSettingsResponse:
@@ -1251,6 +1264,19 @@ def _save_runtime_settings(payload: dict[str, Any]) -> RuntimeSettingsResponse:
             detail=[{"field": err.field, "code": err.code, "message": err.message} for err in errors],
         )
     assert saved is not None
+    return RuntimeSettingsResponse.model_validate(saved)
+
+
+async def _save_postgres_runtime_settings(pool: asyncpg.Pool, payload: dict[str, Any]) -> RuntimeSettingsResponse:
+    current = await _load_postgres_runtime_settings(pool)
+    saved, errors = merge_runtime_settings_payload(current, payload)
+    if errors:
+        raise HTTPException(
+            status_code=422,
+            detail=[{"field": err.field, "code": err.code, "message": err.message} for err in errors],
+        )
+    assert saved is not None
+    await db.save_runtime_settings(pool, saved)
     return RuntimeSettingsResponse.model_validate(saved)
 
 
@@ -1345,6 +1371,52 @@ class AnalysisRuntimeManager:
         thread.start()
         return job_id
 
+    def start_async_job(self, run_type: str, action) -> str:
+        with self._lock:
+            if self._state == "running":
+                raise RuntimeError("Analysis is already running.")
+            job_id = str(uuid.uuid4())
+            self._state = "running"
+            self._active_job_id = job_id
+            self._active_run_type = run_type
+            self._last_error = None
+            started_at = datetime.now(timezone.utc).isoformat()
+            self._runs.insert(0, AnalysisRunHistoryEntry(run_id=job_id, run_type=run_type, status="running", started_at=started_at))
+            self._runs = self._runs[:50]
+            self._set_progress({"message": f"Starting {run_type}", "done": 0, "total": 0})
+
+        async def worker() -> None:
+            try:
+                await action(lambda payload: self._progress_callback(job_id, run_type, payload))
+            except Exception as exc:  # noqa: BLE001
+                with self._lock:
+                    self._state = "failed"
+                    self._last_error = str(exc)
+                    self._last_run_type = run_type
+                    self._last_completed_job_id = job_id
+                    self._active_job_id = None
+                    self._active_run_type = None
+                    for idx, run in enumerate(self._runs):
+                        if run.job_id == job_id:
+                            self._runs[idx] = AnalysisRunHistoryEntry(run_id=run.run_id, run_type=run.run_type, status="failed", started_at=run.started_at, finished_at=datetime.now(timezone.utc).isoformat(), error_reason=str(exc))
+                            break
+                    self._set_progress({"message": f"{run_type} failed", "error": str(exc)})
+            else:
+                with self._lock:
+                    self._state = "completed"
+                    self._last_run_type = run_type
+                    self._last_completed_job_id = job_id
+                    self._active_job_id = None
+                    self._active_run_type = None
+                    for idx, run in enumerate(self._runs):
+                        if run.job_id == job_id:
+                            self._runs[idx] = AnalysisRunHistoryEntry(run_id=run.run_id, run_type=run.run_type, status="completed", started_at=run.started_at, finished_at=datetime.now(timezone.utc).isoformat(), error_reason=None)
+                            break
+                    self._set_progress({"message": f"{run_type} completed", "done": 1, "total": 1})
+
+        asyncio.create_task(worker(), name=f"analysis-{run_type}")
+        return job_id
+
     def _progress_callback(self, job_id: str, run_type: str, payload: dict[str, Any]) -> None:
         with self._lock:
             if self._active_job_id != job_id:
@@ -1402,31 +1474,42 @@ def _run_smoke_test(progress_cb) -> None:
     smoke_test_module.run_smoke_test(cfg, BASE_DIR, progress_cb=progress_cb)
 
 
-def _run_fetch_games(progress_cb) -> None:
-    cfg = _load_runtime_config()
-    db_conn = database.ensure_db(cfg.database_path, reset_on_mismatch=True)
-    try:
-        existing_hashes = queries.fetch_existing_game_hashes(db_conn)
-        progress_cb({"message": "Fetching remote games", "done": 0, "total": 1})
-        summaries = game_fetcher.fetch_games(
-            games_dir=Path(cfg.games_dir),
-            chesscom_usernames=cfg.chesscom_usernames,
-            lichess_usernames=cfg.lichess_usernames,
-            variants=cfg.fetch_variants,
-            days_back=cfg.fetch_days_back,
-            state_path=Path(cfg.games_dir) / ".fetch_state.json",
-            existing_pgn_hashes=existing_hashes,
-        )
-        progress_cb(
-            {
-                "message": "Fetch complete",
-                "done": 1,
-                "total": 1,
-                "results": [summary.__dict__ for summary in summaries],
-            }
-        )
-    finally:
-        db_conn.close()
+async def _run_fetch_games_postgres(pool: asyncpg.Pool, progress_cb) -> None:
+    payload = await _load_postgres_runtime_settings(pool)
+    cfg = _runtime_config_from_payload(payload)
+    if not cfg.chesscom_usernames and not cfg.lichess_usernames:
+        raise ValueError("Configure at least one Chess.com or Lichess username in Settings before fetching games.")
+
+    existing_hashes = await fetch_import.fetch_existing_game_hashes(pool)
+    batches: list[tuple[str, str, list[str]]] = []
+    progress_cb({"message": "Fetching remote games", "done": 0, "total": 2})
+
+    def collect_new_games(provider: str, username: str, pgn_chunks: list[str]) -> None:
+        batches.append((provider, username, pgn_chunks))
+
+    summaries = await asyncio.to_thread(
+        game_fetcher.fetch_games,
+        games_dir=Path(tempfile.gettempdir()) / "chessground-fetch",
+        chesscom_usernames=cfg.chesscom_usernames,
+        lichess_usernames=cfg.lichess_usernames,
+        variants=cfg.fetch_variants,
+        days_back=cfg.fetch_days_back,
+        state_path=None,
+        existing_pgn_hashes=existing_hashes,
+        write_files=False,
+        on_new_games=collect_new_games,
+    )
+    progress_cb({"message": "Persisting fetched games", "done": 1, "total": 2})
+    persisted = await fetch_import.persist_fetched_games(pool, batches, cfg.player_names)
+    progress_cb(
+        {
+            "message": "Fetch complete",
+            "done": 2,
+            "total": 2,
+            "results": [summary.__dict__ for summary in summaries],
+            **persisted,
+        }
+    )
 
 app = FastAPI(title="ChessGround API Service")
 auth_scheme = HTTPBearer(auto_error=False)
@@ -1528,6 +1611,15 @@ def _start_analysis_job(request: Request, run_type: str, action: Callable[[Calla
     return AnalysisRunResponse(accepted=True, detail="Job accepted", job_id=job_id, run_type=run_type)
 
 
+def _start_async_analysis_job(request: Request, run_type: str, action) -> AnalysisRunResponse:
+    runtime: AnalysisRuntimeManager = request.app.state.analysis_runtime
+    try:
+        job_id = runtime.start_async_job(run_type, action)
+    except RuntimeError as exc:
+        raise api_error(status_code=409, error_code="ANALYSIS_ALREADY_RUNNING", detail=str(exc)) from exc
+    return AnalysisRunResponse(accepted=True, detail="Job accepted", job_id=job_id, run_type=run_type)
+
+
 @app.post('/analysis/run/full', response_model=AnalysisRunResponse, responses={401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
 async def run_full_analysis(request: Request, _: str = Depends(require_auth)) -> AnalysisRunResponse:
     return _start_analysis_job(request, "full-analysis", _run_full_analysis)
@@ -1540,7 +1632,13 @@ async def run_engine_only_analysis(request: Request, _: str = Depends(require_au
 
 @app.post('/analysis/run/fetch-games', response_model=AnalysisRunResponse, responses={401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
 async def run_fetch_games(request: Request, _: str = Depends(require_auth)) -> AnalysisRunResponse:
-    return _start_analysis_job(request, "fetch-games", _run_fetch_games)
+    if SETTINGS.data_backend != "postgres":
+        raise api_error(503, "POSTGRES_REQUIRED", "Fetch Games requires the PostgreSQL runtime.")
+    return _start_async_analysis_job(
+        request,
+        "fetch-games",
+        lambda progress_cb: _run_fetch_games_postgres(request.app.state.db_pool, progress_cb),
+    )
 
 
 @app.post('/analysis/run/smoke-test', response_model=AnalysisRunResponse, responses={401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
@@ -1573,21 +1671,24 @@ async def auth_validate(_: str = Depends(require_auth)) -> AuthValidateResponse:
 
 
 @app.get('/settings/runtime', response_model=RuntimeSettingsResponse, responses={401: {"model": ErrorResponse}})
-async def get_runtime_settings(_: str = Depends(require_auth)) -> RuntimeSettingsResponse:
-    payload = get_runtime_settings_payload(SETTINGS_INI_PATH)
+async def get_runtime_settings(request: Request, _: str = Depends(require_auth)) -> RuntimeSettingsResponse:
+    if SETTINGS.data_backend != "postgres":
+        raise api_error(503, "POSTGRES_REQUIRED", "Runtime settings require PostgreSQL.")
+    payload = await _load_postgres_runtime_settings(request.app.state.db_pool)
     return RuntimeSettingsResponse.model_validate(payload)
 
 
 @app.put('/settings/runtime', response_model=RuntimeSettingsResponse, responses={401: {"model": ErrorResponse}, 422: {"model": ValidationErrorResponse}})
-async def update_runtime_settings(payload: dict[str, Any], _: str = Depends(require_auth)) -> RuntimeSettingsResponse:
-    return _save_runtime_settings(payload)
+async def update_runtime_settings(request: Request, payload: dict[str, Any], _: str = Depends(require_auth)) -> RuntimeSettingsResponse:
+    if SETTINGS.data_backend != "postgres":
+        raise api_error(503, "POSTGRES_REQUIRED", "Runtime settings require PostgreSQL.")
+    return await _save_postgres_runtime_settings(request.app.state.db_pool, payload)
 
 
 @app.post('/repertoires/import', response_model=RepertoireImportResponse, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
 async def import_repertoires(file: UploadFile = File(...), _: str = Depends(require_auth)) -> RepertoireImportResponse:
-    cfg = _load_runtime_config()
-    if not cfg.database_path:
-        raise api_error(400, "INVALID_RUNTIME_CONFIG", "Database path is missing in runtime settings.")
+    if SETTINGS.data_backend != "postgres":
+        raise api_error(503, "POSTGRES_REQUIRED", "Repertoire import requires the PostgreSQL runtime.")
 
     payload = await file.read()
     if not payload:
@@ -1608,11 +1709,9 @@ async def import_repertoires(file: UploadFile = File(...), _: str = Depends(requ
     except ValueError as exc:
         raise api_error(400, "INVALID_UPLOAD", str(exc)) from exc
 
-    conn = database.ensure_db(cfg.database_path, reset_on_mismatch=True)
-    try:
-        inserted, duplicates, total = repertoire_import.ingest_repertoire_lines(conn, parsed_lines)
-    finally:
-        conn.close()
+    async with app.state.db_pool.acquire() as conn:
+        async with conn.transaction():
+            inserted, duplicates, total = await repertoire_import.ingest_repertoire_lines_postgres(conn, parsed_lines)
 
     job_id = str(uuid.uuid4())
     progress = {

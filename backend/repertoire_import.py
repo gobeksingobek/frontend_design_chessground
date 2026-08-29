@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import tempfile
 import zipfile
+import json
 from pathlib import Path
 import sqlite3
 
+import asyncpg
+import chess
+
 from analysis import pipeline as analysis_pipeline
+from analysis.position_utils import normalize_fen
 from parsing import repertoire_loader
 from storage import line_ids
 
@@ -62,4 +67,78 @@ def ingest_repertoire_lines(conn: sqlite3.Connection, parsed_lines: list[dict]) 
         analysis_pipeline._build_repertoire_edges(conn)
         analysis_pipeline._ensure_trainer_state(conn)
 
+    return inserted, duplicates, len(parsed_lines)
+
+
+async def ingest_repertoire_lines_postgres(
+    conn: asyncpg.Connection, parsed_lines: list[dict]
+) -> tuple[int, int, int]:
+    """Persist uploaded repertoire lines directly to the canonical Postgres schema."""
+    inserted = 0
+    duplicates = 0
+    for line in parsed_lines:
+        moves = list(line.get("moves") or [])
+        moves_uci = [str(move.get("uci") or "") for move in moves]
+        side_to_play = str(line.get("side_to_play") or "white")
+        root_key = str(line.get("root_key") or "root")
+        path_hash = line_ids.canonical_path_hash(root_key, moves_uci, side_to_play)
+        line_id = f"{root_key.strip().lower() or 'root'}-{path_hash[:16]}"
+        existing = await conn.fetchval(
+            "SELECT 1 FROM repertoire_lines WHERE canonical_path_hash = $1",
+            path_hash,
+        )
+        if existing:
+            duplicates += 1
+            continue
+
+        board = chess.Board()
+        pos_ids: list[int] = []
+        san_moves: list[str] = []
+        for move in moves:
+            pos_id = await conn.fetchval(
+                """
+                INSERT INTO positions(fen_norm) VALUES ($1)
+                ON CONFLICT (fen_norm) DO UPDATE SET fen_norm = EXCLUDED.fen_norm
+                RETURNING id
+                """,
+                normalize_fen(board),
+            )
+            pos_ids.append(int(pos_id))
+            uci = str(move.get("uci") or "")
+            san_moves.append(str(move.get("san") or ""))
+            board.push(chess.Move.from_uci(uci))
+        final_pos_id = await conn.fetchval(
+            """
+            INSERT INTO positions(fen_norm) VALUES ($1)
+            ON CONFLICT (fen_norm) DO UPDATE SET fen_norm = EXCLUDED.fen_norm
+            RETURNING id
+            """,
+            normalize_fen(board),
+        )
+        pos_ids.append(int(final_pos_id))
+        await conn.execute(
+            """
+            INSERT INTO repertoire_lines(
+                line_id, canonical_path_hash, source_pgn, is_priority, side_to_play, metadata_json
+            ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+            """,
+            line_id,
+            path_hash,
+            line.get("source_pgn"),
+            1 if line.get("is_priority") else 0,
+            side_to_play,
+            json.dumps({"label": line.get("label") or line_id}),
+        )
+        await conn.execute(
+            """
+            INSERT INTO repertoire_compact(line_id, moves_json, san_moves_json, pos_ids_json, ply_count)
+            VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, $5)
+            """,
+            line_id,
+            json.dumps(moves_uci),
+            json.dumps(san_moves),
+            json.dumps(pos_ids),
+            len(moves_uci),
+        )
+        inserted += 1
     return inserted, duplicates, len(parsed_lines)

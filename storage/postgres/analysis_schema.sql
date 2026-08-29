@@ -1,13 +1,16 @@
 -- PostgreSQL schema for analysis/game data currently stored in SQLite.
 -- This enables Neon-backed reads for /games and /games/{id} APIs.
 
+CREATE SEQUENCE IF NOT EXISTS positions_id_seq;
+CREATE SEQUENCE IF NOT EXISTS games_id_seq;
+
 CREATE TABLE IF NOT EXISTS positions (
-    id BIGINT PRIMARY KEY,
+    id BIGINT PRIMARY KEY DEFAULT nextval('positions_id_seq'),
     fen_norm TEXT NOT NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS games (
-    id BIGINT PRIMARY KEY,
+    id BIGINT PRIMARY KEY DEFAULT nextval('games_id_seq'),
     pgn_hash TEXT UNIQUE NOT NULL,
     source_pgn TEXT,
     event TEXT,
@@ -26,6 +29,9 @@ CREATE TABLE IF NOT EXISTS games (
     termination TEXT,
     eco TEXT
 );
+
+ALTER TABLE positions ALTER COLUMN id SET DEFAULT nextval('positions_id_seq');
+ALTER TABLE games ALTER COLUMN id SET DEFAULT nextval('games_id_seq');
 
 CREATE TABLE IF NOT EXISTS game_positions (
     game_id BIGINT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -73,6 +79,19 @@ CREATE INDEX IF NOT EXISTS idx_game_positions_game_id ON game_positions(game_id)
 CREATE INDEX IF NOT EXISTS idx_game_positions_pos_id ON game_positions(pos_id);
 CREATE INDEX IF NOT EXISTS idx_matches_line_id ON matches(matched_line_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_ply_game_id ON analysis_ply(game_id);
+
+CREATE TABLE IF NOT EXISTS fetched_game_sources (
+    pgn_hash TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    username TEXT NOT NULL,
+    pgn_text TEXT NOT NULL,
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fetched_game_sources_fetched_at ON fetched_game_sources(fetched_at DESC);
+
+SELECT setval('positions_id_seq', COALESCE((SELECT MAX(id) FROM positions), 0) + 1, false);
+SELECT setval('games_id_seq', COALESCE((SELECT MAX(id) FROM games), 0) + 1, false);
 
 
 -- Repertoire/trainer tables for trainer session APIs.

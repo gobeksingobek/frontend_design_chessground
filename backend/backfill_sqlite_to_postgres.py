@@ -287,6 +287,70 @@ async def _upsert_analysis_ply(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg
     return total
 
 
+async def _upsert_repertoire_lines(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.Connection, batch_size: int) -> int:
+    query = """
+        INSERT INTO repertoire_lines(line_id, canonical_path_hash, source_pgn, is_priority, side_to_play, metadata_json)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+        ON CONFLICT (line_id) DO UPDATE SET
+            canonical_path_hash = EXCLUDED.canonical_path_hash,
+            source_pgn = EXCLUDED.source_pgn,
+            is_priority = EXCLUDED.is_priority,
+            side_to_play = EXCLUDED.side_to_play,
+            metadata_json = EXCLUDED.metadata_json
+    """
+    total = 0
+    for batch in _iter_rows(sqlite_conn, "SELECT line_id, canonical_path_hash, source_pgn, is_priority, side_to_play, metadata_json FROM repertoire_lines ORDER BY line_id", batch_size):
+        await pg_conn.executemany(query, [
+            (row["line_id"], row["canonical_path_hash"], row["source_pgn"], int(row["is_priority"] or 0), row["side_to_play"], _normalize_jsonb(row["metadata_json"]))
+            for row in batch
+        ])
+        total += len(batch)
+    return total
+
+
+async def _upsert_repertoire_compact(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.Connection, batch_size: int) -> int:
+    query = """
+        INSERT INTO repertoire_compact(line_id, moves_json, san_moves_json, pos_ids_json, ply_count)
+        VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, $5)
+        ON CONFLICT (line_id) DO UPDATE SET
+            moves_json = EXCLUDED.moves_json,
+            san_moves_json = EXCLUDED.san_moves_json,
+            pos_ids_json = EXCLUDED.pos_ids_json,
+            ply_count = EXCLUDED.ply_count
+    """
+    total = 0
+    for batch in _iter_rows(sqlite_conn, "SELECT line_id, moves_json, san_moves_json, pos_ids_json, ply_count FROM repertoire_compact ORDER BY line_id", batch_size):
+        await pg_conn.executemany(query, [
+            (row["line_id"], _normalize_jsonb(row["moves_json"]), _normalize_jsonb(row["san_moves_json"]), _normalize_jsonb(row["pos_ids_json"]), int(row["ply_count"]))
+            for row in batch
+        ])
+        total += len(batch)
+    return total
+
+
+async def _upsert_trainer_state(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.Connection, batch_size: int) -> int:
+    query = """
+        INSERT INTO trainer_line_state(
+            line_id, side_to_play, learned, needs_review, correct_streak, times_correct,
+            times_incorrect, last_seen, priority_override, auto_priority_score, focus_max_ply
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ON CONFLICT (line_id) DO UPDATE SET
+            side_to_play = EXCLUDED.side_to_play, learned = EXCLUDED.learned,
+            needs_review = EXCLUDED.needs_review, correct_streak = EXCLUDED.correct_streak,
+            times_correct = EXCLUDED.times_correct, times_incorrect = EXCLUDED.times_incorrect,
+            last_seen = EXCLUDED.last_seen, priority_override = EXCLUDED.priority_override,
+            auto_priority_score = EXCLUDED.auto_priority_score, focus_max_ply = EXCLUDED.focus_max_ply
+    """
+    total = 0
+    for batch in _iter_rows(sqlite_conn, "SELECT line_id, side_to_play, learned, needs_review, correct_streak, times_correct, times_incorrect, last_seen, priority_override, auto_priority_score, focus_max_ply FROM trainer_line_state ORDER BY line_id", batch_size):
+        await pg_conn.executemany(query, [
+            (row["line_id"], row["side_to_play"], int(row["learned"] or 0), int(row["needs_review"] or 0), int(row["correct_streak"] or 0), int(row["times_correct"] or 0), int(row["times_incorrect"] or 0), row["last_seen"], int(row["priority_override"] or 0), int(row["auto_priority_score"] or 0), row["focus_max_ply"])
+            for row in batch
+        ])
+        total += len(batch)
+    return total
+
+
 async def _spot_check_ids(
     sqlite_conn: sqlite3.Connection,
     pg_conn: asyncpg.Connection,
@@ -344,7 +408,7 @@ async def run_backfill(
                 "Run `python -m backend.bootstrap_postgres_schema` first."
             )
 
-        tables = ("positions", "games", "game_positions", "matches", "analysis_ply")
+        tables = ("positions", "games", "game_positions", "matches", "analysis_ply", "repertoire_lines", "repertoire_compact", "trainer_line_state")
         sqlite_counts = {table: _sqlite_count(sqlite_conn, table) for table in tables}
         before_counts = {table: await _postgres_count(pg_conn, table) for table in tables}
 
@@ -376,6 +440,15 @@ async def run_backfill(
         inserted_analysis = await _upsert_analysis_ply(sqlite_conn, pg_conn, batch_size)
         print(f"  upserted rows: {inserted_analysis}")
 
+        print("Backfilling repertoire lines and trainer state...")
+        inserted_lines = await _upsert_repertoire_lines(sqlite_conn, pg_conn, batch_size)
+        inserted_compact = await _upsert_repertoire_compact(sqlite_conn, pg_conn, batch_size)
+        inserted_trainer_state = await _upsert_trainer_state(sqlite_conn, pg_conn, batch_size)
+        print(f"  repertoire_lines: {inserted_lines}, repertoire_compact: {inserted_compact}, trainer_line_state: {inserted_trainer_state}")
+
+        await pg_conn.execute("SELECT setval('positions_id_seq', COALESCE((SELECT MAX(id) FROM positions), 0) + 1, false)")
+        await pg_conn.execute("SELECT setval('games_id_seq', COALESCE((SELECT MAX(id) FROM games), 0) + 1, false)")
+
         after_counts = {table: await _postgres_count(pg_conn, table) for table in tables}
         print("Target counts after backfill (Postgres):")
         for table in tables:
@@ -388,6 +461,9 @@ async def run_backfill(
             ("game_positions", ("game_id", "ply")),
             ("matches", ("game_id",)),
             ("analysis_ply", ("game_id", "ply")),
+            ("repertoire_lines", ("line_id",)),
+            ("repertoire_compact", ("line_id",)),
+            ("trainer_line_state", ("line_id",)),
         ):
             sample_total, sample_matched = await _spot_check_ids(
                 sqlite_conn,

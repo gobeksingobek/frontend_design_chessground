@@ -129,7 +129,7 @@ async function unwrap<T>(response: Response): Promise<T> {
 }
 
 export async function validateApiToken(): Promise<{ ok: true; detail: string }> {
-  const response = await fetch(`${API_BASE_URL}/auth/validate`, {
+  const response = await apiFetch(`${API_BASE_URL}/auth/validate`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -138,7 +138,7 @@ export async function validateApiToken(): Promise<{ ok: true; detail: string }> 
 }
 
 async function getStats<T = StatsRow>(path: string): Promise<T[]> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(`${API_BASE_URL}${path}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -147,7 +147,7 @@ async function getStats<T = StatsRow>(path: string): Promise<T[]> {
 }
 
 export async function listSidelines(limit = 20): Promise<SidelineResponse[]> {
-  const response = await fetch(`${API_BASE_URL}/sidelines?limit=${limit}`, {
+  const response = await apiFetch(`${API_BASE_URL}/sidelines?limit=${limit}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -156,7 +156,7 @@ export async function listSidelines(limit = 20): Promise<SidelineResponse[]> {
 }
 
 export async function getSideline(id: string): Promise<SidelineResponse> {
-  const response = await fetch(`${API_BASE_URL}/sidelines/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/sidelines/${id}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -165,7 +165,7 @@ export async function getSideline(id: string): Promise<SidelineResponse> {
 }
 
 export async function createSideline(payload: SidelineCreateRequest, idempotencyKey: string): Promise<SidelineResponse> {
-  const response = await fetch(`${API_BASE_URL}/sidelines`, {
+  const response = await apiFetch(`${API_BASE_URL}/sidelines`, {
     method: "POST",
     headers: headers({ "Idempotency-Key": idempotencyKey }),
     body: JSON.stringify(payload),
@@ -174,7 +174,7 @@ export async function createSideline(payload: SidelineCreateRequest, idempotency
 }
 
 export async function listGames(limit = 50, offset = 0): Promise<GameOverview[]> {
-  const response = await fetch(`${API_BASE_URL}/games?limit=${limit}&offset=${offset}`, {
+  const response = await apiFetch(`${API_BASE_URL}/games?limit=${limit}&offset=${offset}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -210,7 +210,7 @@ export async function listGamesFiltered(params: ListGamesParams = {}): Promise<G
   if (params.sortBy) search.set("sort_by", params.sortBy);
   if (params.sortDir) search.set("sort_dir", params.sortDir);
 
-  const response = await fetch(`${API_BASE_URL}/games?${search.toString()}`, {
+  const response = await apiFetch(`${API_BASE_URL}/games?${search.toString()}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -219,7 +219,7 @@ export async function listGamesFiltered(params: ListGamesParams = {}): Promise<G
 }
 
 export async function getGame(gameId: number): Promise<GameDetail> {
-  const response = await fetch(`${API_BASE_URL}/games/${gameId}`, {
+  const response = await apiFetch(`${API_BASE_URL}/games/${gameId}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -228,7 +228,7 @@ export async function getGame(gameId: number): Promise<GameDetail> {
 }
 
 export async function getOverviewSummary(): Promise<OverviewSummary> {
-  const response = await fetch(`${API_BASE_URL}/overview/summary`, {
+  const response = await apiFetch(`${API_BASE_URL}/overview/summary`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -241,7 +241,7 @@ export async function listLineStats(): Promise<StatsRow[]> {
 }
 
 export async function getLineStatsDetail(lineId: string): Promise<StatsRow> {
-  const response = await fetch(`${API_BASE_URL}/lines/stats/${encodeURIComponent(lineId)}`, {
+  const response = await apiFetch(`${API_BASE_URL}/lines/stats/${encodeURIComponent(lineId)}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -250,7 +250,7 @@ export async function getLineStatsDetail(lineId: string): Promise<StatsRow> {
 }
 
 export async function getLineStatsHistory(lineId: string): Promise<{ line_id: string; buckets: StatsRow[]; totals: Record<string, number> }> {
-  const response = await fetch(`${API_BASE_URL}/lines/stats/${encodeURIComponent(lineId)}/history`, {
+  const response = await apiFetch(`${API_BASE_URL}/lines/stats/${encodeURIComponent(lineId)}/history`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -259,7 +259,7 @@ export async function getLineStatsHistory(lineId: string): Promise<{ line_id: st
 }
 
 export async function listTimeUsageStats(pivot: TimeUsagePivot): Promise<TimeUsageStatsResponse> {
-  const response = await fetch(`${API_BASE_URL}/time-usage/stats?pivot=${pivot}`, {
+  const response = await apiFetch(`${API_BASE_URL}/time-usage/stats?pivot=${pivot}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -268,7 +268,7 @@ export async function listTimeUsageStats(pivot: TimeUsagePivot): Promise<TimeUsa
 }
 
 export async function listRatingBandStats(bandSize = 100): Promise<RatingBandStatsResponse> {
-  const response = await fetch(`${API_BASE_URL}/rating-bands/stats?band_size=${bandSize}`, {
+  const response = await apiFetch(`${API_BASE_URL}/rating-bands/stats?band_size=${bandSize}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -285,7 +285,7 @@ export async function listReviewItems(): Promise<StatsRow[]> {
 }
 
 export async function getTreeExplorer(): Promise<TreeExplorerResponse> {
-  const response = await fetch(`${API_BASE_URL}/tree/explorer`, {
+  const response = await apiFetch(`${API_BASE_URL}/tree/explorer`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -294,7 +294,7 @@ export async function getTreeExplorer(): Promise<TreeExplorerResponse> {
 }
 
 export async function getTrainerQueue(): Promise<TrainerQueueResponse> {
-  const response = await fetch(`${API_BASE_URL}/trainer/queue`, {
+  const response = await apiFetch(`${API_BASE_URL}/trainer/queue`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -303,7 +303,7 @@ export async function getTrainerQueue(): Promise<TrainerQueueResponse> {
 }
 
 export async function submitTrainerAnswer(payload: TrainerAnswerRequest): Promise<TrainerAnswerResult> {
-  const response = await fetch(`${API_BASE_URL}/trainer/answer`, {
+  const response = await apiFetch(`${API_BASE_URL}/trainer/answer`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify(payload),
@@ -313,7 +313,7 @@ export async function submitTrainerAnswer(payload: TrainerAnswerRequest): Promis
 
 
 export async function getLineTreeBrowse(posId = 1, mySideOnly = true): Promise<TreeBrowseResponse> {
-  const response = await fetch(`${API_BASE_URL}/lines/tree/browse?pos_id=${posId}&my_side_only=${mySideOnly}`, {
+  const response = await apiFetch(`${API_BASE_URL}/lines/tree/browse?pos_id=${posId}&my_side_only=${mySideOnly}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -322,7 +322,7 @@ export async function getLineTreeBrowse(posId = 1, mySideOnly = true): Promise<T
 }
 
 export async function getLineTreeCoverage(posId = 1, mySideOnly = true): Promise<TreeCoverageResponse> {
-  const response = await fetch(`${API_BASE_URL}/lines/tree/coverage?pos_id=${posId}&my_side_only=${mySideOnly}`, {
+  const response = await apiFetch(`${API_BASE_URL}/lines/tree/coverage?pos_id=${posId}&my_side_only=${mySideOnly}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -331,7 +331,7 @@ export async function getLineTreeCoverage(posId = 1, mySideOnly = true): Promise
 }
 
 export async function getLineTreeBranchMetrics(posId = 1, mySideOnly = true): Promise<TreeBranchMetricsResponse> {
-  const response = await fetch(`${API_BASE_URL}/lines/tree/branch-metrics?pos_id=${posId}&my_side_only=${mySideOnly}`, {
+  const response = await apiFetch(`${API_BASE_URL}/lines/tree/branch-metrics?pos_id=${posId}&my_side_only=${mySideOnly}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -339,8 +339,19 @@ export async function getLineTreeBranchMetrics(posId = 1, mySideOnly = true): Pr
   return unwrap<TreeBranchMetricsResponse>(response);
 }
 
+async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
+    throw new Error(
+      `Unable to reach the ChessGround API at ${API_BASE_URL}. Check NEXT_PUBLIC_API_BASE_URL and that API_CORS_ORIGINS allows this web origin.${detail}`,
+    );
+  }
+}
+
 export async function getPositionIntelligence(posId = 1, mySideOnly = true): Promise<PositionIntelligenceResponse> {
-  const response = await fetch(`${API_BASE_URL}/positions/${posId}/intelligence?my_side_only=${mySideOnly}`, {
+  const response = await apiFetch(`${API_BASE_URL}/positions/${posId}/intelligence?my_side_only=${mySideOnly}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -350,7 +361,7 @@ export async function getPositionIntelligence(posId = 1, mySideOnly = true): Pro
 
 
 export async function createTrainerSession(payload: TrainerSessionCreateRequest): Promise<TrainerSessionResponse> {
-  const response = await fetch(`${API_BASE_URL}/trainer/sessions`, {
+  const response = await apiFetch(`${API_BASE_URL}/trainer/sessions`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify(payload),
@@ -359,7 +370,7 @@ export async function createTrainerSession(payload: TrainerSessionCreateRequest)
 }
 
 export async function submitTrainerSessionAnswer(sessionId: string, payload: TrainerSessionAnswerRequest): Promise<TrainerSessionAnswerResponse> {
-  const response = await fetch(`${API_BASE_URL}/trainer/sessions/${sessionId}/answer`, {
+  const response = await apiFetch(`${API_BASE_URL}/trainer/sessions/${sessionId}/answer`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify(payload),
@@ -368,7 +379,7 @@ export async function submitTrainerSessionAnswer(sessionId: string, payload: Tra
 }
 
 export async function getTrainerQueueV2(mode: "learn" | "review" = "review"): Promise<TrainerQueueResponse> {
-  const response = await fetch(`${API_BASE_URL}/trainer/queue?mode=${mode}`, {
+  const response = await apiFetch(`${API_BASE_URL}/trainer/queue?mode=${mode}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -377,7 +388,7 @@ export async function getTrainerQueueV2(mode: "learn" | "review" = "review"): Pr
 }
 
 export async function submitTrainerOutcome(payload: TrainerOutcomeRequest): Promise<TrainerOutcomeResponse> {
-  const response = await fetch(`${API_BASE_URL}/trainer/outcomes`, {
+  const response = await apiFetch(`${API_BASE_URL}/trainer/outcomes`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify(payload),
@@ -386,7 +397,7 @@ export async function submitTrainerOutcome(payload: TrainerOutcomeRequest): Prom
 }
 
 export async function setTrainerPriorityOverride(payload: TrainerPriorityOverrideRequest): Promise<TrainerQueueResponse["items"][number]> {
-  const response = await fetch(`${API_BASE_URL}/trainer/priority-override`, {
+  const response = await apiFetch(`${API_BASE_URL}/trainer/priority-override`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify(payload),
@@ -395,7 +406,7 @@ export async function setTrainerPriorityOverride(payload: TrainerPriorityOverrid
 }
 
 export async function listReviewActions(status: "pending" | "approved" | "disapproved" | "all" = "pending"): Promise<ReviewProposition[]> {
-  const response = await fetch(`${API_BASE_URL}/review/actions?status=${status}`, {
+  const response = await apiFetch(`${API_BASE_URL}/review/actions?status=${status}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -404,7 +415,7 @@ export async function listReviewActions(status: "pending" | "approved" | "disapp
 }
 
 export async function getReviewAction(propositionId: number): Promise<ReviewPropositionDetail> {
-  const response = await fetch(`${API_BASE_URL}/review/actions/${propositionId}`, {
+  const response = await apiFetch(`${API_BASE_URL}/review/actions/${propositionId}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -413,7 +424,7 @@ export async function getReviewAction(propositionId: number): Promise<ReviewProp
 }
 
 export async function listReviewBranchQueue(): Promise<BranchQueueEntry[]> {
-  const response = await fetch(`${API_BASE_URL}/review/branch-queue`, {
+  const response = await apiFetch(`${API_BASE_URL}/review/branch-queue`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -422,7 +433,7 @@ export async function listReviewBranchQueue(): Promise<BranchQueueEntry[]> {
 }
 
 export async function executeReviewAction(payload: ReviewActionRequest): Promise<ReviewActionResponse> {
-  const response = await fetch(`${API_BASE_URL}/review/actions`, {
+  const response = await apiFetch(`${API_BASE_URL}/review/actions`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify(payload),
@@ -433,7 +444,7 @@ export async function executeReviewAction(payload: ReviewActionRequest): Promise
 
 
 export async function getRuntimeSettings(): Promise<RuntimeSettings> {
-  const response = await fetch(`${API_BASE_URL}/settings/runtime`, {
+  const response = await apiFetch(`${API_BASE_URL}/settings/runtime`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -442,7 +453,7 @@ export async function getRuntimeSettings(): Promise<RuntimeSettings> {
 }
 
 export async function updateRuntimeSettings(payload: RuntimeSettingsUpdateRequest): Promise<RuntimeSettings> {
-  const response = await fetch(`${API_BASE_URL}/settings/runtime`, {
+  const response = await apiFetch(`${API_BASE_URL}/settings/runtime`, {
     method: "PUT",
     headers: headers(),
     body: JSON.stringify(payload),
@@ -451,7 +462,7 @@ export async function updateRuntimeSettings(payload: RuntimeSettingsUpdateReques
 }
 
 export async function runFullAnalysis(): Promise<AnalysisRunResponse> {
-  const response = await fetch(`${API_BASE_URL}/analysis/run/full`, {
+  const response = await apiFetch(`${API_BASE_URL}/analysis/run/full`, {
     method: "POST",
     headers: headers(),
   });
@@ -459,7 +470,7 @@ export async function runFullAnalysis(): Promise<AnalysisRunResponse> {
 }
 
 export async function runEngineOnlyAnalysis(): Promise<AnalysisRunResponse> {
-  const response = await fetch(`${API_BASE_URL}/analysis/run/engine-only`, {
+  const response = await apiFetch(`${API_BASE_URL}/analysis/run/engine-only`, {
     method: "POST",
     headers: headers(),
   });
@@ -467,7 +478,7 @@ export async function runEngineOnlyAnalysis(): Promise<AnalysisRunResponse> {
 }
 
 export async function runFetchGames(): Promise<AnalysisRunResponse> {
-  const response = await fetch(`${API_BASE_URL}/analysis/run/fetch-games`, {
+  const response = await apiFetch(`${API_BASE_URL}/analysis/run/fetch-games`, {
     method: "POST",
     headers: headers(),
   });
@@ -475,7 +486,7 @@ export async function runFetchGames(): Promise<AnalysisRunResponse> {
 }
 
 export async function runSmokeTest(): Promise<AnalysisRunResponse> {
-  const response = await fetch(`${API_BASE_URL}/analysis/run/smoke-test`, {
+  const response = await apiFetch(`${API_BASE_URL}/analysis/run/smoke-test`, {
     method: "POST",
     headers: headers(),
   });
@@ -486,7 +497,7 @@ export async function runSmokeTest(): Promise<AnalysisRunResponse> {
 export async function importRepertoire(file: File): Promise<RepertoireImportResponse> {
   const formData = new FormData();
   formData.append("file", file);
-  const response = await fetch(`${API_BASE_URL}/repertoires/import`, {
+  const response = await apiFetch(`${API_BASE_URL}/repertoires/import`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${currentToken()}`,
@@ -497,7 +508,7 @@ export async function importRepertoire(file: File): Promise<RepertoireImportResp
 }
 
 export async function getRepertoireImportJob(jobId: string): Promise<RepertoireImportJobResponse> {
-  const response = await fetch(`${API_BASE_URL}/repertoires/import-jobs/${jobId}`, {
+  const response = await apiFetch(`${API_BASE_URL}/repertoires/import-jobs/${jobId}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -506,7 +517,7 @@ export async function getRepertoireImportJob(jobId: string): Promise<RepertoireI
 }
 
 export async function getAnalysisStatus(): Promise<AnalysisStatusResponse> {
-  const response = await fetch(`${API_BASE_URL}/analysis/status`, {
+  const response = await apiFetch(`${API_BASE_URL}/analysis/status`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -515,7 +526,7 @@ export async function getAnalysisStatus(): Promise<AnalysisStatusResponse> {
 }
 
 export async function getAnalysisProgress(): Promise<AnalysisProgressResponse> {
-  const response = await fetch(`${API_BASE_URL}/analysis/progress`, {
+  const response = await apiFetch(`${API_BASE_URL}/analysis/progress`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
@@ -524,7 +535,7 @@ export async function getAnalysisProgress(): Promise<AnalysisProgressResponse> {
 }
 
 export async function getAnalysisRuns(limit = 10): Promise<AnalysisRunHistoryResponse> {
-  const response = await fetch(`${API_BASE_URL}/analysis/runs?limit=${limit}`, {
+  const response = await apiFetch(`${API_BASE_URL}/analysis/runs?limit=${limit}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",

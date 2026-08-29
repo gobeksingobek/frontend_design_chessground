@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 
@@ -112,6 +111,7 @@ function getFallbackPage(pathname: string): DashboardPageConfig {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [hydrated, setHydrated] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [page, setPage] = useState<DashboardPageConfig>({});
@@ -127,8 +127,23 @@ export function AppShell({ children }: { children: ReactNode }) {
     setPage({});
   }, [pathname]);
 
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
   function onLogout() {
     setWebAuth(null);
+  }
+
+  // The shell owns browser-only auth, theme, and navigation state. Rendering a
+  // stable placeholder until hydration prevents those values from invalidating
+  // the server markup and, critically, leaves native sidebar links usable.
+  if (!hydrated) {
+    return (
+      <DashboardShell>
+        <main className="flex min-h-screen flex-1 items-center justify-center" aria-busy="true" aria-label="Loading workspace" />
+      </DashboardShell>
+    );
   }
 
   return (
@@ -182,7 +197,7 @@ export function DashboardSidebar({
     >
       <div className="border-b border-white/10 px-5 py-5">
         <div className="flex items-center justify-between gap-3">
-          <Link href="/overview" className="flex min-w-0 items-center gap-3">
+          <a href="/overview" className="flex min-w-0 items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-sky-300/20 bg-sky-400/12 text-sky-300 shadow-[0_10px_28px_rgba(56,189,248,0.16)] ring-1 ring-inset ring-white/10">
               <KnightIcon className="h-[1.15rem] w-[1.15rem]" />
             </div>
@@ -192,7 +207,7 @@ export function DashboardSidebar({
                 <p className="truncate text-xl font-semibold text-slate-50">Chess</p>
               </div>
             ) : null}
-          </Link>
+          </a>
           <button
             type="button"
             onClick={onCollapseToggle}
@@ -219,7 +234,7 @@ export function DashboardSidebar({
                     {group.items.map((item) => {
                       const active = item.match ? item.match(pathname) : pathname === item.href;
                       return (
-                        <Link
+                        <a
                           key={item.href}
                           href={item.href}
                           onClick={onMobileClose}
@@ -235,7 +250,7 @@ export function DashboardSidebar({
                             {item.icon({ className: "h-4 w-4" })}
                           </span>
                           {!collapsed ? <span className="truncate">{item.label}</span> : null}
-                        </Link>
+                        </a>
                       );
                     })}
                   </div>
