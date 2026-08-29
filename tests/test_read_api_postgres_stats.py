@@ -22,7 +22,9 @@ class _FakeConn:
             return 2
         if "FROM matches" in query:
             return 4
-        if "repertoire_lines WHERE is_priority = TRUE" in query:
+        if "repertoire_lines WHERE is_priority" in query:
+            assert "is_priority = 1" in query
+            assert "TRUE" not in query
             return 1
         if "trainer_line_state" in query:
             return 2

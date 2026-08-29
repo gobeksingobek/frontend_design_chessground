@@ -5,6 +5,7 @@ import threading
 import asyncio
 import hashlib
 import json
+import logging
 import sqlite3
 import tempfile
 import zipfile
@@ -54,6 +55,7 @@ from storage import database, queries
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 SETTINGS_INI_PATH = BASE_DIR / "config" / "settings.ini"
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -1904,7 +1906,11 @@ async def get_game(game_id: int, _: str = Depends(require_auth)) -> GameDetailRe
 
 @app.get("/overview/summary", response_model=dict[str, Any])
 async def get_overview_summary(_: str = Depends(require_auth)) -> dict[str, Any]:
-    return await fetch_overview_summary()
+    try:
+        return await fetch_overview_summary()
+    except Exception:
+        logger.exception("Overview summary query failed")
+        raise
 
 
 @app.get("/lines/stats", response_model=list[dict[str, Any]])

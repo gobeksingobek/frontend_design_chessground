@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 import types
+
+import pytest
 
 # FastAPI multipart import shim for test env.
 python_multipart_module = types.ModuleType("python_multipart")
@@ -17,6 +20,21 @@ sys.modules.setdefault("multipart", multipart_module)
 sys.modules.setdefault("multipart.multipart", multipart_submodule)
 
 from backend import api_service
+
+
+def test_overview_summary_logs_backend_failure_without_rewriting_it(monkeypatch, caplog) -> None:
+    failure = RuntimeError("operator does not exist: integer = boolean")
+
+    async def fail_overview_summary():
+        raise failure
+
+    monkeypatch.setattr(api_service, "fetch_overview_summary", fail_overview_summary)
+
+    with caplog.at_level(logging.ERROR), pytest.raises(RuntimeError) as exc_info:
+        asyncio.run(api_service.get_overview_summary(_="dev-user"))
+
+    assert exc_info.value is failure
+    assert "Overview summary query failed" in caplog.text
 
 
 def test_list_games_forwards_filters_and_sort(monkeypatch) -> None:

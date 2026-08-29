@@ -794,7 +794,7 @@ async def _fetch_overview_summary_postgres() -> dict[str, Any]:
         games = await conn.fetchval("SELECT COUNT(*) FROM games")
         matches = await conn.fetchval("SELECT COUNT(*) FROM matches")
         compliant = await conn.fetchval("SELECT COUNT(*) FROM matches WHERE compliance = 'FULLY_COMPLIANT'")
-        manual_priority = await conn.fetchval("SELECT COUNT(*) FROM repertoire_lines WHERE is_priority = TRUE")
+        manual_priority = await conn.fetchval("SELECT COUNT(*) FROM repertoire_lines WHERE is_priority = 1")
         auto_priority = await conn.fetchval("SELECT COUNT(*) FROM trainer_line_state WHERE auto_priority_score > 0")
     finally:
         await conn.close()

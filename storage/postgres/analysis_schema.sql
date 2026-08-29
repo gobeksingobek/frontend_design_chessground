@@ -104,6 +104,9 @@ CREATE TABLE IF NOT EXISTS repertoire_lines (
     metadata_json JSONB
 );
 
+ALTER TABLE repertoire_lines
+    ADD COLUMN IF NOT EXISTS is_priority INTEGER NOT NULL DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS repertoire_compact (
     line_id TEXT PRIMARY KEY REFERENCES repertoire_lines(line_id) ON DELETE CASCADE,
     moves_json JSONB NOT NULL,
@@ -125,6 +128,9 @@ CREATE TABLE IF NOT EXISTS trainer_line_state (
     auto_priority_score INTEGER NOT NULL DEFAULT 0,
     focus_max_ply INTEGER
 );
+
+ALTER TABLE trainer_line_state
+    ADD COLUMN IF NOT EXISTS auto_priority_score INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS trainer_sessions (
     id UUID PRIMARY KEY,

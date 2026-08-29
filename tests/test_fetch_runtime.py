@@ -73,6 +73,12 @@ def test_fetched_game_sources_is_required_for_postgres_startup() -> None:
     assert "fetched_game_sources" in db.REQUIRED_ANALYSIS_TABLES
 
 
+def test_analysis_schema_upgrades_legacy_overview_columns() -> None:
+    schema_sql = db._analysis_schema_sql_path().read_text(encoding="utf-8")
+    assert "ADD COLUMN IF NOT EXISTS is_priority INTEGER NOT NULL DEFAULT 0" in schema_sql
+    assert "ADD COLUMN IF NOT EXISTS auto_priority_score INTEGER NOT NULL DEFAULT 0" in schema_sql
+
+
 def test_runtime_settings_decodes_asyncpg_json_string() -> None:
     assert _fetch_runtime_settings('{"days_back": 30, "variants": ["bullet"]}') == {
         "days_back": 30,
