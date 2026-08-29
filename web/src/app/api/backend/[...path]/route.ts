@@ -22,7 +22,7 @@ const HOP_BY_HOP_RESPONSE_HEADERS = new Set([
   "upgrade",
 ]);
 
-type RouteContext = { params: { path: string[] } };
+type RouteContext = { params: Promise<{ path: string[] }> };
 
 function upstreamUrl(request: NextRequest, path: string[]): URL | null {
   const base = process.env.API_BASE_URL?.trim();
@@ -44,7 +44,8 @@ function proxyError(detail: string, status = 502): Response {
 }
 
 async function proxy(request: NextRequest, { params }: RouteContext): Promise<Response> {
-  const target = upstreamUrl(request, params.path);
+  const { path } = await params;
+  const target = upstreamUrl(request, path);
   if (!target) {
     return proxyError("The web service is missing its server-side API_BASE_URL configuration.", 503);
   }

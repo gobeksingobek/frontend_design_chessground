@@ -6,6 +6,8 @@ services:
     buildCommand: npm ci && npm run build
     startCommand: npm run start
     envVars:
+      - key: NODE_VERSION
+        value: 24.20.0
       - key: API_BASE_URL
         value: https://chessground-api.onrender.com
 

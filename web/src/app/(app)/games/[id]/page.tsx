@@ -14,17 +14,18 @@ function parseSelectedPly(value: string | undefined): number | null {
   return parsed;
 }
 
-export default function GameDetailPage({
+export default async function GameDetailPage({
   params,
   searchParams,
 }: {
-  params: { id: string };
-  searchParams: { ply?: string | string[]; tab?: string | string[]; orientation?: string | string[] };
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ ply?: string | string[]; tab?: string | string[]; orientation?: string | string[] }>;
 }) {
-  const gameId = Number(params.id);
-  const plyParam = readSingleParam(searchParams.ply);
-  const tabParam = readSingleParam(searchParams.tab);
-  const orientationParam = readSingleParam(searchParams.orientation);
+  const [{ id }, query] = await Promise.all([params, searchParams]);
+  const gameId = Number(id);
+  const plyParam = readSingleParam(query.ply);
+  const tabParam = readSingleParam(query.tab);
+  const orientationParam = readSingleParam(query.orientation);
   const initialPly = parseSelectedPly(plyParam);
   const initialTab = tabParam === "moves" ? "moves" : "board";
   const initialOrientation = orientationParam === "black" ? "black" : "white";

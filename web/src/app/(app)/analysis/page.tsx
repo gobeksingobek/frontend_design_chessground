@@ -31,12 +31,13 @@ function ContextValueCard({
   );
 }
 
-export default function AnalysisPage({ searchParams }: { searchParams: Record<string, string | string[] | undefined>; }) {
-  const initialGameId = firstParam(searchParams.game_id);
-  const movePlyRaw = firstParam(searchParams.move_ply);
+export default async function AnalysisPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>>; }) {
+  const query = await searchParams;
+  const initialGameId = firstParam(query.game_id);
+  const movePlyRaw = firstParam(query.move_ply);
   const initialMovePly = movePlyRaw ? Number(movePlyRaw) : null;
-  const initialFen = firstParam(searchParams.fen);
-  const initialBranchMoves = firstParam(searchParams.branch_moves);
+  const initialFen = firstParam(query.fen);
+  const initialBranchMoves = firstParam(query.branch_moves);
   const resolvedMovePly = Number.isFinite(initialMovePly) ? initialMovePly : null;
 
   return (
