@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useMemo } from "react";
+
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
@@ -71,5 +72,5 @@ function GamesPageContent() {
 }
 
 export default function GamesPage() {
-  return <Suspense fallback={<p className="text-sm text-text-muted">Loading games…</p>}><GamesPageContent /></Suspense>;
+  return <Suspense fallback={<div className="min-h-64" aria-busy="true" aria-label="Loading games" />}><GamesPageContent /></Suspense>;
 }

@@ -313,9 +313,9 @@ export function DashboardHeader({
             <HeaderIconButton label="Alerts"><BellDotIcon className="h-5 w-5" /></HeaderIconButton>
             <ThemeToggle />
             <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(30,41,59,0.28))] text-sm font-semibold text-slate-50 shadow-[0_12px_24px_rgba(15,23,42,0.28)]">CG</div>
-            <Link href="/login" onClick={onLogout}>
+            <a href="/login" onClick={onLogout}>
               <Button variant="ghost" className="border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10">Log out</Button>
-            </Link>
+            </a>
           </div>
         </div>
       </div>
