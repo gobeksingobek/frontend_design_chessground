@@ -22,7 +22,8 @@
     "check:settings-contract": "node scripts/check-settings-contract.mjs",
     "check:game-detail-contract": "node scripts/check-game-detail-contract.mjs",
     "check:navigation-contract": "node scripts/check-navigation-contract.mjs",
-    "check:api-connectivity-contract": "node scripts/check-api-connectivity-contract.mjs"
+    "check:api-connectivity-contract": "node scripts/check-api-connectivity-contract.mjs",
+    "check:api-proxy-contract": "node scripts/check-api-proxy-contract.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "5.59.0",

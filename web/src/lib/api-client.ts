@@ -40,7 +40,7 @@ import type {
   RepertoireImportJobResponse,
 } from "@/lib/types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/backend";
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN ?? "";
 const DEFAULT_API_TOKENS = new Set(["dev-token", "changeme", "change-me", "default-token", "your-token-here", "example-token"]);
 const MAX_CONSECUTIVE_401S = 2;
@@ -64,7 +64,7 @@ function resolveApiToken(): string {
   const fromEnv = API_TOKEN.trim();
   if (isProductionBuild() && (!fromEnv || isDefaultTokenValue(fromEnv))) {
     throw new Error(
-      "Missing valid API token for production build. Set NEXT_PUBLIC_API_TOKEN to a non-default token or configure a user login flow that stores cg_web_api_token in localStorage.",
+      "Missing valid API token. Open /login and enter the backend API token for this workspace.",
     );
   }
   return fromEnv;
@@ -345,7 +345,7 @@ async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<R
   } catch (error) {
     const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
     throw new Error(
-      `Unable to reach the ChessGround API at ${API_BASE_URL}. Check NEXT_PUBLIC_API_BASE_URL and that API_CORS_ORIGINS allows this web origin.${detail}`,
+      `Unable to reach the ChessGround API proxy at ${API_BASE_URL}.${detail}`,
     );
   }
 }

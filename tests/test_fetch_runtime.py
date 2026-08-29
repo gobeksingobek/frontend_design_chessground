@@ -4,6 +4,7 @@ import sqlite3
 
 from analysis.game_fetcher import _variant_set
 from backend.settings import merge_runtime_settings_payload
+from backend import db
 from storage import database, queries
 
 
@@ -32,3 +33,7 @@ def test_runtime_settings_reject_unsupported_fetch_variants() -> None:
     )
     assert saved is None
     assert [(error.field, error.code) for error in errors] == [("variants", "unsupported_variant")]
+
+
+def test_fetched_game_sources_is_required_for_postgres_startup() -> None:
+    assert "fetched_game_sources" in db.REQUIRED_ANALYSIS_TABLES

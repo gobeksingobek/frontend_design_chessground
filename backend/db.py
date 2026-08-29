@@ -18,6 +18,7 @@ REQUIRED_ANALYSIS_TABLES = (
     "repertoire_compact",
     "trainer_line_state",
     "trainer_sessions",
+    "fetched_game_sources",
 )
 
 
