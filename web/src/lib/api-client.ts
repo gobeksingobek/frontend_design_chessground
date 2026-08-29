@@ -40,7 +40,7 @@ import type {
   RepertoireImportJobResponse,
 } from "@/lib/types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/backend";
+const API_BASE_URL = "/api/backend";
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN ?? "";
 const DEFAULT_API_TOKENS = new Set(["dev-token", "changeme", "change-me", "default-token", "your-token-here", "example-token"]);
 const MAX_CONSECUTIVE_401S = 2;

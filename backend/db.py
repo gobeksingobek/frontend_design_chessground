@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -93,7 +94,23 @@ async def fetch_runtime_settings(pool: asyncpg.Pool) -> dict[str, Any] | None:
             "SELECT payload FROM runtime_settings WHERE scope = $1",
             RUNTIME_SETTINGS_SCOPE,
         )
-    return dict(row["payload"]) if row is not None else None
+    return _decode_runtime_settings_payload(row["payload"]) if row is not None else None
+
+
+def _decode_runtime_settings_payload(payload: Any) -> dict[str, Any]:
+    """Normalize asyncpg JSONB results without depending on a pool-level codec."""
+    if isinstance(payload, Mapping):
+        return dict(payload)
+
+    if isinstance(payload, (str, bytes, bytearray)):
+        try:
+            decoded = json.loads(payload)
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError) as exc:
+            raise RuntimeError("Persisted runtime settings contain invalid JSON.") from exc
+        if isinstance(decoded, dict):
+            return decoded
+
+    raise RuntimeError("Persisted runtime settings must be a JSON object.")
 
 
 async def save_runtime_settings(pool: asyncpg.Pool, payload: dict[str, Any]) -> dict[str, Any]:

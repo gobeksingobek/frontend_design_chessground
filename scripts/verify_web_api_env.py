@@ -47,13 +47,13 @@ def verify(allow_user_token_flow: bool, production_mode: bool | None = None) -> 
         production_mode = infer_production_mode()
     failures = 0
 
-    api_base = norm(os.getenv("NEXT_PUBLIC_API_BASE_URL"))
+    api_base = norm(os.getenv("API_BASE_URL"))
     web_token = norm(os.getenv("NEXT_PUBLIC_API_TOKEN"))
     api_token = norm(os.getenv("API_AUTH_TOKEN"))
     cors_origins = parse_origins(os.getenv("API_CORS_ORIGINS"))
 
     ok = bool(api_base)
-    print_result(ok, "NEXT_PUBLIC_API_BASE_URL", api_base or "missing")
+    print_result(ok, "API_BASE_URL", api_base or "missing")
     failures += 0 if ok else 1
 
     if allow_user_token_flow:

@@ -230,10 +230,10 @@ Desktop/web parity tracking checklist:
 Render/Neon migration path:
 - Deploy `web/` (Next.js), `backend.api_service`, and `backend.worker_service` as separate Render services.
 - Configure Render env vars as follows:
-  - Web: `NEXT_PUBLIC_API_BASE_URL` (API URL, not web URL), `NEXT_PUBLIC_API_TOKEN`
+  - Web: server-only `API_BASE_URL` (API URL, not web URL). Browser requests always use the same-origin `/api/backend` proxy; users provide the API token through `/login`.
   - API: `POSTGRES_DSN`, `REDIS_URL`, `API_AUTH_TOKEN`, `API_CORS_ORIGINS`, `DATA_BACKEND=postgres`, `ENFORCE_POSTGRES_ON_RENDER=1`
   - Worker: `POSTGRES_DSN`, `REDIS_URL`, `STOCKFISH_PATH`
-- Verify `NEXT_PUBLIC_API_TOKEN` and `API_AUTH_TOKEN` match (unless browser login flow intentionally overrides token usage).
+- Do not publish the production bearer token through `NEXT_PUBLIC_API_TOKEN`; the token entered at `/login` must match `API_AUTH_TOKEN`.
 - Redeploy web, API, and worker services after env var updates.
 - Bootstrap Postgres schema before API startup:
   - `python -m backend.bootstrap_postgres_schema`

@@ -6,8 +6,6 @@ services:
     buildCommand: npm ci && npm run build
     startCommand: npm run start
     envVars:
-      - key: NEXT_PUBLIC_API_BASE_URL
-        value: /api/backend
       - key: API_BASE_URL
         value: https://chessground-api.onrender.com
 
