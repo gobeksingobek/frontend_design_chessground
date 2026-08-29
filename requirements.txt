@@ -1,7 +1,0 @@
-PySide6
-python-chess
-fastapi
-uvicorn
-redis
-asyncpg
-python-multipart

@@ -51,17 +51,16 @@ The Next.js frontend in `web/` should follow the shared UI architecture document
 
 ## Setup
 
-1. Create and activate a virtual environment (optional).
-2. Install dependencies:
+Install the locked desktop environment with Python 3.13.15 and uv 0.10.2:
 
 ```bash
-pip install -r requirements.txt
+uv sync --locked --extra desktop
 ```
 
 ## Run
 
 ```bash
-python main.py
+uv run --no-sync python main.py
 ```
 
 On first run, the app will prompt you to select:
@@ -236,7 +235,7 @@ Render/Neon migration path:
 - Do not publish the production bearer token through `NEXT_PUBLIC_API_TOKEN`; the token entered at `/login` must match `API_AUTH_TOKEN`.
 - Redeploy web, API, and worker services after env var updates.
 - Bootstrap Postgres schema before API startup:
-  - `python -m backend.bootstrap_postgres_schema`
+  - `uv run --no-sync python -m backend.bootstrap_postgres_schema`
 - A Render blueprint is included at `render.yaml`.
 
 ## PostgreSQL graph schema (optional)

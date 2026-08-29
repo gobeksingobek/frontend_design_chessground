@@ -5,5 +5,8 @@ __pycache__/
 node_modules/
 .next/
 *.tsbuildinfo
+.pytest_cache/
+.pytest-*/
+pytest-cache-files-*/
 data/*.db
 data/*.db-journal

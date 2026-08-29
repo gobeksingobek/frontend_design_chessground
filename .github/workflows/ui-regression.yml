@@ -19,7 +19,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '24.20.0'
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -28,3 +28,15 @@ jobs:
 
       - name: Run UI regression tests
         run: npm run test:ui-regression
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Build production application
+        run: npm run build

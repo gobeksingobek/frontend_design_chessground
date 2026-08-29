@@ -30,9 +30,15 @@ This directory introduces two deployable backend processes that keep Neon/Postgr
 
 ## Run
 
+Install the locked server environment first:
+
 ```bash
-uvicorn backend.api_service:app --host 0.0.0.0 --port 8000
-python -m backend.worker_service
+uv sync --locked --no-dev
+```
+
+```bash
+uv run --no-sync uvicorn backend.api_service:app --host 0.0.0.0 --port 8000
+uv run --no-sync python -m backend.worker_service
 ```
 
 ## Bootstrap and backfill commands
@@ -40,13 +46,13 @@ python -m backend.worker_service
 Before running API in Postgres mode, bootstrap schema once:
 
 ```bash
-python -m backend.bootstrap_postgres_schema
+uv run --no-sync python -m backend.bootstrap_postgres_schema
 ```
 
 Validate schema only:
 
 ```bash
-python -m backend.bootstrap_postgres_schema --validate-only
+uv run --no-sync python -m backend.bootstrap_postgres_schema --validate-only
 ```
 
 Postgres-only deployment no longer uses local database backfill scripts.
@@ -130,7 +136,7 @@ For development right now, keep the worker service scaled to `0` (or disabled). 
 3. Verify worker startup:
 
    ```bash
-   python -m backend.worker_service
+   uv run --no-sync python -m backend.worker_service
    ```
 
 4. Trigger a sideline request and poll `GET /sidelines/{request_id}` to confirm status transitions from `queued` to `completed` or `failed`.
@@ -140,8 +146,8 @@ If a request stays `queued`, check worker scale, Redis/Postgres connectivity, an
 You can run a full web deployment on Render by splitting into services:
 
 - Web service: Next.js app from `web/` (`npm run build && npm run start`)
-- API service: `uvicorn backend.api_service:app --host 0.0.0.0 --port $PORT`
-- Worker service: `python -m backend.worker_service`
+- API service: `uv run --no-sync uvicorn backend.api_service:app --host 0.0.0.0 --port $PORT`
+- Worker service: `uv run --no-sync python -m backend.worker_service`
 - Redis: Render Key Value/Redis instance
 - Postgres: Neon database
 
@@ -156,7 +162,7 @@ After changing env vars, redeploy web/API/worker.
 Then run:
 
 ```bash
-python -m backend.bootstrap_postgres_schema
+uv run --no-sync python -m backend.bootstrap_postgres_schema
 ```
 
 The API reads games/moves/positions from Postgres.
