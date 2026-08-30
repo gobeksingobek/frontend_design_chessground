@@ -92,7 +92,7 @@ export function GameDetail({
   const lastMove = useMemo(() => {
     if (!selectedMove?.uci_move || selectedMove.uci_move.length < 4) return null;
     return { from: selectedMove.uci_move.slice(0, 2), to: selectedMove.uci_move.slice(2, 4) };
-  }, [selectedMove?.uci_move]);
+  }, [selectedMove]);
   const hasEvalData = selectedMove?.pre_eval_cp !== null || selectedMove?.post_eval_cp !== null;
   const navigateNext = useCallback(() => { setCursorIndex((current) => Math.min(moves.length, current + 1)); }, [moves.length]);
   const navigatePrev = useCallback(() => { setCursorIndex((current) => Math.max(0, current - 1)); }, []);

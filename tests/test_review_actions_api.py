@@ -246,6 +246,11 @@ class _FakePgConn:
     def transaction(self):
         return _Tx()
 
+    async def fetchval(self, query: str, *args):
+        if "to_regclass('public.repertoire_edges')" in query:
+            return False
+        return None
+
     async def fetch(self, query: str, *args):
         if "FROM review_propositions" in query and "ORDER BY evidence_count" in query:
             rows = [row for row in self.propositions.values() if row["proposition_type"] == "MISSING_COVERAGE_BRANCH"]

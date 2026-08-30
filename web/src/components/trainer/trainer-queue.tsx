@@ -18,7 +18,7 @@ interface TrainerQueueProps { mode: "learn" | "review"; sessionId: string | null
 export function TrainerQueue({ mode, sessionId, item, onStart, onAnswer, onNext, statusText }: TrainerQueueProps) {
   const [phase, setPhase] = useState<TrainerPhase>("prompt");
   const [attemptUci, setAttemptUci] = useState("");
-  const [phaseStartedAt, setPhaseStartedAt] = useState<number>(Date.now());
+  const [phaseStartedAt, setPhaseStartedAt] = useState<number>(() => Date.now());
   const [result, setResult] = useState<TrainerSessionAnswerResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const canAnswer = Boolean(sessionId && item && phase === "attempt" && attemptUci.trim());

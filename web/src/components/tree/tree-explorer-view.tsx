@@ -87,7 +87,7 @@ export function TreeExplorerView({
   const blackRows = useMemo(() => {
     const source = metrics?.top_game_branches?.length ? metrics.top_game_branches : browse?.game_children ?? [];
     return toGameRows(source);
-  }, [browse?.game_children, metrics?.top_game_branches]);
+  }, [browse, metrics]);
   const favoriteRows = useMemo(() => [...whiteRows.filter((row) => row.emphasis), ...blackRows.filter((row) => row.icon === "favorite")].slice(0, 6), [blackRows, whiteRows]);
 
   const activeRows = activeTab === "white" ? whiteRows : activeTab === "black" ? blackRows : favoriteRows;
