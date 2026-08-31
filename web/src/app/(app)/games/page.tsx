@@ -10,6 +10,7 @@ import { PageContainer, PageSection } from "@/components/app-shell";
 import { GamesTable, type GamesTableState } from "@/components/games/games-table";
 import { Button } from "@/components/ui/button";
 import { DetailPane } from "@/components/ui/page-patterns";
+import { ResponsiveContextPanel } from "@/components/ui/responsive-context-panel";
 import { SectionHeader } from "@/components/ui/section-header";
 import { CaptionText, CardTitle, MutedText } from "@/components/ui/typography";
 
@@ -43,10 +44,10 @@ function GamesPageContent() {
           actions={<Link href="/analysis"><Button variant="ghost">Open board analysis</Button></Link>}
         />
 
-        <div className="grid gap-grid-gap xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.9fr)] xl:items-start">
+        <div className="grid gap-grid-gap xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
           <GamesTable state={state} onStateChange={onStateChange} />
 
-          <div className="grid gap-grid-gap xl:sticky xl:top-24">
+          <ResponsiveContextPanel label="Game list context">
             <DetailPane title="Selected context" description="Use this panel as a quick reminder of what the current table view is optimized to show.">
               <div className="grid gap-4">
                 <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
@@ -60,11 +61,11 @@ function GamesPageContent() {
                 </div>
                 <div className="rounded-xl border border-border/70 bg-card px-4 py-4">
                   <CaptionText>Next step</CaptionText>
-                  <MutedText className="mt-2">Open a row from the table to review metadata, board state, and move quality in the redesigned game detail layout.</MutedText>
+                  <MutedText className="mt-2">Open a row to review metadata, board state, evaluation changes, and move quality.</MutedText>
                 </div>
               </div>
             </DetailPane>
-          </div>
+          </ResponsiveContextPanel>
         </div>
       </PageSection>
     </PageContainer>

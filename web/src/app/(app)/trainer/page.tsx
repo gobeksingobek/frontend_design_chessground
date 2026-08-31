@@ -3,11 +3,11 @@
 import { useState } from "react";
 
 import { PageContainer, PageSection } from "@/components/app-shell";
+import { BoardWorkspace } from "@/components/chess/board-workspace";
 import { ChessBoard } from "@/components/chess/chess-board";
 import { TrainerEndpointsPanel } from "@/components/trainer/trainer-endpoints-panel";
 import { TrainerQueue } from "@/components/trainer/trainer-queue";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Select } from "@/components/ui/select";
@@ -26,8 +26,10 @@ export default function TrainerPage() {
     <PageContainer title="Trainer" description="Start learning or review sessions, work through the queue, and capture outcomes.">
       <PageSection>
         <SectionHeader title="Trainer" description="Queue positions, record outcomes, and apply priority overrides." />
-        <div className="grid gap-4 xl:grid-cols-board">
-          <Card className="gap-4">
+        <BoardWorkspace
+          header={<SectionHeader title="Training board" description="Keep the position central while session controls and remediation stay within reach." />}
+          board={<ChessBoard size="large" title="Current training position" subtitle="Work through the queue with consistent board navigation and move feedback." surface="plain" className="h-full max-w-none" />}
+          main={<div className="grid gap-4">
             <FormField label="Mode" helpText="Learn introduces new material. Review revisits lines already in the spaced-repetition queue." className="max-w-xs">
               <Select value={mode} onChange={(event) => setMode(event.target.value as "learn" | "review")}>
                 <option value="learn">Learn</option>
@@ -40,9 +42,10 @@ export default function TrainerPage() {
               <StatCard label="Current item" value={item?.branch_id ?? "None"} detail={statusText ?? "No queue updates yet."} />
             </div>
             <div className="mt-1 flex flex-wrap gap-2"><Button type="button" size="lg" variant="primary" onClick={createOrResumeSession}>{sessionId ? "Resume / restart session" : "Create / start session"}</Button><Button type="button" variant="ghost" onClick={endSession} disabled={!sessionId}>End session</Button></div>
-          </Card>
-          <div className="grid gap-4"><TrainerEndpointsPanel /><TrainerQueue mode={mode} sessionId={sessionId} item={item} statusText={statusText} onStart={createOrResumeSession} onAnswer={async (moveUci, elapsedMs) => { if (!sessionId) throw new Error("No active session"); const response = await submitTrainerSessionAnswer(sessionId, { move_uci: moveUci, elapsed_ms: elapsedMs }); setItem(response.next_item ?? null); setStatusText(`Outcome ${response.outcome}, grade ${response.grade}, streak_delta ${response.streak_delta}.`); return response; }} onNext={() => { if (!item) endSession(); }} /></div>
-        </div>
+          </div>}
+          asideLabel="Training context"
+          aside={<><TrainerEndpointsPanel /><TrainerQueue mode={mode} sessionId={sessionId} item={item} statusText={statusText} onStart={createOrResumeSession} onAnswer={async (moveUci, elapsedMs) => { if (!sessionId) throw new Error("No active session"); const response = await submitTrainerSessionAnswer(sessionId, { move_uci: moveUci, elapsed_ms: elapsedMs }); setItem(response.next_item ?? null); setStatusText(`Outcome ${response.outcome}, grade ${response.grade}, streak_delta ${response.streak_delta}.`); return response; }} onNext={() => { if (!item) endSession(); }} /></>}
+        />
       </PageSection>
     </PageContainer>
   );

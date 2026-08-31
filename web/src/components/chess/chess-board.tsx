@@ -405,7 +405,7 @@ export function ChessBoardFrame({
   variant?: ChessBoardVariant;
   children: ReactNode;
 }) {
-  const content = <div className={cn("grid w-full gap-4 overflow-hidden rounded-[1.1rem]", variant === "framed" && "border-border/80 bg-gradient-to-br from-card via-card to-elevated/80")}>{children}</div>;
+  const content = <div className={cn("grid w-full gap-4 overflow-hidden rounded-card", variant === "framed" && "border border-border/40 bg-card")}>{children}</div>;
 
   if (variant === "surface") return <div className={cn("w-full", className)}>{content}</div>;
   return <Card className={cn("w-full", className)}>{content}</Card>;

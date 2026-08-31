@@ -14,7 +14,7 @@ export function KpiSummary({ children, className }: { children: ReactNode; class
 
 export function FilterPanel({ title, description, children, className }: { title?: string; description?: string; children: ReactNode; className?: string }) {
   return (
-    <Card className={cn("gap-control-gap border-border/80 bg-elevated", className)}>
+    <Card className={cn("gap-control-gap", className)}>
       {title ? <SectionHeader title={title} description={description} /> : description ? <MutedText>{description}</MutedText> : null}
       {children}
     </Card>
@@ -128,7 +128,7 @@ export function WorkspaceSection({
 }
 
 export function SupportRail({ children, className }: { children: ReactNode; className?: string }) {
-  return <aside className={cn("grid gap-lg lg:sticky lg:top-6 lg:self-start", className)}>{children}</aside>;
+  return <aside className={cn("grid gap-lg xl:sticky xl:top-24 xl:self-start", className)}>{children}</aside>;
 }
 
 export function UtilityPanelStack({ children, className }: { children: ReactNode; className?: string }) {
@@ -153,7 +153,7 @@ export function UtilityPanel({
   contentClassName?: string;
 }) {
   return (
-    <Card variant="utility" className={cn("gap-md rounded-xl", className)}>
+    <Card variant="utility" className={cn("gap-md", className)}>
       {title || description || eyebrow || actions ? (
         <div className="grid gap-2">
           {eyebrow ? <CaptionText className="text-[0.68rem] tracking-[0.16em] text-muted-foreground/75">{eyebrow}</CaptionText> : null}
@@ -223,5 +223,5 @@ export function DenseControlRow({ children, className }: { children: ReactNode; 
 }
 
 export function InsightCallout({ title, description }: { title: string; description: string }) {
-  return <div className="rounded-xl border border-border/70 bg-card px-4 py-4"><CardTitle className="text-base">{title}</CardTitle><MutedText className="mt-2">{description}</MutedText></div>;
+  return <div className="rounded-card border border-border/40 bg-card px-4 py-4"><CardTitle className="text-base">{title}</CardTitle><MutedText className="mt-2">{description}</MutedText></div>;
 }

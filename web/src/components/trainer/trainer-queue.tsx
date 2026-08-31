@@ -26,7 +26,7 @@ export function TrainerQueue({ mode, sessionId, item, onStart, onAnswer, onNext,
   const remediation = result?.remediation ?? null;
 
   return (
-    <DetailPane title="Trainer queue flow" description="Keep the page rhythm spacious while the answer controls remain compact and task-focused.">
+    <DetailPane title="Trainer queue" description="Submit a move, review the result, and continue through the active session.">
       <DenseControlRow><Badge tone="accent">Mode: {mode}</Badge><Badge>Stage: {phase}</Badge></DenseControlRow>
       <small className="text-muted-foreground">{phaseHelp}</small>
 

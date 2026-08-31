@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { SectionHeader } from "@/components/ui/section-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getRuntimeSettings, runFetchGames, updateRuntimeSettings } from "@/lib/api-client";
+import { cn } from "@/lib/cn";
 
 import { INITIAL_FORM, LABELS, SECTIONS, mapBackendFieldErrors, toList } from "./settings-form";
 
@@ -15,9 +17,11 @@ export default function SettingsPage() {
   const [form, setForm] = useState<Record<string, string>>(INITIAL_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    getRuntimeSettings().then((s) =>
+    getRuntimeSettings().then((s) => {
       setForm((f) => ({
         ...f,
         daysBack: String(s.days_back),
@@ -35,14 +39,17 @@ export default function SettingsPage() {
         playerName: s.player_name ?? "",
         playerNames: s.player_names.join(", "),
         ratingBandSize: String(s.rating_band_size ?? 100),
-      })),
-    );
+      }));
+    }).catch((error) => {
+      setMessage(error instanceof Error ? error.message : "Unable to load settings.");
+    }).finally(() => setIsLoading(false));
   }, []);
 
   async function onSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrors({});
     setMessage("");
+    setIsSaving(true);
     try {
       await updateRuntimeSettings({
         days_back: Number(form.daysBack),
@@ -69,6 +76,8 @@ export default function SettingsPage() {
       } else {
         setMessage((err as Error).message);
       }
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -76,11 +85,11 @@ export default function SettingsPage() {
     <PageContainer title="Settings" description="Manage workspace analysis, fetch, and player profile configuration.">
       <PageSection>
         <SectionHeader title="Settings" description="Workspace settings are stored by the backend and shared by every client." />
-        <form onSubmit={onSave} className="grid gap-4">
+        {isLoading ? <div className="grid gap-4"><Skeleton className="h-44 rounded-card" /><Skeleton className="h-44 rounded-card" /></div> : <form onSubmit={onSave} className="grid gap-4">
           {SECTIONS.map((section) => (
-            <Card key={section.title} className="grid gap-3 p-4">
-              <h3 className="text-base font-semibold">{section.title}</h3>
-              <div className="grid gap-3 md:grid-cols-2">
+            <Card key={section.title} className="grid gap-4">
+              <div className="border-b border-border/35 pb-3"><h3 className="text-base font-semibold tracking-tight">{section.title}</h3></div>
+              <div className="grid gap-4 md:grid-cols-2">
                 {section.fields.map((fieldKey) => (
                   <label key={fieldKey} className="grid gap-2 text-sm text-text-subtle">
                     {LABELS[fieldKey] ?? fieldKey}
@@ -92,15 +101,15 @@ export default function SettingsPage() {
             </Card>
           ))}
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" variant="primary">
-              Save settings
+            <Button type="submit" variant="primary" disabled={isSaving}>
+              {isSaving ? "Saving…" : "Save settings"}
             </Button>
             <Button type="button" onClick={() => runFetchGames()}>
               Fetch games
             </Button>
           </div>
-          {message ? <p className="text-sm text-text-subtle">{message}</p> : null}
-        </form>
+          {message ? <p className={cn("rounded-control border px-4 py-3 text-sm", message === "Settings saved." ? "border-success/25 bg-success/10 text-success" : "border-warning/25 bg-warning/10 text-warning")}>{message}</p> : null}
+        </form>}
       </PageSection>
     </PageContainer>
   );

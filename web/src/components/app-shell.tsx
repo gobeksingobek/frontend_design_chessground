@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { useTheme } from "@/components/theme-provider";
 
@@ -39,7 +39,6 @@ type DashboardContentGridProps = {
 };
 
 type DashboardPageContextValue = {
-  page: DashboardPageConfig;
   setPage: (next: DashboardPageConfig) => void;
 };
 
@@ -115,6 +114,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [page, setPage] = useState<DashboardPageConfig>({});
+  const pageContext = useMemo<DashboardPageContextValue>(() => ({ setPage }), [setPage]);
   const fallbackPage = useMemo(() => getFallbackPage(pathname), [pathname]);
   const resolvedPage = {
     title: page.title ?? fallbackPage.title,
@@ -147,7 +147,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <DashboardPageContext.Provider value={{ page: resolvedPage, setPage }}>
+    <DashboardPageContext.Provider value={pageContext}>
       <DashboardShell>
         <DashboardSidebar
           collapsed={sidebarCollapsed}
@@ -163,8 +163,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             onMobileMenuToggle={() => setMobileMenuOpen((current) => !current)}
             onLogout={onLogout}
           />
-          <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
-            <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-page-gap">{children}</div>
+          <main className="min-w-0 px-3 py-4 sm:px-5 md:px-6 lg:py-6 xl:px-8">
+            <div className="mx-auto flex w-full max-w-[100rem] flex-col gap-page-gap">{children}</div>
           </main>
         </div>
       </DashboardShell>
@@ -173,7 +173,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 }
 
 export function DashboardShell({ children }: { children: ReactNode }) {
-  return <div className="min-h-screen bg-background text-foreground lg:flex lg:bg-transparent">{children}</div>;
+  return <div className="min-h-screen bg-transparent text-foreground md:flex">{children}</div>;
 }
 
 export function DashboardSidebar({
@@ -188,46 +188,61 @@ export function DashboardSidebar({
   onMobileClose: () => void;
 }) {
   const pathname = usePathname();
+  const mobilePanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    mobilePanelRef.current?.querySelector<HTMLElement>("a[href], button:not([disabled])")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onMobileClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.querySelector<HTMLElement>('[aria-label="Open navigation"]')?.focus();
+    };
+  }, [mobileOpen, onMobileClose]);
+
   const sidebar = (
     <div
       className={cn(
-        "flex h-full flex-col rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(8,15,30,0.92),rgba(6,12,24,0.86))] text-foreground shadow-[0_24px_70px_rgba(2,6,23,0.42)] ring-1 ring-inset ring-white/8 backdrop-blur-2xl",
-        collapsed ? "w-[5.5rem]" : "w-72",
+        "flex h-full flex-col border border-border/35 bg-sidebar/92 text-foreground shadow-panel backdrop-blur-xl md:rounded-card",
+        collapsed ? "w-20" : "w-[17rem] md:w-20 xl:w-[17rem]",
       )}
     >
-      <div className="border-b border-white/10 px-5 py-5">
+      <div className="border-b border-border/30 px-3 py-4 xl:px-4">
         <div className="flex items-center justify-between gap-3">
-          <a href="/overview" className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-sky-300/20 bg-sky-400/12 text-sky-300 shadow-[0_10px_28px_rgba(56,189,248,0.16)] ring-1 ring-inset ring-white/10">
+          <a href="/overview" className={cn("flex min-w-0 items-center gap-3 rounded-control focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60", !collapsed && "md:mx-auto xl:mx-0")}>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control border border-primary/25 bg-primary/10 text-primary shadow-soft">
               <KnightIcon className="h-[1.15rem] w-[1.15rem]" />
             </div>
             {!collapsed ? (
-              <div className="min-w-0">
-                <p className="truncate text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-slate-400">Chess</p>
-                <p className="truncate text-xl font-semibold text-slate-50">Chess</p>
+              <div className="hidden min-w-0 xl:block">
+                <p className="truncate text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Repertoire studio</p>
+                <p className="truncate text-lg font-semibold tracking-tight text-foreground">ChessGround</p>
               </div>
             ) : null}
           </a>
           <button
             type="button"
             onClick={onCollapseToggle}
-            className="hidden rounded-xl border border-white/10 bg-white/5 p-2 text-slate-400 transition hover:bg-white/10 hover:text-slate-100 lg:inline-flex"
+            className="hidden rounded-control border border-border/40 bg-card p-2 text-muted-foreground transition hover:border-primary/25 hover:bg-hover hover:text-foreground xl:inline-flex"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
             <PanelIcon className={cn("h-4 w-4 transition-transform", collapsed && "rotate-180")} />
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto px-3 py-6">
-        <nav className="grid gap-6">
+      <div className="flex-1 overflow-y-auto px-2 py-4 xl:px-3">
+        <nav className="grid gap-5" aria-label="Primary navigation">
           {navSections.map((section) => (
             <div key={section.label} className="grid gap-3">
-              <p className={cn("px-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500/80", collapsed && "px-0 text-center")}>{collapsed ? section.label.slice(0, 1) : section.label}</p>
+              <p className={cn("px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/65", collapsed ? "px-0 text-center" : "hidden xl:block")}>{collapsed ? section.label.slice(0, 1) : section.label}</p>
               <div className="grid gap-3">
                 {section.groups.map((group) => (
                   <div key={group.label} className="grid gap-1">
                     {!collapsed ? (
-                      <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500/65">
+                      <p className="hidden px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/55 xl:block">
                         {group.label}
                       </p>
                     ) : null}
@@ -237,19 +252,20 @@ export function DashboardSidebar({
                         <a
                           key={item.href}
                           href={item.href}
+                          title={item.label}
                           onClick={onMobileClose}
                           className={cn(
-                            "group relative flex items-center gap-3 overflow-hidden rounded-[1.1rem] border border-transparent px-3 py-3 text-sm font-medium text-slate-300/78 transition duration-200 hover:border-white/10 hover:bg-white/6 hover:text-slate-100",
-                            collapsed && "justify-center px-2",
-                            active && "border-sky-300/20 bg-[linear-gradient(180deg,rgba(59,130,246,0.18),rgba(30,41,59,0.34))] text-slate-50 shadow-[0_14px_30px_rgba(15,23,42,0.22)]",
+                            "group relative flex items-center gap-3 overflow-hidden rounded-control border border-transparent px-2.5 py-2 text-sm font-medium text-muted-foreground transition duration-200 hover:border-border/40 hover:bg-hover/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60",
+                            collapsed ? "justify-center" : "justify-center xl:justify-start",
+                            active && "border-primary/20 bg-primary/10 text-foreground",
                           )}
                           aria-current={active ? "page" : undefined}
                         >
-                          <span className={cn("absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-sky-300 opacity-0 transition", active && "opacity-100", collapsed && "inset-x-2 inset-y-auto bottom-0 left-2 h-1 w-auto rounded-t-full rounded-r-none")} />
-                          <span className={cn("flex h-9 w-9 items-center justify-center rounded-xl border border-transparent bg-transparent text-slate-400 transition group-hover:border-white/10 group-hover:bg-white/10 group-hover:text-sky-300", active && "border-sky-300/15 bg-sky-400/10 text-sky-300")}>
+                          <span className={cn("absolute inset-y-2 left-0 w-0.5 rounded-r-full bg-primary opacity-0 transition", active && "opacity-100", collapsed && "inset-x-2 inset-y-auto bottom-0 left-2 h-0.5 w-auto rounded-t-full rounded-r-none")} />
+                          <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition group-hover:text-primary", active && "text-primary")}>
                             {item.icon({ className: "h-4 w-4" })}
                           </span>
-                          {!collapsed ? <span className="truncate">{item.label}</span> : null}
+                          {!collapsed ? <span className="hidden truncate xl:block">{item.label}</span> : null}
                         </a>
                       );
                     })}
@@ -265,11 +281,11 @@ export function DashboardSidebar({
 
   return (
     <>
-      <aside className="sticky top-0 hidden h-screen shrink-0 border-r border-white/6 bg-[rgba(2,6,23,0.34)] p-4 backdrop-blur-xl lg:block">{sidebar}</aside>
+      <aside className="sticky top-0 hidden h-screen shrink-0 border-r border-border/25 bg-glass/55 p-3 backdrop-blur-xl md:block">{sidebar}</aside>
       {mobileOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button type="button" className="absolute inset-0 bg-background/70 backdrop-blur-sm" onClick={onMobileClose} aria-label="Close navigation" />
-          <div className="absolute inset-y-0 left-0 max-w-[85vw]">{sidebar}</div>
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button type="button" className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onMobileClose} aria-label="Close navigation" />
+          <div ref={mobilePanelRef} role="dialog" aria-modal="true" aria-label="Primary navigation" className="absolute inset-y-0 left-0 w-[min(86vw,19rem)] p-2">{sidebar}</div>
         </div>
       ) : null}
     </>
@@ -290,31 +306,28 @@ export function DashboardHeader({
   onLogout: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-white/8 bg-[rgba(2,6,23,0.48)] backdrop-blur-2xl">
-      <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+    <header className="sticky top-0 z-40 border-b border-border/30 bg-glass/82 backdrop-blur-xl">
+      <div className="mx-auto flex w-full max-w-[100rem] flex-col gap-3 px-3 py-3 sm:px-5 md:px-6 xl:px-8">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <button
               type="button"
               onClick={onMobileMenuToggle}
-              className="inline-flex rounded-2xl border border-border/70 bg-card/90 px-3 py-2 text-muted-foreground shadow-soft transition hover:bg-overlay hover:text-foreground lg:hidden"
+              className="inline-flex rounded-control border border-border/45 bg-card p-2.5 text-muted-foreground shadow-soft transition hover:bg-hover hover:text-foreground md:hidden"
               aria-label="Open navigation"
             >
               <MenuIcon className="h-5 w-5" />
             </button>
             <div className="min-w-0">
-              <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-50 sm:text-[2.15rem]">{title}</h1>
-              {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300/78">{description}</p> : null}
+              <h1 className="truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{title}</h1>
+              {description ? <p className="mt-0.5 hidden max-w-3xl text-sm leading-5 text-muted-foreground sm:block">{description}</p> : null}
             </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-3">
+          <div className="flex shrink-0 items-center justify-end gap-2">
             {actions}
-            <HeaderIconButton label="Notifications"><BellIcon className="h-5 w-5" /></HeaderIconButton>
-            <HeaderIconButton label="Alerts"><BellDotIcon className="h-5 w-5" /></HeaderIconButton>
             <ThemeToggle />
-            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(30,41,59,0.28))] text-sm font-semibold text-slate-50 shadow-[0_12px_24px_rgba(15,23,42,0.28)]">CG</div>
             <a href="/login" onClick={onLogout}>
-              <Button variant="ghost" className="border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10">Log out</Button>
+              <Button variant="ghost" size="sm" className="border border-border/35 bg-card/75">Log out</Button>
             </a>
           </div>
         </div>
@@ -332,13 +345,14 @@ function ThemeToggle() {
     <Button
       type="button"
       variant="ghost"
-      className="border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+      size="sm"
+      className="border border-border/35 bg-card/75"
       onClick={toggleTheme}
       aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
       aria-pressed={isDark}
     >
       <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center">{isDark ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}</span>
-      {isDark ? "Light mode" : "Dark mode"}
+      <span className="hidden sm:inline">{isDark ? "Light" : "Dark"}</span>
     </Button>
   );
 }
@@ -429,6 +443,3 @@ function PanelIcon({ className }: { className?: string }) { return <IconWrapper 
 function MenuIcon({ className }: { className?: string }) { return <IconWrapper className={className}><path d="M4 7h16M4 12h16M4 17h16" /></IconWrapper>; }
 function SunIcon({ className }: { className?: string }) { return <IconWrapper className={className}><circle cx="12" cy="12" r="4" /><path d="M12 2v2.5M12 19.5V22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M2 12h2.5M19.5 12H22M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" /></IconWrapper>; }
 function MoonIcon({ className }: { className?: string }) { return <IconWrapper className={className}><path d="M20 14.5A7.5 7.5 0 1 1 9.5 4 6.2 6.2 0 0 0 20 14.5Z" /></IconWrapper>; }
-function BellIcon({ className }: { className?: string }) { return <IconWrapper className={className}><path d="M15 17H9" /><path d="M18 16V11a6 6 0 1 0-12 0v5l-2 2h16l-2-2Z" /></IconWrapper>; }
-function BellDotIcon({ className }: { className?: string }) { return <IconWrapper className={className}><path d="M15 17H9" /><path d="M18 16V11a6 6 0 1 0-12 0v5l-2 2h11" /><circle cx="19" cy="5" r="3" /></IconWrapper>; }
-function HeaderIconButton({ label, children }: { label: string; children: ReactNode }) { return <button type="button" aria-label={label} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-slate-50">{children}</button>; }

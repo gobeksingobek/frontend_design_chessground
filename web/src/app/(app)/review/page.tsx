@@ -15,7 +15,7 @@ export default function ReviewPage() {
   return (
     <PageContainer title="Review" description="Process queued review items generated from deviations and coverage gaps.">
       <PageSection>
-        <SectionHeader title="Review queue" description="The review queue now follows the same page title and intro placement used across analysis pages." />
+        <SectionHeader title="Review queue" description="Inspect deviations and coverage gaps, then apply the appropriate repertoire action." />
         <StatsTable title="Review" description="Review items generated from your deviations and coverage gaps." queryKey={["review-items"]} queryFn={listReviewItems} />
         <ReviewActionsPanel onActionCommitted={() => refreshReviewPageStateAtomically(queryClient)} />
       </PageSection>

@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 
 import { Card } from "@/components/ui/card";
-import { SupportRail, WorkspaceLayout } from "@/components/ui/page-patterns";
+import { ResponsiveContextPanel } from "@/components/ui/responsive-context-panel";
 import { cn } from "@/lib/cn";
 
 interface BoardWorkspaceProps {
@@ -9,6 +9,7 @@ interface BoardWorkspaceProps {
   board: ReactNode;
   main?: ReactNode;
   aside?: ReactNode;
+  asideLabel?: string;
   footer?: ReactNode;
   className?: string;
   heroClassName?: string;
@@ -22,6 +23,7 @@ export function BoardWorkspace({
   board,
   main,
   aside,
+  asideLabel = "Position context",
   footer,
   className,
   heroClassName,
@@ -30,21 +32,18 @@ export function BoardWorkspace({
   asideClassName,
 }: BoardWorkspaceProps) {
   return (
-    <WorkspaceLayout
-      className={className}
-      heroClassName={heroClassName}
-      support={aside ? <SupportRail className={asideClassName}>{aside}</SupportRail> : undefined}
-      hero={(
-        <div className="grid gap-grid-gap">
+    <div className={cn("grid gap-grid-gap xl:grid-cols-[minmax(0,1fr)_21rem] xl:items-start", className)}>
+      <div className="grid min-w-0 gap-grid-gap">
+        <Card variant="workspace" className={cn("gap-grid-gap overflow-hidden", heroClassName)}>
           {header ? <div>{header}</div> : null}
-          <div className={cn("mx-auto aspect-square w-full max-w-[900px]", boardWrapperClassName)}>
+          <div className={cn("mx-auto aspect-square w-full max-w-[min(100%,calc(100vh-12rem))]", boardWrapperClassName)}>
             {board}
           </div>
           {main ? <Card variant="workspacePanel" className={cn("gap-grid-gap", mainCardClassName)}>{main}</Card> : null}
-        </div>
-      )}
-    >
-      {footer}
-    </WorkspaceLayout>
+        </Card>
+        {footer}
+      </div>
+      {aside ? <ResponsiveContextPanel label={asideLabel} className={asideClassName}>{aside}</ResponsiveContextPanel> : null}
+    </div>
   );
 }

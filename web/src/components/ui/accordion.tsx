@@ -15,7 +15,7 @@ export function AccordionItem({ title, subtitle, children, defaultOpen = false, 
           <div className="text-base font-semibold text-foreground">{title}</div>
           {subtitle ? <div className="text-sm text-muted-foreground">{subtitle}</div> : null}
         </div>
-        <Button type="button" size="sm" variant="ghost" onClick={() => setOpen((value) => !value)}>{open ? "Collapse" : "Expand"}</Button>
+        <Button type="button" size="sm" variant="ghost" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{open ? "Collapse" : "Expand"}</Button>
       </div>
       {open ? <div>{children}</div> : null}
     </Card>

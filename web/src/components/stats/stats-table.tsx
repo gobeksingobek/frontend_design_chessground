@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { FormField } from "@/components/ui/form-field";
 import { DenseControlRow, DetailPane, EmptyState, FilterPanel } from "@/components/ui/page-patterns";
 import { Select } from "@/components/ui/select";
+import { ResponsiveContextPanel } from "@/components/ui/responsive-context-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableContainer, TableHead, TableRow, Td, Th } from "@/components/ui/table";
 import { Tabs } from "@/components/ui/tabs";
@@ -138,7 +139,7 @@ export function StatsTable({
               </FormField>
             </DenseControlRow>
           </FilterPanel>
-          <div className="grid gap-grid-gap xl:grid-cols-[minmax(0,1.65fr)_minmax(20rem,1fr)] xl:items-start">
+          <div className="grid gap-grid-gap xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
             <TableContainer className="xl:h-full">
               <Table>
                 <TableHead><tr>{columns.map((column) => <Th key={column}>{column}</Th>)}</tr></TableHead>
@@ -157,7 +158,7 @@ export function StatsTable({
                 </TableBody>
               </Table>
             </TableContainer>
-            <div className="grid gap-grid-gap">
+            <ResponsiveContextPanel label={`${title} detail`}>
               <DetailPane title={drilldownLabel} description="Inspect the selected row without losing the table context.">
                 {!selected ? <p className="text-sm text-muted-foreground">No row selected.</p> : null}
                 {selected ? (
@@ -216,7 +217,7 @@ export function StatsTable({
                 ) : null}
               </DetailPane>
               {pivotColumn ? <DetailPane title={`Pivot summary by ${pivotColumn}`} description="Most frequent values in the current result set."><ul className="grid gap-control-gap text-sm text-muted-foreground">{pivot.slice(0, 10).map((entry) => <li key={entry.key} className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card px-3 py-2"><span className="truncate">{entry.key}</span><span className="font-medium text-foreground">{entry.count}</span></li>)}</ul></DetailPane> : null}
-            </div>
+            </ResponsiveContextPanel>
           </div>
         </>
       ) : null}
@@ -225,5 +226,5 @@ export function StatsTable({
 }
 
 function StatsTableLoading() {
-  return <div className="grid gap-grid-gap xl:grid-cols-[minmax(0,1.65fr)_minmax(20rem,1fr)]"><Skeleton className="min-h-[24rem] w-full rounded-xl" /><Skeleton className="min-h-[24rem] w-full rounded-xl" /></div>;
+  return <div className="grid gap-grid-gap xl:grid-cols-[minmax(0,1fr)_20rem]"><Skeleton className="min-h-[24rem] w-full rounded-card" /><Skeleton className="hidden min-h-[24rem] w-full rounded-card xl:block" /></div>;
 }

@@ -40,6 +40,22 @@ This repository contains a chess repertoire analysis system with desktop, backen
 - Workspace analysis and fetch settings live in PostgreSQL `runtime_settings`.
 - Stockfish executable paths and worker CPU/process tuning are deployment configuration, never desktop or web runtime settings.
 
+## Engineering workflow
+- For implementation requests, gather the relevant context, make reasonable low-risk assumptions, and carry the work through implementation and proportionate verification. Ask only when a missing decision would materially change the result.
+- Search for existing implementations and helpers before adding new abstractions. Follow established naming, formatting, typing, localization, and UI conventions.
+- Prefer root-cause fixes and coherent changes across every affected surface; do not leave knowingly partial API, backend, desktop, worker, or web wiring.
+- Preserve behavior outside the requested scope. Add or update tests when behavior changes, and keep error handling explicit rather than swallowing failures or returning success-shaped fallbacks.
+- Read enough surrounding code before editing, batch related changes, and preserve unrelated worktree changes.
+- When asked for a code review, lead with actionable findings ordered by severity and include file and line references. If there are no findings, say so and identify any residual testing gaps.
+
+## Frontend design direction
+- For a new design or major redesign, establish a clear visual concept before implementation, covering typography, palette, hierarchy, spacing, surfaces, iconography, and motion. Preserve product behavior and information architecture where useful, but do not treat the current visual styling as a constraint.
+- Keep the shared component architecture described in `web/README.md`, but evolve its primitives, variants, and semantic theme tokens so the new direction is cohesive across the application rather than implemented as page-specific decoration.
+- Treat typography as a deliberate product decision. Do not default to Inter, Times New Roman, Arial, Roboto, or an unstyled system stack as the primary UI font. Choose a distinctive, highly legible family appropriate for a chess-analysis product, load it centrally, and expose it through shared theme tokens and consistent fallbacks.
+- Avoid generic, interchangeable dashboard composition. Use strong hierarchy, purposeful spacing, and chess-analysis-specific presentation, with a recognizable identity that remains practical for dense analysis workflows.
+- Use color, layered surfaces, and restrained visual texture intentionally. Avoid arbitrary gradients, raw colors, default purple-on-white styling, or a dark theme chosen only because it looks technical.
+- Keep motion purposeful and lightweight, and verify the redesigned UI at mobile, tablet, and desktop widths in both light and dark themes.
+
 ## Validation commands
 - Python unit/contract tests: `python -m pytest -q`
 - Apply PostgreSQL migrations: `python -m backend.bootstrap_postgres_schema`

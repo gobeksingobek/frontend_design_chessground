@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import "@fontsource-variable/ibm-plex-sans";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/ibm-plex-mono/600.css";
 import "./globals.css";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppQueryProvider } from "@/lib/query-provider";
 
 export const metadata: Metadata = {
-  title: "ChessGround Web",
-  description: "Web-first shell for ChessGround",
+  title: "ChessGround",
+  description: "A focused workspace for chess repertoire analysis and training.",
 };
 
 const themeInitScript = `
@@ -16,7 +20,7 @@ const themeInitScript = `
   const stored = window.localStorage.getItem(storageKey);
   const theme = stored === "light" || stored === "dark"
     ? stored
-    : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    : "dark";
   const root = document.documentElement;
   root.classList.toggle("dark", theme === "dark");
   root.dataset.theme = theme;

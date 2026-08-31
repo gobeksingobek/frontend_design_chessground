@@ -2,8 +2,10 @@
 
 import { type ReactNode, useMemo, useState } from "react";
 
+import { ChessBoard } from "@/components/chess/chess-board";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { ResponsiveContextPanel } from "@/components/ui/responsive-context-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BodyText, CaptionText, CardTitle, MutedText } from "@/components/ui/typography";
 import type { PositionIntelligenceResponse, TreeBranchMetricsResponse, TreeBrowseMove, TreeBrowseResponse, TreeCoverageResponse, TreeGameMove } from "@/lib/types";
@@ -122,18 +124,17 @@ export function TreeExplorerView({
   }
 
   return (
-    <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.18),transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.86),rgba(2,6,23,0.94))] p-5 shadow-[0_28px_80px_rgba(2,6,23,0.45)] ring-1 ring-inset ring-white/10 backdrop-blur-2xl md:p-7">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(96,165,250,0.14),transparent_24%),radial-gradient(circle_at_85%_15%,rgba(255,255,255,0.08),transparent_18%),radial-gradient(circle_at_55%_75%,rgba(148,163,184,0.08),transparent_26%)] opacity-90" />
-      <div className="relative grid gap-6">
-        <div className="flex flex-col gap-4 border-b border-white/10 pb-6 xl:flex-row xl:items-end xl:justify-between">
+    <div className="overflow-hidden rounded-card border border-border/40 bg-elevated p-4 shadow-panel md:p-6">
+      <div className="grid gap-6">
+        <div className="flex flex-col gap-4 border-b border-border/35 pb-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="grid gap-4">
             <div>
-              <h2 className="text-3xl font-semibold tracking-tight text-slate-50 sm:text-[2.6rem]">Opening Repertoire</h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300/80">
-                A dark glass workspace tuned to keep the tab rail, repertoire trees, and quick tools aligned exactly where users expect them.
+              <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Opening repertoire</h2>
+              <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted-foreground">
+                Compare the current position with repertoire branches, game evidence, and training progress.
               </p>
             </div>
-            <div className="inline-flex w-fit flex-wrap items-center gap-1 rounded-2xl border border-white/10 bg-white/5 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl">
+            <div className="inline-flex w-fit flex-wrap items-center gap-1 rounded-control border border-border/40 bg-card p-1 shadow-soft">
               {tabs.map((tab) => {
                 const active = activeTab === tab.id;
                 return (
@@ -142,10 +143,10 @@ export function TreeExplorerView({
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      "inline-flex min-w-[9rem] items-center justify-center gap-2 rounded-[1rem] px-4 py-3 text-base font-semibold transition",
+                      "inline-flex min-w-[8rem] items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60",
                       active
-                        ? "bg-[linear-gradient(180deg,rgba(148,163,184,0.28),rgba(59,130,246,0.18))] text-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_12px_24px_rgba(37,99,235,0.18)] ring-1 ring-inset ring-sky-300/35"
-                        : "text-slate-300/78 hover:bg-white/6 hover:text-slate-100",
+                        ? "bg-primary text-primary-foreground shadow-soft"
+                        : "text-muted-foreground hover:bg-hover hover:text-foreground",
                     )}
                   >
                     {tab.icon("h-4 w-4")}
@@ -158,35 +159,49 @@ export function TreeExplorerView({
 
           <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[24rem]">
             <GlassMetric label="Position" value={`#${browse.pos_id}`} detail="Current root" />
-            <label className="grid gap-2 rounded-[1.5rem] border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-300/80 backdrop-blur-xl">
+            <label className="grid gap-2 rounded-card border border-border/40 bg-card px-4 py-3 text-sm text-muted-foreground">
               Position id
-              <Input type="number" value={posId} onChange={(event) => onPosIdChange(Number(event.target.value) || 1)} className="border-white/10 bg-white/5 text-slate-100" />
+              <Input type="number" value={posId} onChange={(event) => onPosIdChange(Number(event.target.value) || 1)} />
             </label>
           </div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_22rem] xl:items-start">
-          <BranchPanel
-            title="White Repertoire"
-            subtitle={whiteRows[0]?.move ?? "No white branches yet"}
-            rows={whiteRows}
-            selectedMoveUci={selectedMoveUci}
-            onSelectMove={onSelectMove}
-            onOpenPosition={onPosIdChange}
-          />
-          <BranchPanel
-            title="Black Repertoire"
-            subtitle={blackRows[0]?.move ?? "No black branches yet"}
-            rows={activeTab === "favorites" ? favoriteRows : blackRows}
-            selectedMoveUci={selectedMoveUci}
-            onSelectMove={onSelectMove}
-            onOpenPosition={onPosIdChange}
-          />
-          <div className="grid gap-5">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_21rem] xl:items-start">
+          <div className="grid min-w-0 gap-5">
+            <div className="mx-auto aspect-square w-full max-w-[min(100%,calc(100vh-12rem))]">
+              <ChessBoard
+                fen={intelligence?.position.fen ?? undefined}
+                title="Repertoire position"
+                subtitle={`Position #${browse.pos_id} · branch selections remain linked to persisted tree data.`}
+                size="large"
+                surface="plain"
+                className="h-full max-w-none"
+              />
+            </div>
+            <div className="grid gap-5 lg:grid-cols-2">
+              <BranchPanel
+                title="White repertoire"
+                subtitle={whiteRows[0]?.move ?? "No white branches yet"}
+                rows={whiteRows}
+                selectedMoveUci={selectedMoveUci}
+                onSelectMove={onSelectMove}
+                onOpenPosition={onPosIdChange}
+              />
+              <BranchPanel
+                title="Black repertoire"
+                subtitle={blackRows[0]?.move ?? "No black branches yet"}
+                rows={activeTab === "favorites" ? favoriteRows : blackRows}
+                selectedMoveUci={selectedMoveUci}
+                onSelectMove={onSelectMove}
+                onOpenPosition={onPosIdChange}
+              />
+            </div>
+          </div>
+          <ResponsiveContextPanel label="Repertoire context">
             <InfoCard title="Info & Tools">
               <div className="grid gap-4">
                 <InfoLabel label="Move List" value={moveList || "No moves selected"} />
-                <div className="grid gap-3 text-sm text-slate-300/85">
+                <div className="grid gap-3 text-sm text-muted-foreground">
                   <p>Coverage reads directly from persisted tree payloads.</p>
                   <p>Selections stay aligned with the current tab and branch rails.</p>
                 </div>
@@ -194,21 +209,21 @@ export function TreeExplorerView({
             </InfoCard>
             <PositionIntelligenceCard intelligence={intelligence} />
             <InfoCard title="Tips">
-              <ul className="grid gap-3 pl-5 text-sm leading-6 text-slate-300/85 marker:text-sky-300">
+              <ul className="grid gap-3 pl-5 text-sm leading-6 text-muted-foreground marker:text-primary">
                 <li>Focus on the first high-priority continuations.</li>
                 <li>Use Favorites for your recurring repertoire checkpoints.</li>
                 <li>Keep the position control nearby for fast branch jumping.</li>
               </ul>
             </InfoCard>
             <InfoCard title="Debug Info">
-              <div className="grid gap-2 text-sm text-slate-300/85">
-                <div className="flex items-center justify-between gap-4"><span>Path</span><span className="font-medium text-slate-100">/tree</span></div>
-                <div className="flex items-center justify-between gap-4"><span>Status</span><span className="font-medium text-emerald-300">Active</span></div>
-                <div className="flex items-center justify-between gap-4"><span>Coverage</span><span className="font-medium text-slate-100">{canonical.coveragePct.toFixed(1)}%</span></div>
-                <div className="flex items-center justify-between gap-4"><span>Games</span><span className="font-medium text-slate-100">{canonical.gameCount}</span></div>
+              <div className="grid gap-2 text-sm text-muted-foreground">
+                <div className="flex items-center justify-between gap-4"><span>Path</span><span className="font-medium text-foreground">/tree</span></div>
+                <div className="flex items-center justify-between gap-4"><span>Status</span><span className="font-medium text-success">Active</span></div>
+                <div className="flex items-center justify-between gap-4"><span>Coverage</span><span className="font-medium text-foreground">{canonical.coveragePct.toFixed(1)}%</span></div>
+                <div className="flex items-center justify-between gap-4"><span>Games</span><span className="font-medium text-foreground">{canonical.gameCount}</span></div>
               </div>
             </InfoCard>
-          </div>
+          </ResponsiveContextPanel>
         </div>
 
         <InfoCard title="Training Progress" className="gap-6">
@@ -241,10 +256,10 @@ function BranchPanel({
   onOpenPosition?: (posId: number) => void;
 }) {
   return (
-    <section className="rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(15,23,42,0.22))] px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl md:px-6 md:py-6">
-      <div className="border-b border-white/10 pb-5">
-        <CardTitle className="text-[2rem] font-semibold tracking-tight text-slate-50">{title}</CardTitle>
-        <BodyText className="mt-3 text-[1.8rem] font-semibold text-white/90">{subtitle}</BodyText>
+    <section className="rounded-card border border-border/40 bg-card px-4 py-4 shadow-soft md:px-5 md:py-5">
+      <div className="border-b border-border/35 pb-4">
+        <CardTitle className="text-xl font-semibold tracking-tight text-foreground">{title}</CardTitle>
+        <BodyText className="mt-2 text-lg font-semibold text-foreground/90">{subtitle}</BodyText>
       </div>
       <div className="mt-5 grid gap-4">
         {rows.length > 0 ? (
@@ -253,35 +268,35 @@ function BranchPanel({
             const nextPosId = toNavigablePositionId(row.nextPosId);
             return (
               <div key={row.key} className="relative pl-14">
-                <span className={cn("absolute left-6 top-0 w-px bg-slate-500/45", index === rows.length - 1 ? "h-8" : "h-[calc(100%+1rem)]")} />
-                <span className="absolute left-6 top-8 h-px w-8 bg-slate-500/45" />
-                <span className={cn("absolute left-[18px] top-[26px] h-4 w-4 rounded-full border", selected ? "border-sky-300 bg-sky-300 shadow-[0_0_0_6px_rgba(56,189,248,0.14)]" : "border-slate-400/45 bg-slate-800/90")} />
+                <span className={cn("absolute left-6 top-0 w-px bg-border/55", index === rows.length - 1 ? "h-8" : "h-[calc(100%+1rem)]")} />
+                <span className="absolute left-6 top-8 h-px w-8 bg-border/55" />
+                <span className={cn("absolute left-[18px] top-[26px] h-4 w-4 rounded-full border", selected ? "border-primary bg-primary shadow-[0_0_0_5px_rgb(var(--primary)/0.12)]" : "border-border bg-elevated")} />
                 <button
                   type="button"
                   onClick={() => onSelectMove?.(row.meta)}
                   className={cn(
-                    "grid w-full gap-2 rounded-[1rem] border px-4 py-3 text-left transition backdrop-blur-xl",
+                    "grid w-full gap-2 rounded-control border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60",
                     selected
-                      ? "border-sky-300/30 bg-[linear-gradient(180deg,rgba(59,130,246,0.18),rgba(30,41,59,0.42))] text-slate-50 shadow-[0_16px_30px_rgba(15,23,42,0.22)]"
-                      : "border-white/8 bg-white/6 text-slate-100 hover:bg-white/10",
+                      ? "border-primary/35 bg-primary/10 text-foreground shadow-soft"
+                      : "border-border/35 bg-elevated text-foreground hover:border-border/65 hover:bg-hover/60",
                   )}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/20 text-slate-100">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-md border border-border/35 bg-muted/60 text-foreground">
                       {row.icon === "repertoire" ? <ArrowCornerIcon className="h-4 w-4" /> : row.icon === "favorite" ? <StarIcon className="h-4 w-4" /> : <ChessTowerIcon className="h-4 w-4" />}
                     </span>
                     <div className="min-w-0">
                       <p className="truncate text-lg font-semibold">{row.move}</p>
-                      <p className="truncate text-sm text-slate-300/72">{row.detail}</p>
+                      <p className="truncate text-sm text-muted-foreground">{row.detail}</p>
                     </div>
                   </div>
-                  <p className="text-sm font-medium text-slate-300/80">{row.meta}</p>
+                  <p className="font-mono text-sm font-medium text-muted-foreground">{row.meta}</p>
                 </button>
                 {nextPosId ? (
                   <button
                     type="button"
                     onClick={() => onOpenPosition?.(nextPosId)}
-                    className="mt-2 text-sm font-medium text-sky-200 transition hover:text-sky-100"
+                    className="mt-2 text-sm font-medium text-primary transition hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
                   >
                     Open position #{nextPosId}
                   </button>
@@ -290,7 +305,7 @@ function BranchPanel({
             );
           })
         ) : (
-          <MutedText className="text-sm text-slate-400">No branches available for this column yet.</MutedText>
+          <MutedText className="text-sm">No branches available for this column yet.</MutedText>
         )}
       </div>
     </section>
@@ -299,9 +314,9 @@ function BranchPanel({
 
 function InfoCard({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
   return (
-    <section className={cn("grid gap-4 rounded-[1.6rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(2,6,23,0.26))] px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl", className)}>
-      <div className="border-b border-white/10 pb-3">
-        <CardTitle className="text-xl font-semibold text-slate-50">{title}</CardTitle>
+    <section className={cn("grid gap-4 rounded-card border border-border/40 bg-card px-4 py-4 shadow-soft", className)}>
+      <div className="border-b border-border/35 pb-3">
+        <CardTitle className="text-base font-semibold text-foreground">{title}</CardTitle>
       </div>
       {children}
     </section>
@@ -323,7 +338,7 @@ function PositionIntelligenceCard({ intelligence }: { intelligence?: PositionInt
             <GlassMetric label="Avg CPL" value={intelligence.evaluation_summary.avg_your_cpl === null ? "-" : String(Math.round(intelligence.evaluation_summary.avg_your_cpl))} detail={intelligence.evaluation_summary.avg_rep_cpl === null ? "No repertoire baseline" : `Rep CPL ${Math.round(intelligence.evaluation_summary.avg_rep_cpl)}`} />
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-300/85">
+          <div className="rounded-control border border-border/35 bg-muted/55 px-3 py-2 text-sm text-muted-foreground">
             Position #{intelligence.position.pos_id} · {intelligence.position.side_to_move === "w" ? "White" : intelligence.position.side_to_move === "b" ? "Black" : "Unknown"} to move
           </div>
 
@@ -333,7 +348,7 @@ function PositionIntelligenceCard({ intelligence }: { intelligence?: PositionInt
           {panel.matters.length > 0 ? (
             <div className="grid gap-2">
               <CaptionText>Why this position matters</CaptionText>
-              <ul className="grid gap-2 pl-4 text-sm leading-5 text-slate-300/85 marker:text-sky-300">
+              <ul className="grid gap-2 pl-4 text-sm leading-5 text-muted-foreground marker:text-primary">
                 {panel.matters.map((reason) => <li key={reason}>{reason}</li>)}
               </ul>
             </div>
@@ -346,7 +361,7 @@ function PositionIntelligenceCard({ intelligence }: { intelligence?: PositionInt
               <CaptionText>Recent evidence</CaptionText>
               <div className="grid gap-2">
                 {panel.recentGameLabels.map((label) => (
-                  <div key={label} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-300/85">
+                  <div key={label} className="rounded-control border border-border/35 bg-muted/55 px-3 py-2 text-sm text-muted-foreground">
                     {label}
                   </div>
                 ))}
@@ -367,7 +382,7 @@ function MiniMoveList({ title, moves, empty }: { title: string; moves: string[];
       <CaptionText>{title}</CaptionText>
       {moves.length > 0 ? (
         <div className="flex flex-wrap gap-2">
-          {moves.map((move) => <span key={move} className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-sm font-medium text-slate-100">{move}</span>)}
+          {moves.map((move) => <span key={move} className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 font-mono text-sm font-medium text-foreground">{move}</span>)}
         </div>
       ) : (
         <MutedText className="text-sm">{empty}</MutedText>
@@ -379,25 +394,21 @@ function MiniMoveList({ title, moves, empty }: { title: string; moves: string[];
 function InfoLabel({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid gap-2">
-      <p className="text-sm font-medium text-slate-300/78">{label}</p>
-      <div className="rounded-[1rem] border border-white/10 bg-black/20 px-4 py-3 text-base font-medium text-slate-100">{value}</div>
+      <p className="text-sm font-medium text-muted-foreground">{label}</p>
+      <div className="rounded-control border border-border/35 bg-muted/55 px-4 py-3 font-mono text-sm font-medium text-foreground">{value}</div>
     </div>
   );
 }
 
-function ProgressRow({ label, value, tone }: { label: string; value: number; tone: "emerald" | "sky" }) {
-  const fillClass = tone === "emerald"
-    ? "from-emerald-400 via-teal-400 to-emerald-300"
-    : "from-sky-500 via-blue-500 to-indigo-400";
-
+function ProgressRow({ label, value }: { label: string; value: number; tone: "emerald" | "sky" }) {
   return (
     <div className="grid gap-3">
       <div className="flex items-center justify-between gap-4">
-        <p className="text-lg font-medium text-slate-100">{label}</p>
-        <div className="rounded-[1rem] border border-white/10 bg-black/20 px-4 py-2 text-2xl font-semibold text-slate-50">{value}%</div>
+        <p className="text-base font-medium text-foreground">{label}</p>
+        <div className="rounded-control border border-border/35 bg-muted/55 px-3 py-1.5 font-mono text-xl font-semibold text-foreground">{value}%</div>
       </div>
-      <div className="h-4 overflow-hidden rounded-full bg-white/10 ring-1 ring-inset ring-white/10">
-        <div className={cn("h-full rounded-full bg-gradient-to-r", fillClass)} style={{ width: `${value}%` }} />
+      <div className="h-2.5 overflow-hidden rounded-full bg-muted ring-1 ring-inset ring-border/30">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${value}%` }} />
       </div>
     </div>
   );
@@ -405,10 +416,10 @@ function ProgressRow({ label, value, tone }: { label: string; value: number; ton
 
 function GlassMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
-    <div className="rounded-[1.25rem] border border-white/10 bg-white/5 px-4 py-4 text-slate-100 backdrop-blur-xl">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-slate-50">{value}</p>
-      <p className="mt-1 text-sm text-slate-300/72">{detail}</p>
+    <div className="rounded-card border border-border/35 bg-muted/55 px-4 py-4 text-foreground">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      <p className="mt-2 font-mono text-2xl font-semibold text-foreground">{value}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
     </div>
   );
 }

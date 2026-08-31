@@ -11,7 +11,7 @@ export function Dialog({ open, onClose, title, description, children, footer, cl
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-bg/80 p-4 backdrop-blur-sm">
-      <Card className={cn("w-full max-w-2xl gap-4 border-border bg-panel", className)}>
+      <Card variant="glass" className={cn("w-full max-w-2xl gap-4", className)} role="dialog" aria-modal="true" aria-label={title}>
         <div className="flex items-start justify-between gap-4">
           <div className="grid gap-1">
             <CardTitle>{title}</CardTitle>

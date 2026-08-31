@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, ReactNode, useContext, useMemo, useState } from "react";
 
 export type Theme = "light" | "dark";
 
@@ -13,6 +13,10 @@ type ThemeContextValue = {
   toggleTheme: () => void;
 };
 
+export function resolveStoredTheme(value: string | null): Theme {
+  return value === "light" || value === "dark" ? value : "dark";
+}
+
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function applyTheme(theme: Theme) {
@@ -24,21 +28,11 @@ function applyTheme(theme: Theme) {
 
 function getPreferredTheme(): Theme {
   if (typeof window === "undefined") return "dark";
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored === "light" || stored === "dark") return stored;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return resolveStoredTheme(window.localStorage.getItem(STORAGE_KEY));
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("dark");
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    const nextTheme = getPreferredTheme();
-    setThemeState(nextTheme);
-    applyTheme(nextTheme);
-    setMounted(true);
-  }, []);
+  const [theme, setThemeState] = useState<Theme>(getPreferredTheme);
 
   const value = useMemo<ThemeContextValue>(() => ({
     theme,
@@ -59,20 +53,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       applyTheme(nextTheme);
     },
   }), [theme]);
-
-  useEffect(() => {
-    if (!mounted || typeof window === "undefined") return;
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = () => {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored === "light" || stored === "dark") return;
-      const nextTheme = media.matches ? "dark" : "light";
-      setThemeState(nextTheme);
-      applyTheme(nextTheme);
-    };
-    media.addEventListener("change", handleChange);
-    return () => media.removeEventListener("change", handleChange);
-  }, [mounted]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

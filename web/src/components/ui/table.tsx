@@ -7,19 +7,19 @@ export function Table({ className, children, ...props }: TableHTMLAttributes<HTM
 }
 
 export function TableContainer({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn("overflow-x-auto rounded-xl border border-border bg-card shadow-soft", className)}>{children}</div>;
+  return <div className={cn("overflow-x-auto rounded-card border border-border/45 bg-card shadow-soft", className)}>{children}</div>;
 }
 
 export function TableHead({ className, children }: { className?: string; children: ReactNode }) {
-  return <thead className={cn("bg-muted/90 text-muted-foreground", className)}>{children}</thead>;
+  return <thead className={cn("bg-muted/70 text-muted-foreground", className)}>{children}</thead>;
 }
 
 export function TableBody({ children }: { children: ReactNode }) {
-  return <tbody className="divide-y divide-border/80 bg-card">{children}</tbody>;
+  return <tbody className="divide-y divide-border/35 bg-card">{children}</tbody>;
 }
 
 export function TableRow({ className, children, ...props }: HTMLAttributes<HTMLTableRowElement>) {
-  return <tr className={cn("transition-colors", className)} {...props}>{children}</tr>;
+  return <tr className={cn("transition-colors duration-150 hover:bg-hover/60", className)} {...props}>{children}</tr>;
 }
 
 export function Th({ className, children }: { className?: string; children: ReactNode }) {

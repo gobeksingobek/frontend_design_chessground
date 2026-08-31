@@ -37,14 +37,14 @@ export function Tabs({
 
   return (
     <div className={cn("grid gap-4", className)}>
-      <div className="flex flex-wrap gap-2 border-b border-border pb-2">
+      <div className="flex flex-wrap gap-1 border-b border-border/40 pb-2" role="tablist">
         {items.map((item) => (
-          <Button key={item.id} type="button" size="sm" variant={item.id === current?.id ? "primary" : "ghost"} onClick={() => setActive(item.id)}>
+          <Button key={item.id} type="button" role="tab" aria-selected={item.id === current?.id} size="sm" variant={item.id === current?.id ? "primary" : "ghost"} onClick={() => setActive(item.id)}>
             {item.label}
           </Button>
         ))}
       </div>
-      <div>{current?.content}</div>
+      <div role="tabpanel">{current?.content}</div>
     </div>
   );
 }

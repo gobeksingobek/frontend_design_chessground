@@ -14,6 +14,7 @@ module.exports = {
         card: "rgb(var(--card) / <alpha-value>)",
         elevated: "rgb(var(--elevated) / <alpha-value>)",
         overlay: "rgb(var(--overlay) / <alpha-value>)",
+        glass: "rgb(var(--glass) / <alpha-value>)",
         primary: {
           DEFAULT: "rgb(var(--primary) / <alpha-value>)",
           foreground: "rgb(var(--primary-foreground) / <alpha-value>)",
@@ -71,9 +72,9 @@ module.exports = {
         },
       },
       spacing: { xs: "0.25rem", sm: "0.5rem", md: "0.75rem", lg: "1rem", xl: "1.5rem", "2xl": "2rem", "3xl": "3rem", "control-gap": "0.75rem", "card-pad": "1.5rem", "grid-gap": "1.5rem", "section-gap": "2rem", "page-gap": "3rem", "page-pad": "1rem", "page-pad-lg": "2rem" },
-      borderRadius: { sm: "0.5rem", md: "0.75rem", lg: "1rem", xl: "1.25rem", pill: "9999px" },
+      borderRadius: { sm: "0.5rem", md: "0.75rem", lg: "1rem", xl: "1.25rem", card: "var(--radius-card)", control: "var(--radius-control)", pill: "9999px" },
       boxShadow: { soft: "var(--shadow-soft)", panel: "var(--shadow-panel)", board: "var(--shadow-board)", focus: "0 0 0 3px rgb(var(--focus) / 0.35)" },
-      fontFamily: { sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"], mono: ["ui-monospace", "SFMono-Regular", "monospace"] },
+      fontFamily: { sans: ["IBM Plex Sans Variable", "IBM Plex Sans", "ui-sans-serif", "sans-serif"], mono: ["IBM Plex Mono", "ui-monospace", "monospace"] },
       fontSize: {
         display: ["2.25rem", { lineHeight: "2.75rem", fontWeight: "700" }],
         "page-title": ["1.75rem", { lineHeight: "2.25rem", fontWeight: "650" }],

@@ -11,6 +11,7 @@ import { EvalBar } from "@/components/games/eval-bar";
 import { MoveQualityBadge } from "@/components/games/move-quality-badge";
 import { DenseControlRow, DetailPane, EmptyState, FilterPanel } from "@/components/ui/page-patterns";
 import { Select } from "@/components/ui/select";
+import { ResponsiveContextPanel } from "@/components/ui/responsive-context-panel";
 import { Table, TableBody, TableContainer, TableHead, Td, Th } from "@/components/ui/table";
 import { BodyText, CaptionText, CardTitle, FieldLabel, MutedText } from "@/components/ui/typography";
 import { cn } from "@/lib/cn";
@@ -175,11 +176,11 @@ export function GameDetail({
         ) : <EmptyState title="No game metadata" description="This game does not currently expose header fields." />}
       </DetailPane>
 
-      <div className={cn("grid gap-grid-gap xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.9fr)] xl:items-start", activeTab === "moves" && "xl:grid-cols-1")}>
+      <div className="grid gap-grid-gap">
         <DetailPane title="Board review" description="The board and move-level analysis stay side by side so board navigation never competes with the selected context.">
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.95fr)] xl:items-start">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_21rem] xl:items-start">
             <ChessBoard fen={boardFen} title="Selected game position" subtitle="Board highlights stay in sync with the selected move, analysis tools, and keyboard navigation." currentPlyIndex={cursorIndex} lastMove={lastMove} onNavigateNext={navigateNext} onNavigatePrev={navigatePrev} onNavigateStart={navigateStart} onNavigateEnd={navigateEnd} onMoveAttempt={({ uci }) => { const nextMove = moves[cursorIndex]; if (nextMove?.uci_move === uci) navigateNext(); }} size="large" orientation={orientation} />
-            <div className="grid gap-4 xl:sticky xl:top-24">
+            <ResponsiveContextPanel label="Move analysis">
               <FilterPanel title="Analysis side panel" description="Selection controls, eval summaries, and sideline actions stay together next to the board.">
                 <label className="grid gap-xs">
                   <FieldLabel as="span">Move ply</FieldLabel>
@@ -214,7 +215,7 @@ export function GameDetail({
               {selectedMove?.fen ? <BodyText className="rounded-xl border border-border/70 bg-background/60 px-4 py-3"><Link className="font-medium text-primary hover:text-secondary" href={{ pathname: "/analysis", query: { game_id: String(gameId), move_ply: String(selectedMove.ply), fen: selectedMove.fen } }}>Open in /analysis with this position</Link></BodyText> : null}
               {selectedMove ? <BodyText className="rounded-xl border border-border/70 bg-background/60 px-4 py-3"><Link className="font-medium text-primary hover:text-secondary" href={{ pathname: "/tree", query: buildTreePositionRouteQuery(selectedMove.pos_id) }}>Open position #{selectedMove.pos_id} in tree intelligence</Link></BodyText> : null}
               {selectedMove?.fen ? <SidelineAnalysisForm key={`${selectedMove.ply}-${selectedMove.fen}`} title="Queue sideline from this game move" initialGameId={String(gameId)} initialMovePly={selectedMove.ply} initialFen={selectedMove.fen} lockedFields={{ gameId: true, movePly: true, fen: true }} /> : <EmptyState title="Select a move to analyze" description="Choose a move with an available FEN to queue a quick sideline evaluation from this game." />}
-            </div>
+            </ResponsiveContextPanel>
           </div>
         </DetailPane>
 
