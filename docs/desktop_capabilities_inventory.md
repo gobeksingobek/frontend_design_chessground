@@ -1,28 +1,13 @@
-# Desktop capability inventory
+# Desktop capability contract
 
-## Source references
-- `README.md`
-- `main.py`
-- `storage/queries.py`
-- `storage/database.py`
+The PySide desktop client is an HTTP client over the same authenticated backend contracts as the web application. `AppController` may read optional local PGN directories only to package and upload their contents; it has no database or Stockfish access.
 
-## Capabilities from desktop app
-- Loads and persists configuration from `config/settings.ini` (paths, player names, analysis and fetch settings).
-- Imports repertoire PGNs and game PGNs, then runs matching/compliance analysis.
-- Runs Stockfish engine analysis and stores per-ply eval metrics.
-- Computes and stores aggregated statistics (lines, time usage, rating bands, insights).
-- Supports tree exploration backed by repertoire edges and game transition stats.
-- Supports trainer state management (`learned`, `needs_review`, streaks, priority overrides, auto-priority).
-- Supports review propositions and branch queue decisions for missing-coverage branches.
+The desktop currently uses API contracts for:
 
-## Storage paths and files
-- Default PostgreSQL DB: `data/analysis.db`.
-- Runtime settings: `config/settings.ini`.
-- Fetch state marker: `<games_dir>/.fetch_state.json` (analysis runtime manager path).
+- full, incremental, engine-only, matching, detail, per-game, and smoke analysis jobs;
+- repertoire synchronization and game PGN upload;
+- game, line, tree, position-game, monthly-time, time-pattern, rating-band, insight, and review reads;
+- line moves, position lookup, mainline overrides, trainer state/sessions, review actions, and sideline requests;
+- shared durable job polling and cancellation state.
 
-## Trainer/review storage tables
-- `trainer_line_state`: learned/review progression and priority controls.
-- `review_items`: generated review items shown in review view.
-- `review_propositions`: actionable missing-coverage propositions.
-- `branch_queue`: queue table for approved review propositions.
-- `sideline_queue`: sideline requests from gameplay/deviation handling.
+Local settings are limited to backend URL/token, optional PGN upload directories, and piece assets. Canonical workspace settings are loaded from and saved to the backend.

@@ -8,11 +8,23 @@ from backend import read_api
 
 @dataclass
 class _Settings:
-    data_backend: str = "postgres"
     postgres_dsn: str = "postgres://fake"
+    workspace_id: str = "00000000-0000-0000-0000-000000000001"
 
 
 class _FakeConn:
+    async def fetchrow(self, query: str, *args):
+        if "SELECT (SELECT COUNT(*)" in query:
+            return {
+                "lines": 3,
+                "manual_priority": 1,
+                "auto_priority": 2,
+                "games": 5,
+                "matched": 4,
+                "fully_compliant": 2,
+            }
+        return None
+
     async def fetchval(self, query: str, *args):
         if "FROM repertoire_lines" in query and "is_priority" not in query:
             return 3

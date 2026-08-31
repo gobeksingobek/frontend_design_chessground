@@ -28,18 +28,16 @@ services:
         sync: false
       - key: API_AUTH_TOKEN
         sync: false
-      - key: DATA_BACKEND
-        value: postgres
-      - key: ENFORCE_POSTGRES_ON_RENDER
-        value: "1"
+      - key: STOCKFISH_ENGINE_ID
+        sync: false
       - key: API_CORS_ORIGINS
         value: https://chessground.onrender.com
 
   - type: worker
-    name: chessground-worker
+    name: chessground-orchestration-worker
     runtime: python
     buildCommand: uv sync --locked --no-dev
-    startCommand: uv run --no-sync python -m backend.worker_service
+    startCommand: uv run --no-sync python -m backend.worker_service --capability orchestration
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.15
@@ -49,5 +47,47 @@ services:
         sync: false
       - key: REDIS_URL
         sync: false
+      - key: WORKER_CAPABILITY
+        value: orchestration
+      - key: STOCKFISH_ENGINE_ID
+        sync: false
+
+  - type: worker
+    name: chessground-ingest-worker
+    runtime: python
+    buildCommand: uv sync --locked --no-dev
+    startCommand: uv run --no-sync python -m backend.worker_service --capability ingest
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.15
+      - key: UV_VERSION
+        value: 0.10.2
+      - key: POSTGRES_DSN
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: WORKER_CAPABILITY
+        value: ingest
+
+  - type: worker
+    name: chessground-engine-worker
+    runtime: python
+    buildCommand: uv sync --locked --no-dev
+    startCommand: uv run --no-sync python -m backend.worker_service --capability engine
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.15
+      - key: UV_VERSION
+        value: 0.10.2
+      - key: POSTGRES_DSN
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: WORKER_CAPABILITY
+        value: engine
       - key: STOCKFISH_PATH
+        sync: false
+      - key: STOCKFISH_DEPTH
+        value: "14"
+      - key: STOCKFISH_ENGINE_ID
         sync: false

@@ -14,10 +14,7 @@ from urllib.request import Request, urlopen
 
 import chess.pgn
 
-try:
-    from storage import queries
-except ModuleNotFoundError:  # pragma: no cover - package import fallback
-    from repertoire_analyzer.storage import queries
+from parsing.game_identity import compute_game_hash
 
 
 USER_AGENT = "RepertoireAnalyzer/1.0"
@@ -138,7 +135,7 @@ def _compute_hash_from_pgn(pgn_text: str) -> str | None:
         return None
     tags = dict(game.headers)
     moves_uci = [move.uci() for move in game.mainline_moves()]
-    return queries.compute_game_hash(tags, moves_uci)
+    return compute_game_hash(tags, moves_uci)
 
 
 def _filter_new_games(
@@ -188,8 +185,9 @@ def fetch_games(
 
     chesscom_root = games_dir / "chesscom"
     lichess_root = games_dir / "lichess"
-    chesscom_root.mkdir(parents=True, exist_ok=True)
-    lichess_root.mkdir(parents=True, exist_ok=True)
+    if write_files:
+        chesscom_root.mkdir(parents=True, exist_ok=True)
+        lichess_root.mkdir(parents=True, exist_ok=True)
 
     for username in chesscom_usernames:
         summaries.append(

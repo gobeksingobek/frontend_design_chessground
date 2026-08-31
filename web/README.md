@@ -6,6 +6,7 @@ Run the canonical UI regression suite with:
 
 ```bash
 npm run test:ui-regression
+npm run check:contracts
 ```
 
 The command uses Node's test runner with a local loader that transpiles TS/TSX and resolves the `@/` alias to `web/src/*`, matching application imports.
@@ -26,8 +27,9 @@ Not accepted:
 - Archives without any PGN files.
 
 Duplicate protection:
-- Exact duplicate upload payloads are rejected with a conflict message.
-- Duplicate lines inside the upload (already known canonical line path hashes) are skipped and reported in the import result.
+- `Idempotency-Key` prevents duplicate job creation for a repeated request.
+- Content hashes deduplicate source artifacts within a workspace.
+- Already known canonical repertoire line path hashes are skipped during ingest and reported in the job result.
 
 ## Frontend UI architecture
 

@@ -214,6 +214,30 @@ export interface TreeBranchMetricsResponse {
   top_game_branches: TreeGameMove[];
 }
 
+export interface DurableJob {
+  job_id: string;
+  workspace_id: string;
+  parent_job_id: string | null;
+  job_type: string;
+  status: "queued" | "running" | "retry" | "completed" | "failed" | "cancelled";
+  priority: number;
+  idempotency_key: string;
+  request: Record<string, unknown>;
+  progress: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  error_code: string | null;
+  error_detail: string | null;
+  attempts: number;
+  max_attempts: number;
+  cancellation_requested: boolean;
+  queued_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  heartbeat_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PositionIntelligenceResponse {
   pos_id: number;
   my_side_only: boolean;
@@ -427,7 +451,7 @@ export interface ReviewActionResponse {
   priority_change: { line_id: string | null; before: number | null; after: number | null } | null;
 }
 
-export type AnalysisRunType = "full-analysis" | "engine-only-analysis" | "fetch-games" | "smoke-test";
+export type AnalysisRunType = string;
 export type AnalysisJobState = "idle" | "running" | "completed" | "failed";
 
 export interface AnalysisRunResponse {
@@ -435,6 +459,9 @@ export interface AnalysisRunResponse {
   detail: string;
   job_id: string;
   run_type: AnalysisRunType;
+  job_type: AnalysisRunType;
+  status: string;
+  status_url: string;
 }
 
 export interface AnalysisStatusResponse {
@@ -459,11 +486,6 @@ export interface RuntimeSettings {
   lichess_usernames: string[];
   variants: string[];
   days_back: number;
-  repertoire_dir: string | null;
-  games_dir: string | null;
-  database_path: string | null;
-  stockfish_path: string | null;
-  piece_dir: string | null;
   engine_depth: number | null;
   max_plies: number | null;
   player_name: string | null;
@@ -474,14 +496,6 @@ export interface RuntimeSettings {
   incremental_analysis: boolean | null;
   review_top_n: number | null;
   tabiya_top_n: number | null;
-  engine_workers: number | null;
-  engine_worker_cap: number | null;
-  engine_threads: number | null;
-  engine_hash_mb: number | null;
-  engine_mode: string | null;
-  engine_max_time_ms: number | null;
-  engine_profile: string | null;
-  engine_cache_prune_non_active: boolean | null;
   missing_coverage_proposal_threshold: number | null;
 }
 
@@ -490,11 +504,6 @@ export interface RuntimeSettingsUpdateRequest {
   lichess_usernames: string[];
   variants: string[];
   days_back: number;
-  repertoire_dir?: string;
-  games_dir?: string;
-  database_path?: string;
-  stockfish_path?: string;
-  piece_dir?: string;
   engine_depth?: number;
   max_plies?: number;
   player_name?: string;
@@ -505,21 +514,15 @@ export interface RuntimeSettingsUpdateRequest {
   incremental_analysis?: boolean;
   review_top_n?: number;
   tabiya_top_n?: number;
-  engine_workers?: number;
-  engine_worker_cap?: number;
-  engine_threads?: number;
-  engine_hash_mb?: number;
-  engine_mode?: string;
-  engine_max_time_ms?: number;
-  engine_profile?: string;
-  engine_cache_prune_non_active?: boolean;
   missing_coverage_proposal_threshold?: number;
 }
 
 
 export interface RepertoireImportResponse {
   job_id: string;
-  status: "completed";
+  job_type: "repertoire-import";
+  status_url: string;
+  status: "queued" | "running" | "retry" | "completed" | "failed" | "cancelled";
   upload_hash: string;
   inserted_lines: number;
   duplicate_lines: number;
@@ -529,6 +532,6 @@ export interface RepertoireImportResponse {
 
 export interface RepertoireImportJobResponse {
   id: string;
-  status: "completed";
+  status: "queued" | "running" | "retry" | "completed" | "failed" | "cancelled";
   progress: Record<string, unknown>;
 }

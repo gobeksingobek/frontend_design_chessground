@@ -38,6 +38,7 @@ import type {
   RuntimeSettingsUpdateRequest,
   RepertoireImportResponse,
   RepertoireImportJobResponse,
+  DurableJob,
 } from "@/lib/types";
 
 const API_BASE_URL = "/api/backend";
@@ -464,7 +465,7 @@ export async function updateRuntimeSettings(payload: RuntimeSettingsUpdateReques
 export async function runFullAnalysis(): Promise<AnalysisRunResponse> {
   const response = await apiFetch(`${API_BASE_URL}/analysis/run/full`, {
     method: "POST",
-    headers: headers(),
+    headers: headers({ "Idempotency-Key": crypto.randomUUID() }),
   });
   return unwrap<AnalysisRunResponse>(response);
 }
@@ -472,7 +473,7 @@ export async function runFullAnalysis(): Promise<AnalysisRunResponse> {
 export async function runEngineOnlyAnalysis(): Promise<AnalysisRunResponse> {
   const response = await apiFetch(`${API_BASE_URL}/analysis/run/engine-only`, {
     method: "POST",
-    headers: headers(),
+    headers: headers({ "Idempotency-Key": crypto.randomUUID() }),
   });
   return unwrap<AnalysisRunResponse>(response);
 }
@@ -480,7 +481,7 @@ export async function runEngineOnlyAnalysis(): Promise<AnalysisRunResponse> {
 export async function runFetchGames(): Promise<AnalysisRunResponse> {
   const response = await apiFetch(`${API_BASE_URL}/analysis/run/fetch-games`, {
     method: "POST",
-    headers: headers(),
+    headers: headers({ "Idempotency-Key": crypto.randomUUID() }),
   });
   return unwrap<AnalysisRunResponse>(response);
 }
@@ -488,7 +489,7 @@ export async function runFetchGames(): Promise<AnalysisRunResponse> {
 export async function runSmokeTest(): Promise<AnalysisRunResponse> {
   const response = await apiFetch(`${API_BASE_URL}/analysis/run/smoke-test`, {
     method: "POST",
-    headers: headers(),
+    headers: headers({ "Idempotency-Key": crypto.randomUUID() }),
   });
   return unwrap<AnalysisRunResponse>(response);
 }
@@ -501,6 +502,7 @@ export async function importRepertoire(file: File): Promise<RepertoireImportResp
     method: "POST",
     headers: {
       Authorization: `Bearer ${currentToken()}`,
+      "Idempotency-Key": crypto.randomUUID(),
     },
     body: formData,
   });
@@ -508,37 +510,74 @@ export async function importRepertoire(file: File): Promise<RepertoireImportResp
 }
 
 export async function getRepertoireImportJob(jobId: string): Promise<RepertoireImportJobResponse> {
-  const response = await apiFetch(`${API_BASE_URL}/repertoires/import-jobs/${jobId}`, {
+  const job = await getJob(jobId);
+  return {
+    id: job.job_id,
+    status: job.status,
+    progress: { ...job.progress, ...(job.result ?? {}) },
+  };
+}
+
+export async function getJob(jobId: string): Promise<DurableJob> {
+  const response = await apiFetch(`${API_BASE_URL}/jobs/${jobId}`, {
     method: "GET",
     headers: headers(),
     cache: "no-store",
   });
-  return unwrap<RepertoireImportJobResponse>(response);
+  return unwrap<DurableJob>(response);
+}
+
+export async function listJobs(limit = 20): Promise<DurableJob[]> {
+  const response = await apiFetch(`${API_BASE_URL}/jobs?limit=${limit}`, {
+    method: "GET",
+    headers: headers(),
+    cache: "no-store",
+  });
+  return unwrap<DurableJob[]>(response);
+}
+
+function isAnalysisJob(job: DurableJob): boolean {
+  return job.job_type.includes("analysis") || job.job_type.includes("reanalysis");
 }
 
 export async function getAnalysisStatus(): Promise<AnalysisStatusResponse> {
-  const response = await apiFetch(`${API_BASE_URL}/analysis/status`, {
-    method: "GET",
-    headers: headers(),
-    cache: "no-store",
-  });
-  return unwrap<AnalysisStatusResponse>(response);
+  const rows = (await listJobs(50)).filter(isAnalysisJob);
+  const active = rows.find((job) => ["queued", "running", "retry"].includes(job.status));
+  const latest = rows[0];
+  const completed = rows.find((job) => job.status === "completed");
+  const state = active ? "running" : latest?.status === "failed" || latest?.status === "cancelled"
+    ? "failed" : latest?.status === "completed" ? "completed" : "idle";
+  return {
+    state,
+    active_job_id: active?.job_id ?? null,
+    active_run_type: active?.job_type ?? null,
+    last_completed_job_id: completed?.job_id ?? null,
+    last_run_type: latest?.job_type ?? null,
+    last_error: latest?.error_detail ?? null,
+    updated_at: latest?.updated_at ?? new Date().toISOString(),
+  };
 }
 
 export async function getAnalysisProgress(): Promise<AnalysisProgressResponse> {
-  const response = await apiFetch(`${API_BASE_URL}/analysis/progress`, {
-    method: "GET",
-    headers: headers(),
-    cache: "no-store",
-  });
-  return unwrap<AnalysisProgressResponse>(response);
+  const latest = (await listJobs(50)).find(isAnalysisJob);
+  return {
+    job_id: latest?.job_id ?? null,
+    run_type: latest?.job_type ?? null,
+    progress: latest?.progress ?? null,
+    updated_at: latest?.updated_at ?? new Date().toISOString(),
+  };
 }
 
 export async function getAnalysisRuns(limit = 10): Promise<AnalysisRunHistoryResponse> {
-  const response = await apiFetch(`${API_BASE_URL}/analysis/runs?limit=${limit}`, {
-    method: "GET",
-    headers: headers(),
-    cache: "no-store",
-  });
-  return unwrap<AnalysisRunHistoryResponse>(response);
+  const rows = (await listJobs(Math.min(Math.max(limit * 3, 10), 100))).filter(isAnalysisJob);
+  return {
+    runs: rows.slice(0, limit).map((job) => ({
+      run_id: job.job_id,
+      run_type: job.job_type,
+      status: job.status === "completed" ? "completed" : ["failed", "cancelled"].includes(job.status) ? "failed" : "running",
+      started_at: job.started_at ?? job.queued_at,
+      finished_at: job.finished_at,
+      error_reason: job.error_detail,
+    })),
+  };
 }

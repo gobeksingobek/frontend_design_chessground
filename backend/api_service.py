@@ -1,20 +1,15 @@
 from __future__ import annotations
 
 import uuid
-import threading
 import asyncio
 import hashlib
+import io
 import json
 import logging
-import sqlite3
-import tempfile
 import zipfile
 from datetime import datetime
 from datetime import timezone
-from pathlib import Path
-from dataclasses import dataclass
 from typing import Any
-from typing import Callable
 from typing import Literal
 
 import asyncpg
@@ -24,14 +19,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import AliasChoices, BaseModel, Field
 
 from backend import db
-from backend import fetch_import
-from backend import repertoire_import
-from backend.queue import enqueue_job, ensure_consumer_group, redis_client
+from backend import jobs
+from backend.queue import enqueue_job, ensure_all_consumer_groups, redis_client
 from backend.read_api import (
     ALLOWED_RATING_BAND_SIZES,
     build_position_intelligence_payload,
     build_tree_contract_payload,
-    fetch_analysis_runs,
     fetch_game_detail,
     fetch_games,
     fetch_insights,
@@ -42,52 +35,12 @@ from backend.read_api import (
     fetch_rating_band_stats_payload,
     fetch_review_items,
     fetch_time_usage_stats,
-    get_runtime_settings_payload,
     normalize_rating_band_size,
-    save_runtime_settings_payload,
 )
-from backend.settings import SETTINGS, merge_runtime_settings_payload
-from analysis import game_fetcher
-from analysis import pipeline as analysis_pipeline
-from analysis import smoke_test as smoke_test_module
-from storage import database, queries
+from backend.settings import DEFAULT_RUNTIME_SETTINGS, SETTINGS, merge_runtime_settings_payload
 
 
-BASE_DIR = Path(__file__).resolve().parents[1]
-SETTINGS_INI_PATH = BASE_DIR / "config" / "settings.ini"
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class RuntimeConfig:
-    repertoire_dir: str
-    games_dir: str
-    database_path: str
-    stockfish_path: str
-    piece_dir: str
-    engine_depth: int
-    max_plies: int
-    player_name: str
-    player_names: list[str]
-    rating_band_size: int
-    matching_mode: str
-    enable_engine_cache: bool
-    incremental_analysis: bool
-    review_top_n: int
-    tabiya_top_n: int
-    engine_workers: int
-    engine_worker_cap: int
-    engine_threads: int
-    engine_hash_mb: int
-    engine_mode: str
-    engine_max_time_ms: int
-    engine_profile: str
-    engine_cache_prune_non_active: bool
-    missing_coverage_proposal_threshold: int
-    chesscom_usernames: list[str]
-    lichess_usernames: list[str]
-    fetch_variants: list[str]
-    fetch_days_back: int
 
 
 class ErrorResponse(BaseModel):
@@ -120,6 +73,9 @@ class SidelineCreateRequest(BaseModel):
 
 class SidelineResponse(BaseModel):
     id: str
+    job_id: str
+    job_type: Literal["sideline-analysis"] = "sideline-analysis"
+    status_url: str
     game_id: str
     move_ply: int
     requested_by: str
@@ -212,6 +168,55 @@ class AnalysisRunResponse(BaseModel):
     detail: str
     job_id: str
     run_type: str
+    job_type: str
+    status: str
+    status_url: str
+
+
+class JobResponse(BaseModel):
+    job_id: str
+    workspace_id: str
+    parent_job_id: str | None = None
+    job_type: str
+    status: str
+    priority: int
+    idempotency_key: str
+    request: dict[str, Any]
+    progress: dict[str, Any]
+    result: Any = None
+    error_code: str | None = None
+    error_detail: str | None = None
+    attempts: int
+    max_attempts: int
+    cancellation_requested: bool
+    queued_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    heartbeat_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class JobStepResponse(BaseModel):
+    step_id: str
+    job_id: str
+    workspace_id: str
+    workload_class: str
+    step_type: str
+    status: str
+    payload: dict[str, Any]
+    result: Any = None
+    deduplication_key: str
+    attempts: int
+    max_attempts: int
+    next_attempt_at: datetime | None = None
+    lease_owner: str | None = None
+    lease_expires_at: datetime | None = None
+    heartbeat_at: datetime | None = None
+    error_code: str | None = None
+    error_detail: str | None = None
+    created_at: datetime
+    updated_at: datetime
 
 
 class AnalysisFetchGamesResult(BaseModel):
@@ -355,6 +360,11 @@ class TrainerPriorityOverrideRequest(BaseModel):
     value: Literal[-1, 0, 1]
 
 
+class MainlineOverrideRequest(BaseModel):
+    uci_move: str = Field(min_length=4, max_length=5)
+    next_pos_id: int = Field(ge=1)
+
+
 
 
 class TrainerSessionCreateRequest(BaseModel):
@@ -411,28 +421,28 @@ class ReviewPropositionResponse(BaseModel):
     pos_id: int
     uci_move: str
     line_id_hint: str | None = None
-    updated_at: str
+    updated_at: datetime
 
 
 class ReviewPropositionDetailResponse(ReviewPropositionResponse):
     proposition_key: str
     dismissed_count: int | None = None
     detail: dict[str, Any] | None = None
-    created_at: str | None = None
-    decided_at: str | None = None
+    created_at: datetime | None = None
+    decided_at: datetime | None = None
 
 
 class BranchQueueEntryResponse(BaseModel):
     proposition_id: int
     queue_status: str
-    queued_at: str | None = None
+    queued_at: datetime | None = None
     proposition_status: str
     evidence_count: int
     threshold_count: int
     pos_id: int
     uci_move: str
     line_id_hint: str | None = None
-    updated_at: str
+    updated_at: datetime
 
 
 class ReviewQueueDelta(BaseModel):
@@ -479,11 +489,6 @@ class RuntimeSettingsResponse(BaseModel):
     lichess_usernames: list[str]
     variants: list[str]
     days_back: int = Field(ge=1)
-    games_dir: str | None = None
-    database_path: str | None = None
-    repertoire_dir: str | None = None
-    stockfish_path: str | None = None
-    piece_dir: str | None = None
     engine_depth: int | None = None
     max_plies: int | None = None
     player_name: str | None = None
@@ -494,14 +499,6 @@ class RuntimeSettingsResponse(BaseModel):
     incremental_analysis: bool | None = None
     review_top_n: int | None = None
     tabiya_top_n: int | None = None
-    engine_workers: int | None = None
-    engine_worker_cap: int | None = None
-    engine_threads: int | None = None
-    engine_hash_mb: int | None = None
-    engine_mode: str | None = None
-    engine_max_time_ms: int | None = None
-    engine_profile: str | None = None
-    engine_cache_prune_non_active: bool | None = None
     missing_coverage_proposal_threshold: int | None = None
 
 
@@ -510,11 +507,6 @@ class RuntimeSettingsUpdateRequest(BaseModel):
     lichess_usernames: list[str] = Field(default_factory=list)
     variants: list[str] = Field(default_factory=list)
     days_back: int = Field(ge=1, le=3650)
-    repertoire_dir: str | None = None
-    games_dir: str | None = None
-    database_path: str | None = None
-    stockfish_path: str | None = None
-    piece_dir: str | None = None
     engine_depth: int | None = Field(default=None, ge=1)
     max_plies: int | None = Field(default=None, ge=1)
     player_name: str | None = None
@@ -525,14 +517,6 @@ class RuntimeSettingsUpdateRequest(BaseModel):
     incremental_analysis: bool | None = None
     review_top_n: int | None = Field(default=None, ge=1)
     tabiya_top_n: int | None = Field(default=None, ge=1)
-    engine_workers: int | None = Field(default=None, ge=0)
-    engine_worker_cap: int | None = Field(default=None, ge=1)
-    engine_threads: int | None = Field(default=None, ge=1)
-    engine_hash_mb: int | None = Field(default=None, ge=0)
-    engine_mode: str | None = None
-    engine_max_time_ms: int | None = Field(default=None, ge=1)
-    engine_profile: str | None = None
-    engine_cache_prune_non_active: bool | None = None
     missing_coverage_proposal_threshold: int | None = Field(default=None, ge=1)
 
 
@@ -542,42 +526,20 @@ class RuntimeSettingsUpdateRequest(BaseModel):
 
 class RepertoireImportResponse(BaseModel):
     job_id: str
-    status: Literal["completed"]
+    job_type: Literal["repertoire-import"] = "repertoire-import"
+    status_url: str
+    status: Literal["queued", "running", "retry", "completed", "failed", "cancelled"]
     upload_hash: str
-    inserted_lines: int
-    duplicate_lines: int
-    total_lines: int
+    inserted_lines: int = 0
+    duplicate_lines: int = 0
+    total_lines: int = 0
     detail: str
 
 
 class RepertoireImportJobResponse(BaseModel):
     id: str
-    status: Literal["completed"]
+    status: str
     progress: dict[str, Any]
-
-def _sqlite_runtime_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(SETTINGS.sqlite_path)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-async def _with_sqlite(fn, *args, **kwargs):
-    if SETTINGS.data_backend == "postgres":
-        raise api_error(
-            status_code=501,
-            error_code="NOT_IMPLEMENTED",
-            detail=(
-                "This endpoint is currently implemented for SQLite data backend. "
-                "Postgres parity is not yet implemented for trainer/stateful line endpoints."
-            ),
-        )
-
-    def runner():
-        with _sqlite_runtime_conn() as conn:
-            return fn(conn, *args, **kwargs)
-
-    return await asyncio.to_thread(runner)
-
 
 def _require_postgres_request(request: Request | None) -> Request:
     if request is None:
@@ -590,72 +552,18 @@ async def _fetch_tree_repertoire_children_backend(
     my_side_only: bool,
     request: Request | None,
 ) -> list[dict[str, Any]]:
-    if SETTINGS.data_backend != "postgres":
-        return await _with_sqlite(queries.fetch_tree_repertoire_children, pos_id, my_side_only=my_side_only)
-
     req = _require_postgres_request(request)
     async with req.app.state.db_pool.acquire() as conn:
-        has_repertoire_edges = bool(await conn.fetchval("SELECT to_regclass('public.repertoire_edges') IS NOT NULL"))
-        has_sideline_queue = bool(await conn.fetchval("SELECT to_regclass('public.sideline_queue') IS NOT NULL"))
-        repertoire_edge_join = (
-            """
-                LEFT JOIN repertoire_edges re
-                  ON re.pos_id = lp.pos_id
-                 AND re.uci_move = lp.uci_move
-                 AND re.next_pos_id = lp.next_pos_id
-            """
-            if has_repertoire_edges
-            else ""
-        )
-        weight_expr = "COALESCE(MAX(re.weight), COUNT(*))::int" if has_repertoire_edges else "COUNT(*)::int"
-        user_mainline_expr = (
-            "MAX(CASE WHEN re.is_user_mainline = 1 THEN 1 ELSE 0 END)::int"
-            if has_repertoire_edges
-            else "0::int"
-        )
-        pending_sideline_cte = (
-            """
-            ,
-            pending_sidelines AS (
-                SELECT sq.move_uci AS uci_move,
-                       sq.move_uci AS san_move,
-                       NULL::int AS next_pos_id,
-                       0::int AS weight,
-                       0::int AS is_priority_edge,
-                       0::int AS is_user_mainline,
-                       CASE WHEN $2 = 1 THEN 1 ELSE 0 END::int AS self_count,
-                       1::int AS is_sideline_pending
-                FROM sideline_queue sq
-                WHERE sq.pos_id = $1
-                  AND sq.status IN ('PENDING', 'EVAL_OK', 'EVAL_WARN')
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM repertoire_rows rr
-                      WHERE rr.uci_move = sq.move_uci
-                  )
-            )
-            """
-            if has_sideline_queue
-            else ""
-        )
-        pending_sideline_union = (
-            """
-            UNION ALL
-            SELECT uci_move, san_move, next_pos_id, weight, is_priority_edge, is_user_mainline, self_count, is_sideline_pending
-            FROM pending_sidelines
-            """
-            if has_sideline_queue
-            else ""
-        )
         rows = await conn.fetch(
-            f"""
+            """
             WITH repertoire_rows AS (
                 SELECT lp.uci_move,
                        MIN(lp.san_move) AS san_move,
                        lp.next_pos_id,
-                       {weight_expr} AS weight,
+                       COALESCE(MAX(re.weight), COUNT(*))::int AS weight,
                        MAX(CASE WHEN rl.is_priority = 1 THEN 1 ELSE 0 END)::int AS is_priority_edge,
-                       {user_mainline_expr} AS is_user_mainline,
+                       MAX(CASE WHEN override.uci_move = lp.uci_move
+                                     AND override.next_pos_id = lp.next_pos_id THEN 1 ELSE 0 END)::int AS is_user_mainline,
                        SUM(
                            CASE
                                WHEN (
@@ -670,20 +578,45 @@ async def _fetch_tree_repertoire_children_backend(
                        0::int AS is_sideline_pending
                 FROM line_positions lp
                 JOIN repertoire_lines rl
-                  ON rl.line_id = lp.line_id
-                {repertoire_edge_join}
-                WHERE lp.pos_id = $1
+                  ON rl.workspace_id = lp.workspace_id AND rl.line_id = lp.line_id
+                LEFT JOIN repertoire_edges re
+                  ON re.workspace_id = lp.workspace_id AND re.pos_id = lp.pos_id
+                 AND re.uci_move = lp.uci_move AND re.next_pos_id = lp.next_pos_id
+                LEFT JOIN user_mainline_overrides override
+                  ON override.workspace_id = lp.workspace_id AND override.pos_id = lp.pos_id
+                WHERE lp.workspace_id = $3::uuid AND lp.pos_id = $1
                 GROUP BY lp.uci_move, lp.next_pos_id
+            ),
+            pending_sidelines AS (
+                SELECT sr.payload -> 'branch_moves' ->> 0 AS uci_move,
+                       sr.payload -> 'branch_moves' ->> 0 AS san_move,
+                       NULL::bigint AS next_pos_id,
+                       0::int AS weight,
+                       0::int AS is_priority_edge,
+                       0::int AS is_user_mainline,
+                       CASE WHEN $2 = 1 THEN 1 ELSE 0 END::int AS self_count,
+                       1::int AS is_sideline_pending
+                FROM sideline_requests sr
+                JOIN analysis_jobs job ON job.id = sr.job_id
+                JOIN positions position ON position.fen_norm = sr.payload ->> 'fen'
+                WHERE sr.workspace_id = $3::uuid AND position.id = $1
+                  AND job.status IN ('queued', 'running', 'retry')
+                  AND NOT EXISTS (
+                      SELECT 1 FROM repertoire_rows rr
+                      WHERE rr.uci_move = sr.payload -> 'branch_moves' ->> 0
+                  )
             )
-            {pending_sideline_cte}
             SELECT uci_move, san_move, next_pos_id, weight, is_priority_edge, is_user_mainline, self_count, is_sideline_pending
             FROM repertoire_rows
             WHERE ($2 = 0 OR self_count > 0)
-            {pending_sideline_union}
+            UNION ALL
+            SELECT uci_move, san_move, next_pos_id, weight, is_priority_edge, is_user_mainline, self_count, is_sideline_pending
+            FROM pending_sidelines
             ORDER BY is_sideline_pending DESC, weight DESC, uci_move
             """,
             int(pos_id),
             1 if my_side_only else 0,
+            SETTINGS.workspace_id,
         )
     return [dict(row) for row in rows]
 
@@ -693,9 +626,6 @@ async def _fetch_tree_game_children_backend(
     my_side_only: bool,
     request: Request | None,
 ) -> list[dict[str, Any]]:
-    if SETTINGS.data_backend != "postgres":
-        return await _with_sqlite(queries.fetch_tree_game_children, pos_id, my_side_only=my_side_only)
-
     req = _require_postgres_request(request)
     where_clause = "gp.pos_id = $1 AND gp.is_self = 1" if my_side_only else "gp.pos_id = $1"
     async with req.app.state.db_pool.acquire() as conn:
@@ -732,11 +662,11 @@ async def _fetch_tree_game_children_backend(
                    ) AS avg_opp_elo
             FROM game_positions gp
             JOIN games g
-              ON g.id = gp.game_id
+              ON g.workspace_id = gp.workspace_id AND g.id = gp.game_id
             LEFT JOIN game_positions gp_next
-              ON gp_next.game_id = gp.game_id
+              ON gp_next.workspace_id = gp.workspace_id AND gp_next.game_id = gp.game_id
              AND gp_next.ply = gp.ply + 1
-            WHERE {where_clause}
+            WHERE gp.workspace_id = $2::uuid AND {where_clause}
             GROUP BY gp.uci_move
             ORDER BY games DESC, gp.uci_move
             """,
@@ -759,9 +689,6 @@ async def _fetch_position_intelligence_summary_backend(
     request: Request | None,
     limit: int = 8,
 ) -> dict[str, Any]:
-    if SETTINGS.data_backend != "postgres":
-        return await _with_sqlite(queries.fetch_position_intelligence_summary, pos_id, limit=limit)
-
     req = _require_postgres_request(request)
     async with req.app.state.db_pool.acquire() as conn:
         position = await conn.fetchrow(
@@ -790,11 +717,14 @@ async def _fetch_position_intelligence_summary_backend(
                             ELSE 0 END)::int AS losses,
                    SUM(CASE WHEN m.deviation_ply_opp = gp.ply THEN 1 ELSE 0 END)::int AS opponent_deviation_count
             FROM game_positions gp
-            JOIN games g ON g.id = gp.game_id
-            LEFT JOIN matches m ON m.game_id = gp.game_id
-            WHERE gp.pos_id = $1
+            JOIN games g ON g.workspace_id = gp.workspace_id AND g.id = gp.game_id
+            LEFT JOIN workspace_state ws ON ws.workspace_id = gp.workspace_id
+            LEFT JOIN matches m ON m.workspace_id = gp.workspace_id AND m.game_id = gp.game_id
+                               AND m.analysis_run_id = ws.active_analysis_run_id
+            WHERE gp.pos_id = $1 AND gp.workspace_id = $2::uuid
             """,
             int(pos_id),
+            SETTINGS.workspace_id,
         )
         evals = await conn.fetchrow(
             """
@@ -802,9 +732,12 @@ async def _fetch_position_intelligence_summary_backend(
                    AVG(ap.your_cpl) AS avg_your_cpl,
                    AVG(ap.rep_cpl) AS avg_rep_cpl
             FROM analysis_ply ap
-            WHERE ap.pos_id = $1
+            JOIN workspace_state ws ON ws.workspace_id = ap.workspace_id
+                                   AND ws.active_analysis_run_id = ap.analysis_run_id
+            WHERE ap.pos_id = $1 AND ap.workspace_id = $2::uuid
             """,
             int(pos_id),
+            SETTINGS.workspace_id,
         )
         has_engine_cache = bool(await conn.fetchval("SELECT to_regclass('public.engine_cache') IS NOT NULL"))
         latest_engine = None
@@ -834,14 +767,18 @@ async def _fetch_position_intelligence_summary_backend(
                    ap.post_eval_cp,
                    ap.your_cpl
             FROM game_positions gp
-            JOIN games g ON g.id = gp.game_id
-            LEFT JOIN analysis_ply ap ON ap.game_id = gp.game_id AND ap.ply = gp.ply
-            WHERE gp.pos_id = $1
+            JOIN games g ON g.workspace_id = gp.workspace_id AND g.id = gp.game_id
+            LEFT JOIN workspace_state ws ON ws.workspace_id = gp.workspace_id
+            LEFT JOIN analysis_ply ap ON ap.workspace_id = gp.workspace_id
+                                     AND ap.game_id = gp.game_id AND ap.ply = gp.ply
+                                     AND ap.analysis_run_id = ws.active_analysis_run_id
+            WHERE gp.pos_id = $1 AND gp.workspace_id = $3::uuid
             ORDER BY g.date DESC, g.id DESC, gp.ply ASC
             LIMIT $2
             """,
             int(pos_id),
             int(limit),
+            SETTINGS.workspace_id,
         )
 
     return {
@@ -857,11 +794,8 @@ async def _fetch_review_propositions_backend(
     status_filter: str,
     request: Request | None,
 ) -> list[dict[str, Any]]:
-    if SETTINGS.data_backend != "postgres":
-        return await _with_sqlite(queries.fetch_review_propositions, status_filter=status_filter)
-
     status_key = (status_filter or "pending").strip().lower()
-    where = ["proposition_type = 'MISSING_COVERAGE_BRANCH'"]
+    where = ["workspace_id = $1::uuid", "proposition_type = 'MISSING_COVERAGE_BRANCH'"]
     if status_key == "pending":
         where.append("status = 'PENDING'")
         where.append("evidence_count > threshold_count")
@@ -889,7 +823,8 @@ async def _fetch_review_propositions_backend(
             FROM review_propositions
             WHERE {' AND '.join(where)}
             ORDER BY evidence_count DESC, updated_at DESC, id DESC
-            """
+            """,
+            SETTINGS.workspace_id,
         )
     return [dict(row) for row in rows]
 
@@ -898,9 +833,6 @@ async def _fetch_review_proposition_detail_backend(
     proposition_id: int,
     request: Request | None,
 ) -> dict[str, Any] | None:
-    if SETTINGS.data_backend != "postgres":
-        return await _with_sqlite(queries.fetch_review_proposition_detail, proposition_id)
-
     req = _require_postgres_request(request)
     async with req.app.state.db_pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -920,28 +852,20 @@ async def _fetch_review_proposition_detail_backend(
                    updated_at,
                    decided_at
             FROM review_propositions
-            WHERE id = $1
+            WHERE id = $1 AND workspace_id = $2::uuid
             """,
             int(proposition_id),
+            SETTINGS.workspace_id,
         )
     if not row:
         return None
     data = dict(row)
     payload = data.get("detail_json")
-    if payload:
-        try:
-            data["detail"] = json.loads(payload)
-        except json.JSONDecodeError:
-            data["detail"] = None
-    else:
-        data["detail"] = None
+    data["detail"] = json.loads(payload) if isinstance(payload, str) else payload
     return data
 
 
 async def _fetch_branch_queue_backend(request: Request | None) -> list[dict[str, Any]]:
-    if SETTINGS.data_backend != "postgres":
-        return await _with_sqlite(queries.fetch_branch_queue)
-
     req = _require_postgres_request(request)
     async with req.app.state.db_pool.acquire() as conn:
         rows = await conn.fetch(
@@ -958,8 +882,10 @@ async def _fetch_branch_queue_backend(request: Request | None) -> list[dict[str,
                    rp.updated_at
             FROM branch_queue bq
             JOIN review_propositions rp ON rp.id = bq.proposition_id
+            WHERE bq.workspace_id = $1::uuid AND rp.workspace_id = $1::uuid
             ORDER BY bq.queued_at DESC, bq.proposition_id DESC
-            """
+            """,
+            SETTINGS.workspace_id,
         )
     return [dict(row) for row in rows]
 
@@ -969,12 +895,9 @@ async def _execute_review_action_backend(
     action: str,
     request: Request | None,
 ) -> dict[str, Any]:
-    if SETTINGS.data_backend != "postgres":
-        return await _with_sqlite(queries.execute_review_action, proposition_id, action)
-
     pid = int(proposition_id)
     action_key = (action or "").strip().lower()
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
 
     req = _require_postgres_request(request)
     async with req.app.state.db_pool.acquire() as conn:
@@ -983,9 +906,10 @@ async def _execute_review_action_backend(
                 """
                 SELECT id, status, evidence_count, line_id_hint
                 FROM review_propositions
-                WHERE id = $1
+                WHERE id = $1 AND workspace_id = $2::uuid
                 """,
                 pid,
+                SETTINGS.workspace_id,
             )
             if not detail_row:
                 return {"success": False, "message": "Proposition not found."}
@@ -1007,17 +931,19 @@ async def _execute_review_action_backend(
                        rp.updated_at
                 FROM branch_queue bq
                 JOIN review_propositions rp ON rp.id = bq.proposition_id
-                WHERE bq.proposition_id = $1
+                WHERE bq.proposition_id = $1 AND bq.workspace_id = $2::uuid
                 """,
                 pid,
+                SETTINGS.workspace_id,
             )
             queue_before = dict(queue_before_row) if queue_before_row else None
 
             priority_before = None
             if line_id_hint:
                 priority_before_row = await conn.fetchrow(
-                    "SELECT priority_override FROM trainer_line_state WHERE line_id = $1",
+                    "SELECT priority_override FROM trainer_line_state WHERE line_id = $1 AND workspace_id = $2::uuid",
                     str(line_id_hint),
+                    SETTINGS.workspace_id,
                 )
                 if priority_before_row:
                     priority_before = int(priority_before_row["priority_override"])
@@ -1029,24 +955,26 @@ async def _execute_review_action_backend(
                     SET status = 'APPROVED',
                         decided_at = $2,
                         updated_at = $2
-                    WHERE id = $1
+                    WHERE id = $1 AND workspace_id = $3::uuid
                       AND proposition_type = 'MISSING_COVERAGE_BRANCH'
                     """,
                     pid,
-                    now_iso,
+                    now,
+                    SETTINGS.workspace_id,
                 )
                 if tag.endswith('0'):
                     return {"success": False, "message": "Proposition not found."}
                 await conn.execute(
                     """
-                    INSERT INTO branch_queue (proposition_id, queue_status, queued_at)
-                    VALUES ($1, 'QUEUED', $2)
+                    INSERT INTO branch_queue (workspace_id, proposition_id, queue_status, queued_at)
+                    VALUES ($3::uuid, $1, 'QUEUED', $2)
                     ON CONFLICT (proposition_id) DO UPDATE
                     SET queue_status = EXCLUDED.queue_status,
                         queued_at = EXCLUDED.queued_at
                     """,
                     pid,
-                    now_iso,
+                    now,
+                    SETTINGS.workspace_id,
                 )
                 message = "Proposition approved and queued."
             elif action_key == "defer":
@@ -1057,14 +985,18 @@ async def _execute_review_action_backend(
                         dismissed_count = $2,
                         decided_at = $3,
                         updated_at = $3
-                    WHERE id = $1
+                    WHERE id = $1 AND workspace_id = $4::uuid
                       AND proposition_type = 'MISSING_COVERAGE_BRANCH'
                     """,
                     pid,
                     int(detail_row["evidence_count"] or 0),
-                    now_iso,
+                    now,
+                    SETTINGS.workspace_id,
                 )
-                await conn.execute("DELETE FROM branch_queue WHERE proposition_id = $1", pid)
+                await conn.execute(
+                    "DELETE FROM branch_queue WHERE proposition_id = $1 AND workspace_id = $2::uuid",
+                    pid, SETTINGS.workspace_id,
+                )
                 message = "Proposition disapproved."
             elif action_key == "priority":
                 if not line_id_hint:
@@ -1073,9 +1005,10 @@ async def _execute_review_action_backend(
                     """
                     UPDATE trainer_line_state
                     SET priority_override = 1
-                    WHERE line_id = $1
+                    WHERE line_id = $1 AND workspace_id = $2::uuid
                     """,
                     str(line_id_hint),
+                    SETTINGS.workspace_id,
                 )
                 if tag.endswith('0'):
                     return {"success": False, "message": "Line not found in trainer state."}
@@ -1083,10 +1016,11 @@ async def _execute_review_action_backend(
                     """
                     UPDATE review_propositions
                     SET updated_at = $2
-                    WHERE id = $1
+                    WHERE id = $1 AND workspace_id = $3::uuid
                     """,
                     pid,
-                    now_iso,
+                    now,
+                    SETTINGS.workspace_id,
                 )
                 message = f"Priority override enabled for {line_id_hint}."
             else:
@@ -1109,20 +1043,15 @@ async def _execute_review_action_backend(
                        updated_at,
                        decided_at
                 FROM review_propositions
-                WHERE id = $1
+                WHERE id = $1 AND workspace_id = $2::uuid
                 """,
                 pid,
+                SETTINGS.workspace_id,
             )
             updated_detail = dict(updated_detail_row) if updated_detail_row else None
             if updated_detail is not None:
                 payload = updated_detail.get("detail_json")
-                if payload:
-                    try:
-                        updated_detail["detail"] = json.loads(payload)
-                    except json.JSONDecodeError:
-                        updated_detail["detail"] = None
-                else:
-                    updated_detail["detail"] = None
+                updated_detail["detail"] = json.loads(payload) if isinstance(payload, str) else payload
 
             queue_after_row = await conn.fetchrow(
                 """
@@ -1138,17 +1067,19 @@ async def _execute_review_action_backend(
                        rp.updated_at
                 FROM branch_queue bq
                 JOIN review_propositions rp ON rp.id = bq.proposition_id
-                WHERE bq.proposition_id = $1
+                WHERE bq.proposition_id = $1 AND bq.workspace_id = $2::uuid
                 """,
                 pid,
+                SETTINGS.workspace_id,
             )
             queue_after = dict(queue_after_row) if queue_after_row else None
 
             priority_after = None
             if line_id_hint:
                 priority_after_row = await conn.fetchrow(
-                    "SELECT priority_override FROM trainer_line_state WHERE line_id = $1",
+                    "SELECT priority_override FROM trainer_line_state WHERE line_id = $1 AND workspace_id = $2::uuid",
                     str(line_id_hint),
+                    SETTINGS.workspace_id,
                 )
                 if priority_after_row:
                     priority_after = int(priority_after_row["priority_override"])
@@ -1179,94 +1110,13 @@ async def _execute_review_action_backend(
         },
     }
 
-def _runtime_config_from_payload(payload: dict[str, Any]) -> RuntimeConfig:
-    return RuntimeConfig(
-        repertoire_dir=str(payload["repertoire_dir"]),
-        games_dir=str(payload["games_dir"]),
-        database_path=str(payload["database_path"]),
-        stockfish_path=str(payload["stockfish_path"]),
-        piece_dir=str(payload["piece_dir"]),
-        engine_depth=int(payload["engine_depth"]),
-        max_plies=int(payload["max_plies"]),
-        player_name=str(payload["player_name"]),
-        player_names=list(payload["player_names"]),
-        rating_band_size=int(payload["rating_band_size"]),
-        matching_mode=str(payload["matching_mode"]),
-        enable_engine_cache=bool(payload["enable_engine_cache"]),
-        incremental_analysis=bool(payload["incremental_analysis"]),
-        review_top_n=int(payload["review_top_n"]),
-        tabiya_top_n=int(payload["tabiya_top_n"]),
-        engine_workers=int(payload["engine_workers"]),
-        engine_worker_cap=int(payload["engine_worker_cap"]),
-        engine_threads=int(payload["engine_threads"]),
-        engine_hash_mb=int(payload["engine_hash_mb"]),
-        engine_mode=str(payload["engine_mode"]),
-        engine_max_time_ms=int(payload["engine_max_time_ms"]),
-        engine_profile=str(payload["engine_profile"]),
-        engine_cache_prune_non_active=bool(payload["engine_cache_prune_non_active"]),
-        missing_coverage_proposal_threshold=int(payload["missing_coverage_proposal_threshold"]),
-        chesscom_usernames=list(payload["chesscom_usernames"]),
-        lichess_usernames=list(payload["lichess_usernames"]),
-        fetch_variants=list(payload["variants"]),
-        fetch_days_back=int(payload["days_back"]),
-    )
-
-
-def _load_runtime_config() -> RuntimeConfig:
-    return _runtime_config_from_payload(get_runtime_settings_payload(SETTINGS_INI_PATH))
-
-
 async def _load_postgres_runtime_settings(pool: asyncpg.Pool) -> dict[str, Any]:
     persisted = await db.fetch_runtime_settings(pool)
     if persisted is not None:
-        return persisted
-    seeded = get_runtime_settings_payload(SETTINGS_INI_PATH)
+        return {**DEFAULT_RUNTIME_SETTINGS, **persisted}
+    seeded = dict(DEFAULT_RUNTIME_SETTINGS)
     await db.save_runtime_settings(pool, seeded)
     return seeded
-
-
-def _runtime_settings_response(cfg: RuntimeConfig) -> RuntimeSettingsResponse:
-    return RuntimeSettingsResponse(
-        chesscom_usernames=cfg.chesscom_usernames,
-        lichess_usernames=cfg.lichess_usernames,
-        variants=cfg.fetch_variants,
-        days_back=cfg.fetch_days_back,
-        games_dir=cfg.games_dir,
-        database_path=cfg.database_path,
-        repertoire_dir=cfg.repertoire_dir,
-        stockfish_path=cfg.stockfish_path,
-        piece_dir=cfg.piece_dir,
-        engine_depth=cfg.engine_depth,
-        max_plies=cfg.max_plies,
-        player_name=cfg.player_name,
-        player_names=cfg.player_names,
-        rating_band_size=cfg.rating_band_size,
-        matching_mode=cfg.matching_mode,
-        enable_engine_cache=cfg.enable_engine_cache,
-        incremental_analysis=cfg.incremental_analysis,
-        review_top_n=cfg.review_top_n,
-        tabiya_top_n=cfg.tabiya_top_n,
-        engine_workers=cfg.engine_workers,
-        engine_worker_cap=cfg.engine_worker_cap,
-        engine_threads=cfg.engine_threads,
-        engine_hash_mb=cfg.engine_hash_mb,
-        engine_mode=cfg.engine_mode,
-        engine_max_time_ms=cfg.engine_max_time_ms,
-        engine_profile=cfg.engine_profile,
-        engine_cache_prune_non_active=cfg.engine_cache_prune_non_active,
-        missing_coverage_proposal_threshold=cfg.missing_coverage_proposal_threshold,
-    )
-
-
-def _save_runtime_settings(payload: dict[str, Any]) -> RuntimeSettingsResponse:
-    saved, errors = save_runtime_settings_payload(SETTINGS_INI_PATH, payload)
-    if errors:
-        raise HTTPException(
-            status_code=422,
-            detail=[{"field": err.field, "code": err.code, "message": err.message} for err in errors],
-        )
-    assert saved is not None
-    return RuntimeSettingsResponse.model_validate(saved)
 
 
 async def _save_postgres_runtime_settings(pool: asyncpg.Pool, payload: dict[str, Any]) -> RuntimeSettingsResponse:
@@ -1282,240 +1132,8 @@ async def _save_postgres_runtime_settings(pool: asyncpg.Pool, payload: dict[str,
     return RuntimeSettingsResponse.model_validate(saved)
 
 
-class AnalysisRuntimeManager:
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._state: Literal["idle", "running", "completed", "failed"] = "idle"
-        self._active_job_id: str | None = None
-        self._active_run_type: str | None = None
-        self._last_completed_job_id: str | None = None
-        self._last_run_type: str | None = None
-        self._last_error: str | None = None
-        self._progress: dict[str, Any] | None = None
-        self._progress_updated_at = datetime.now(timezone.utc)
-        self._updated_at = datetime.now(timezone.utc)
-        self._runs: list[AnalysisRunHistoryEntry] = []
-
-    def _touch(self) -> None:
-        self._updated_at = datetime.now(timezone.utc)
-
-    def _set_progress(self, payload: dict[str, Any]) -> None:
-        self._progress = payload
-        self._progress_updated_at = datetime.now(timezone.utc)
-        self._touch()
-
-    def start_job(self, run_type: str, action: Callable[[Callable[[dict[str, Any]], None]], None]) -> str:
-        with self._lock:
-            if self._state == "running":
-                raise RuntimeError("Analysis is already running.")
-            job_id = str(uuid.uuid4())
-            self._state = "running"
-            self._active_job_id = job_id
-            self._active_run_type = run_type
-            self._last_error = None
-            started_at = datetime.now(timezone.utc).isoformat()
-            self._runs.insert(
-                0,
-                AnalysisRunHistoryEntry(
-                    run_id=job_id,
-                    run_type=run_type,
-                    status="running",
-                    started_at=started_at,
-                ),
-            )
-            self._runs = self._runs[:50]
-            self._set_progress({"message": f"Starting {run_type}", "done": 0, "total": 0})
-
-        def worker() -> None:
-            try:
-                action(lambda payload: self._progress_callback(job_id, run_type, payload))
-            except Exception as exc:  # noqa: BLE001
-                with self._lock:
-                    self._state = "failed"
-                    self._last_error = str(exc)
-                    self._last_run_type = run_type
-                    self._last_completed_job_id = job_id
-                    self._active_job_id = None
-                    self._active_run_type = None
-                    for idx, run in enumerate(self._runs):
-                        if run.job_id == job_id:
-                            self._runs[idx] = AnalysisRunHistoryEntry(
-                                run_id=run.run_id,
-                                run_type=run.run_type,
-                                status="failed",
-                                started_at=run.started_at,
-                                finished_at=datetime.now(timezone.utc).isoformat(),
-                                error_reason=str(exc),
-                            )
-                            break
-                    self._set_progress({"message": f"{run_type} failed", "error": str(exc)})
-            else:
-                with self._lock:
-                    self._state = "completed"
-                    self._last_run_type = run_type
-                    self._last_completed_job_id = job_id
-                    self._active_job_id = None
-                    self._active_run_type = None
-                    for idx, run in enumerate(self._runs):
-                        if run.job_id == job_id:
-                            self._runs[idx] = AnalysisRunHistoryEntry(
-                                run_id=run.run_id,
-                                run_type=run.run_type,
-                                status="completed",
-                                started_at=run.started_at,
-                                finished_at=datetime.now(timezone.utc).isoformat(),
-                                error_reason=None,
-                            )
-                            break
-                    self._set_progress({"message": f"{run_type} completed", "done": 1, "total": 1})
-
-        thread = threading.Thread(target=worker, daemon=True, name=f"analysis-{run_type}")
-        thread.start()
-        return job_id
-
-    def start_async_job(self, run_type: str, action) -> str:
-        with self._lock:
-            if self._state == "running":
-                raise RuntimeError("Analysis is already running.")
-            job_id = str(uuid.uuid4())
-            self._state = "running"
-            self._active_job_id = job_id
-            self._active_run_type = run_type
-            self._last_error = None
-            started_at = datetime.now(timezone.utc).isoformat()
-            self._runs.insert(0, AnalysisRunHistoryEntry(run_id=job_id, run_type=run_type, status="running", started_at=started_at))
-            self._runs = self._runs[:50]
-            self._set_progress({"message": f"Starting {run_type}", "done": 0, "total": 0})
-
-        async def worker() -> None:
-            try:
-                await action(lambda payload: self._progress_callback(job_id, run_type, payload))
-            except Exception as exc:  # noqa: BLE001
-                with self._lock:
-                    self._state = "failed"
-                    self._last_error = str(exc)
-                    self._last_run_type = run_type
-                    self._last_completed_job_id = job_id
-                    self._active_job_id = None
-                    self._active_run_type = None
-                    for idx, run in enumerate(self._runs):
-                        if run.job_id == job_id:
-                            self._runs[idx] = AnalysisRunHistoryEntry(run_id=run.run_id, run_type=run.run_type, status="failed", started_at=run.started_at, finished_at=datetime.now(timezone.utc).isoformat(), error_reason=str(exc))
-                            break
-                    self._set_progress({"message": f"{run_type} failed", "error": str(exc)})
-            else:
-                with self._lock:
-                    self._state = "completed"
-                    self._last_run_type = run_type
-                    self._last_completed_job_id = job_id
-                    self._active_job_id = None
-                    self._active_run_type = None
-                    for idx, run in enumerate(self._runs):
-                        if run.job_id == job_id:
-                            self._runs[idx] = AnalysisRunHistoryEntry(run_id=run.run_id, run_type=run.run_type, status="completed", started_at=run.started_at, finished_at=datetime.now(timezone.utc).isoformat(), error_reason=None)
-                            break
-                    self._set_progress({"message": f"{run_type} completed", "done": 1, "total": 1})
-
-        asyncio.create_task(worker(), name=f"analysis-{run_type}")
-        return job_id
-
-    def _progress_callback(self, job_id: str, run_type: str, payload: dict[str, Any]) -> None:
-        with self._lock:
-            if self._active_job_id != job_id:
-                return
-            merged = {"job_id": job_id, "run_type": run_type, **payload}
-            self._set_progress(merged)
-
-    def status(self) -> AnalysisStatusResponse:
-        with self._lock:
-            return AnalysisStatusResponse(
-                state=self._state,
-                active_job_id=self._active_job_id,
-                active_run_type=self._active_run_type,
-                last_completed_job_id=self._last_completed_job_id,
-                last_run_type=self._last_run_type,
-                last_error=self._last_error,
-                updated_at=self._updated_at.isoformat(),
-            )
-
-    def progress(self) -> AnalysisProgressResponse:
-        with self._lock:
-            return AnalysisProgressResponse(
-                job_id=self._active_job_id,
-                run_type=self._active_run_type,
-                progress=self._progress,
-                updated_at=self._progress_updated_at.isoformat(),
-            )
-
-    def runs(self, limit: int = 10) -> AnalysisRunHistoryResponse:
-        with self._lock:
-            bounded_limit = min(max(limit, 1), 50)
-            return AnalysisRunHistoryResponse(runs=self._runs[:bounded_limit])
-
-
-def _run_full_analysis(progress_cb) -> None:
-    cfg = _load_runtime_config()
-    conn = database.ensure_db(cfg.database_path, reset_on_mismatch=True)
-    try:
-        analysis_pipeline.run_analysis(conn, cfg, reset_db=False, progress_cb=progress_cb)
-    finally:
-        conn.close()
-
-
-def _run_engine_only_analysis(progress_cb) -> None:
-    cfg = _load_runtime_config()
-    conn = database.ensure_db(cfg.database_path, reset_on_mismatch=True)
-    try:
-        analysis_pipeline.run_engine_analysis_only(conn, cfg, progress_cb=progress_cb)
-    finally:
-        conn.close()
-
-
-def _run_smoke_test(progress_cb) -> None:
-    cfg = _load_runtime_config()
-    smoke_test_module.run_smoke_test(cfg, BASE_DIR, progress_cb=progress_cb)
-
-
-async def _run_fetch_games_postgres(pool: asyncpg.Pool, progress_cb) -> None:
-    payload = await _load_postgres_runtime_settings(pool)
-    cfg = _runtime_config_from_payload(payload)
-    if not cfg.chesscom_usernames and not cfg.lichess_usernames:
-        raise ValueError("Configure at least one Chess.com or Lichess username in Settings before fetching games.")
-
-    existing_hashes = await fetch_import.fetch_existing_game_hashes(pool)
-    batches: list[tuple[str, str, list[str]]] = []
-    progress_cb({"message": "Fetching remote games", "done": 0, "total": 2})
-
-    def collect_new_games(provider: str, username: str, pgn_chunks: list[str]) -> None:
-        batches.append((provider, username, pgn_chunks))
-
-    summaries = await asyncio.to_thread(
-        game_fetcher.fetch_games,
-        games_dir=Path(tempfile.gettempdir()) / "chessground-fetch",
-        chesscom_usernames=cfg.chesscom_usernames,
-        lichess_usernames=cfg.lichess_usernames,
-        variants=cfg.fetch_variants,
-        days_back=cfg.fetch_days_back,
-        state_path=None,
-        existing_pgn_hashes=existing_hashes,
-        write_files=False,
-        on_new_games=collect_new_games,
-    )
-    progress_cb({"message": "Persisting fetched games", "done": 1, "total": 2})
-    persisted = await fetch_import.persist_fetched_games(pool, batches, cfg.player_names)
-    progress_cb(
-        {
-            "message": "Fetch complete",
-            "done": 2,
-            "total": 2,
-            "results": [summary.__dict__ for summary in summaries],
-            **persisted,
-        }
-    )
-
 app = FastAPI(title="ChessGround API Service")
 auth_scheme = HTTPBearer(auto_error=False)
-REPERTOIRE_IMPORT_JOBS: dict[str, dict[str, Any]] = {}
 
 if SETTINGS.api_cors_origins:
     allow_all_origins = len(SETTINGS.api_cors_origins) == 1 and SETTINGS.api_cors_origins[0] == "*"
@@ -1541,52 +1159,32 @@ async def require_auth(credentials: HTTPAuthorizationCredentials | None = Depend
 
 @app.on_event("startup")
 async def on_startup() -> None:
-    SETTINGS.validate_deployment_config()
-    if SETTINGS.is_production_environment and SETTINGS.data_backend != "postgres":
-        raise RuntimeError(
-            "DATA_BACKEND must be 'postgres' in production environments. "
-            "Set DATA_BACKEND=postgres."
-        )
-
-    if (
-        SETTINGS.is_render_environment
-        and SETTINGS.enforce_postgres_on_render
-        and SETTINGS.data_backend != "postgres"
-    ):
-        raise RuntimeError(
-            "DATA_BACKEND must be 'postgres' when running on Render. "
-            "Set DATA_BACKEND=postgres."
-        )
-
+    SETTINGS.validate_deployment_config("api")
     app.state.db_pool = await db.create_pool()
     await db.ensure_schema(app.state.db_pool)
     app.state.redis = redis_client()
-    await ensure_consumer_group(app.state.redis)
-    app.state.analysis_runtime = AnalysisRuntimeManager()
-    if SETTINGS.data_backend == "postgres":
-        missing = await db.ensure_analysis_schema_exists(app.state.db_pool)
-        if missing:
-            async with app.state.db_pool.acquire() as conn:
-                await db.apply_analysis_schema(conn)
-            missing = await db.ensure_analysis_schema_exists(app.state.db_pool)
-        if missing:
-            missing_csv = ", ".join(missing)
-            raise RuntimeError(
-                "Postgres analysis schema is incomplete. "
-                f"Missing table(s): {missing_csv}. "
-                "Run `python -m backend.bootstrap_postgres_schema` before starting the API."
-            )
+    await ensure_all_consumer_groups(app.state.redis)
+    missing = await db.ensure_analysis_schema_exists(app.state.db_pool)
+    if missing:
+        missing_csv = ", ".join(missing)
+        raise RuntimeError(
+            "PostgreSQL runtime schema is incomplete. "
+            f"Missing table(s): {missing_csv}. "
+            "Run `python -m backend.bootstrap_postgres_schema` before starting the API."
+        )
 
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
-    await app.state.redis.close()
+    await app.state.redis.aclose()
     await app.state.db_pool.close()
 
 
 def to_response(record: asyncpg.Record) -> SidelineResponse:
     return SidelineResponse(
         id=str(record["id"]),
+        job_id=str(record["job_id"]),
+        status_url=f"/jobs/{record['job_id']}",
         game_id=record["game_id"],
         move_ply=record["move_ply"],
         requested_by=record["requested_by"],
@@ -1600,71 +1198,359 @@ def to_response(record: asyncpg.Record) -> SidelineResponse:
     )
 
 
-def _start_analysis_job(request: Request, run_type: str, action: Callable[[Callable[[dict[str, Any]], None]], None]) -> AnalysisRunResponse:
-    runtime: AnalysisRuntimeManager = request.app.state.analysis_runtime
-    try:
-        job_id = runtime.start_job(run_type, action)
-    except RuntimeError as exc:
-        raise api_error(
-            status_code=409,
-            error_code="ANALYSIS_ALREADY_RUNNING",
-            detail=str(exc),
-        ) from exc
-    return AnalysisRunResponse(accepted=True, detail="Job accepted", job_id=job_id, run_type=run_type)
+async def _enqueue_durable_job(
+    request: Request,
+    *,
+    job_type: str,
+    workload_class: Literal["orchestration", "engine", "ingest"],
+    step_type: str,
+    idempotency_key: str,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    async with request.app.state.db_pool.acquire() as conn:
+        durable_payload = dict(payload or {})
+        if workload_class == "orchestration":
+            artifact_ids = await conn.fetch(
+                """
+                SELECT id, source_type, content_hash FROM source_artifacts
+                WHERE workspace_id = $1::uuid
+                ORDER BY imported_at, id
+                """,
+                SETTINGS.workspace_id,
+            )
+            settings_row = await conn.fetchrow(
+                "SELECT payload FROM runtime_settings WHERE workspace_id = $1::uuid",
+                SETTINGS.workspace_id,
+            )
+            runtime_snapshot = settings_row["payload"] if settings_row else DEFAULT_RUNTIME_SETTINGS
+            if isinstance(runtime_snapshot, str):
+                runtime_snapshot = json.loads(runtime_snapshot)
+            game_ids = await conn.fetch(
+                "SELECT id FROM games WHERE workspace_id=$1::uuid ORDER BY id",
+                SETTINGS.workspace_id,
+            )
+            durable_payload.update(
+                source_artifact_ids=[str(row["id"]) for row in artifact_ids],
+                source_artifacts=[
+                    {
+                        "id": str(row["id"]),
+                        "source_type": str(row["source_type"]),
+                        "content_hash": str(row["content_hash"]),
+                    }
+                    for row in artifact_ids
+                ],
+                settings_snapshot=dict(runtime_snapshot),
+                game_ids_snapshot=[int(row["id"]) for row in game_ids],
+                engine_profile={
+                    "engine_id": SETTINGS.stockfish_engine_id,
+                    "mode": "fixed",
+                    "max_time_ms": 0,
+                    "options_hash": "",
+                },
+            )
+        job, step, created = await jobs.create_job(
+            conn,
+            job_type=job_type,
+            workload_class=workload_class,
+            step_type=step_type,
+            request_payload=durable_payload,
+            idempotency_key=idempotency_key,
+        )
+    if created:
+        await enqueue_job(
+            request.app.state.redis,
+            workload_class,
+            jobs.redis_message(step, job_type),
+        )
+    return job
 
 
-def _start_async_analysis_job(request: Request, run_type: str, action) -> AnalysisRunResponse:
-    runtime: AnalysisRuntimeManager = request.app.state.analysis_runtime
-    try:
-        job_id = runtime.start_async_job(run_type, action)
-    except RuntimeError as exc:
-        raise api_error(status_code=409, error_code="ANALYSIS_ALREADY_RUNNING", detail=str(exc)) from exc
-    return AnalysisRunResponse(accepted=True, detail="Job accepted", job_id=job_id, run_type=run_type)
-
-
-@app.post('/analysis/run/full', response_model=AnalysisRunResponse, responses={401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
-async def run_full_analysis(request: Request, _: str = Depends(require_auth)) -> AnalysisRunResponse:
-    return _start_analysis_job(request, "full-analysis", _run_full_analysis)
-
-
-@app.post('/analysis/run/engine-only', response_model=AnalysisRunResponse, responses={401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
-async def run_engine_only_analysis(request: Request, _: str = Depends(require_auth)) -> AnalysisRunResponse:
-    return _start_analysis_job(request, "engine-only-analysis", _run_engine_only_analysis)
-
-
-@app.post('/analysis/run/fetch-games', response_model=AnalysisRunResponse, responses={401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
-async def run_fetch_games(request: Request, _: str = Depends(require_auth)) -> AnalysisRunResponse:
-    if SETTINGS.data_backend != "postgres":
-        raise api_error(503, "POSTGRES_REQUIRED", "Fetch Games requires the PostgreSQL runtime.")
-    return _start_async_analysis_job(
-        request,
-        "fetch-games",
-        lambda progress_cb: _run_fetch_games_postgres(request.app.state.db_pool, progress_cb),
+def _accepted_job_response(job: dict[str, Any], detail: str = "Job accepted") -> AnalysisRunResponse:
+    return AnalysisRunResponse(
+        accepted=True,
+        detail=detail,
+        job_id=job["job_id"],
+        run_type=job["job_type"],
+        job_type=job["job_type"],
+        status=job["status"],
+        status_url=f"/jobs/{job['job_id']}",
     )
 
 
-@app.post('/analysis/run/smoke-test', response_model=AnalysisRunResponse, responses={401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
-async def run_smoke_test(request: Request, _: str = Depends(require_auth)) -> AnalysisRunResponse:
-    return _start_analysis_job(request, "smoke-test", _run_smoke_test)
+@app.get("/jobs", response_model=list[JobResponse])
+async def list_durable_jobs(
+    request: Request,
+    status: str | None = None,
+    type: str | None = None,
+    limit: int = 20,
+    _: str = Depends(require_auth),
+) -> list[JobResponse]:
+    async with request.app.state.db_pool.acquire() as conn:
+        rows = await jobs.list_jobs(conn, status=status, job_type=type, limit=limit)
+    return [JobResponse.model_validate(row) for row in rows]
+
+
+@app.get("/jobs/{job_id}", response_model=JobResponse)
+async def get_durable_job(job_id: str, request: Request, _: str = Depends(require_auth)) -> JobResponse:
+    async with request.app.state.db_pool.acquire() as conn:
+        row = await jobs.get_job(conn, job_id)
+    if row is None:
+        raise api_error(404, "JOB_NOT_FOUND", "Job was not found.")
+    return JobResponse.model_validate(row)
+
+
+@app.get("/jobs/{job_id}/steps", response_model=list[JobStepResponse])
+async def get_durable_job_steps(
+    job_id: str, request: Request, _: str = Depends(require_auth)
+) -> list[JobStepResponse]:
+    async with request.app.state.db_pool.acquire() as conn:
+        if await jobs.get_job(conn, job_id) is None:
+            raise api_error(404, "JOB_NOT_FOUND", "Job was not found.")
+        rows = await jobs.list_steps(conn, job_id)
+    return [JobStepResponse.model_validate(row) for row in rows]
+
+
+@app.post("/jobs/{job_id}/cancel", response_model=JobResponse)
+async def cancel_durable_job(job_id: str, request: Request, _: str = Depends(require_auth)) -> JobResponse:
+    async with request.app.state.db_pool.acquire() as conn:
+        row = await jobs.cancel_job(conn, job_id)
+    if row is None:
+        raise api_error(404, "JOB_NOT_FOUND", "Job was not found.")
+    return JobResponse.model_validate(row)
+
+
+@app.get("/operations/metrics")
+async def get_operations_metrics(
+    request: Request, _: str = Depends(require_auth)
+) -> dict[str, Any]:
+    async with request.app.state.db_pool.acquire() as conn:
+        durable = await conn.fetchrow(
+            """
+            SELECT COUNT(*) FILTER (WHERE job.status IN ('queued','running','retry'))::int AS active_jobs,
+                   COUNT(*) FILTER (WHERE job.status='failed' AND job.finished_at > NOW()-INTERVAL '24 hours')::int AS failed_jobs_24h,
+                   COUNT(*) FILTER (WHERE job.status='running' AND job.heartbeat_at < NOW()-INTERVAL '5 minutes')::int AS stalled_jobs,
+                   AVG(EXTRACT(EPOCH FROM (job.finished_at-job.started_at)))
+                       FILTER (WHERE job.status='completed') AS average_job_seconds
+            FROM analysis_jobs job WHERE job.workspace_id=$1::uuid
+            """,
+            SETTINGS.workspace_id,
+        )
+        workers = await conn.fetchrow(
+            """
+            SELECT COUNT(DISTINCT lease_owner) FILTER (
+                       WHERE status='running' AND heartbeat_at > NOW()-INTERVAL '5 minutes'
+                   )::int AS active_worker_heartbeats,
+                   COUNT(*) FILTER (WHERE status='running' AND workload_class='engine')::int AS active_engine_slots,
+                   COUNT(*) FILTER (WHERE status='retry')::int AS retry_steps,
+                   COUNT(*) FILTER (WHERE status='completed' AND workload_class='engine'
+                                      AND result_json->>'cache_hit'='true')::int AS engine_cache_hits,
+                   COUNT(*) FILTER (WHERE status='completed' AND workload_class='engine')::int AS engine_steps
+            FROM analysis_job_steps WHERE workspace_id=$1::uuid
+            """,
+            SETTINGS.workspace_id,
+        )
+    stream_metrics: dict[str, Any] = {}
+    for capability in ("orchestration", "engine", "ingest"):
+        stream = SETTINGS.stream_for(capability)
+        group_name = SETTINGS.consumer_group_for(capability)
+        groups = await request.app.state.redis.xinfo_groups(stream)
+        group = next((row for row in groups if row.get("name") == group_name), {})
+        pending = await request.app.state.redis.xpending(stream, group_name)
+        oldest = await request.app.state.redis.xpending_range(
+            stream, group_name, min="-", max="+", count=1
+        )
+        stream_metrics[capability] = {
+            "stream": stream,
+            "lag": int(group.get("lag") or 0),
+            "pending": int(pending.get("pending") or 0),
+            "oldest_pending_idle_ms": (
+                int(oldest[0].get("time_since_delivered") or 0) if oldest else None
+            ),
+            "dead_letters": int(
+                await request.app.state.redis.xlen(SETTINGS.dead_letter_stream_for(capability))
+            ),
+        }
+    worker_values = dict(workers or {})
+    engine_steps = int(worker_values.get("engine_steps") or 0)
+    cache_hits = int(worker_values.get("engine_cache_hits") or 0)
+    return {
+        "jobs": dict(durable or {}),
+        "workers": worker_values,
+        "engine_cache_hit_rate": cache_hits / engine_steps if engine_steps else None,
+        "streams": stream_metrics,
+    }
+
+
+@app.post('/analysis/run/full', status_code=202, response_model=AnalysisRunResponse)
+async def run_full_analysis(
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    _: str = Depends(require_auth),
+) -> AnalysisRunResponse:
+    job = await _enqueue_durable_job(
+        request, job_type="full-analysis", workload_class="orchestration",
+        step_type="full-analysis", idempotency_key=idempotency_key,
+    )
+    return _accepted_job_response(job)
+
+
+@app.post('/analysis/run/engine-only', status_code=202, response_model=AnalysisRunResponse)
+async def run_engine_only_analysis(
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    _: str = Depends(require_auth),
+) -> AnalysisRunResponse:
+    job = await _enqueue_durable_job(
+        request, job_type="engine-only-analysis", workload_class="orchestration",
+        step_type="engine-only-analysis", idempotency_key=idempotency_key,
+    )
+    return _accepted_job_response(job)
+
+
+async def _enqueue_analysis_variant(
+    request: Request, job_type: str, idempotency_key: str, payload: dict[str, Any] | None = None
+) -> AnalysisRunResponse:
+    job = await _enqueue_durable_job(
+        request, job_type=job_type, workload_class="orchestration",
+        step_type=job_type, idempotency_key=idempotency_key, payload=payload,
+    )
+    return _accepted_job_response(job)
+
+
+@app.post('/analysis/run/incremental', status_code=202, response_model=AnalysisRunResponse)
+async def run_incremental_analysis(
+    request: Request, idempotency_key: str = Header(alias="Idempotency-Key"),
+    _: str = Depends(require_auth),
+) -> AnalysisRunResponse:
+    return await _enqueue_analysis_variant(request, "incremental-analysis", idempotency_key)
+
+
+@app.post('/analysis/run/line-matching', status_code=202, response_model=AnalysisRunResponse)
+async def run_line_matching_reanalysis(
+    request: Request, idempotency_key: str = Header(alias="Idempotency-Key"),
+    _: str = Depends(require_auth),
+) -> AnalysisRunResponse:
+    return await _enqueue_analysis_variant(request, "line-matching-reanalysis", idempotency_key)
+
+
+@app.post('/analysis/run/game-details', status_code=202, response_model=AnalysisRunResponse)
+async def run_game_details_reanalysis(
+    request: Request, idempotency_key: str = Header(alias="Idempotency-Key"),
+    _: str = Depends(require_auth),
+) -> AnalysisRunResponse:
+    return await _enqueue_analysis_variant(request, "game-details-reanalysis", idempotency_key)
+
+
+@app.post('/games/{game_id}/reanalyze', status_code=202, response_model=AnalysisRunResponse)
+async def run_single_game_reanalysis(
+    game_id: int, request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    _: str = Depends(require_auth),
+) -> AnalysisRunResponse:
+    return await _enqueue_analysis_variant(
+        request, "per-game-reanalysis", idempotency_key, {"game_id": game_id}
+    )
+
+
+@app.post('/analysis/run/review-insights', status_code=202, response_model=AnalysisRunResponse)
+async def run_review_insight_regeneration(
+    request: Request, idempotency_key: str = Header(alias="Idempotency-Key"),
+    _: str = Depends(require_auth),
+) -> AnalysisRunResponse:
+    return await _enqueue_analysis_variant(request, "review-insight-regeneration", idempotency_key)
+
+
+@app.post('/analysis/run/fetch-games', status_code=202, response_model=AnalysisRunResponse)
+async def run_fetch_games(
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    _: str = Depends(require_auth),
+) -> AnalysisRunResponse:
+    job = await _enqueue_durable_job(
+        request, job_type="fetch-games", workload_class="ingest",
+        step_type="provider-fetch", idempotency_key=idempotency_key,
+    )
+    return _accepted_job_response(job)
+
+
+@app.post('/analysis/run/smoke-test', status_code=202, response_model=AnalysisRunResponse)
+async def run_smoke_test(
+    request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    _: str = Depends(require_auth),
+) -> AnalysisRunResponse:
+    job = await _enqueue_durable_job(
+        request, job_type="smoke-analysis", workload_class="orchestration",
+        step_type="smoke-analysis", idempotency_key=idempotency_key,
+    )
+    return _accepted_job_response(job)
 
 
 @app.get('/analysis/status', response_model=AnalysisStatusResponse)
 async def get_analysis_status(request: Request, _: str = Depends(require_auth)) -> AnalysisStatusResponse:
-    runtime: AnalysisRuntimeManager = request.app.state.analysis_runtime
-    return runtime.status()
+    async with request.app.state.db_pool.acquire() as conn:
+        recent = await jobs.list_jobs(conn, limit=50)
+    analysis_jobs = [job for job in recent if "analysis" in job["job_type"] or "reanalysis" in job["job_type"]]
+    active = next((job for job in analysis_jobs if job["status"] in {"queued", "running", "retry"}), None)
+    latest = analysis_jobs[0] if analysis_jobs else None
+    completed = next((job for job in analysis_jobs if job["status"] == "completed"), None)
+    if active:
+        state = "running"
+    elif latest and latest["status"] == "failed":
+        state = "failed"
+    elif latest and latest["status"] == "completed":
+        state = "completed"
+    else:
+        state = "idle"
+    updated = (latest or {}).get("updated_at") or datetime.now(timezone.utc)
+    return AnalysisStatusResponse(
+        state=state,
+        active_job_id=active["job_id"] if active else None,
+        active_run_type=active["job_type"] if active else None,
+        last_completed_job_id=completed["job_id"] if completed else None,
+        last_run_type=latest["job_type"] if latest else None,
+        last_error=latest["error_detail"] if latest else None,
+        updated_at=updated.isoformat(),
+    )
 
 
 @app.get('/analysis/progress', response_model=AnalysisProgressResponse)
 async def get_analysis_progress(request: Request, _: str = Depends(require_auth)) -> AnalysisProgressResponse:
-    runtime: AnalysisRuntimeManager = request.app.state.analysis_runtime
-    return runtime.progress()
+    async with request.app.state.db_pool.acquire() as conn:
+        recent = await jobs.list_jobs(conn, limit=50)
+    latest = next(
+        (job for job in recent if "analysis" in job["job_type"] or "reanalysis" in job["job_type"]),
+        None,
+    )
+    updated = latest["updated_at"] if latest else datetime.now(timezone.utc)
+    return AnalysisProgressResponse(
+        job_id=latest["job_id"] if latest else None,
+        run_type=latest["job_type"] if latest else None,
+        progress=latest["progress"] if latest else None,
+        updated_at=updated.isoformat(),
+    )
 
 
 @app.get('/analysis/runs', response_model=AnalysisRunHistoryResponse)
 async def get_analysis_runs(request: Request, limit: int = 10, _: str = Depends(require_auth)) -> AnalysisRunHistoryResponse:
-    runtime: AnalysisRuntimeManager = request.app.state.analysis_runtime
-    payload = await fetch_analysis_runs(runtime, limit=limit)
-    return AnalysisRunHistoryResponse.model_validate(payload)
+    async with request.app.state.db_pool.acquire() as conn:
+        recent = await jobs.list_jobs(conn, limit=min(max(limit * 3, 10), 100))
+    entries: list[AnalysisRunHistoryEntry] = []
+    for job in recent:
+        if "analysis" not in job["job_type"] and "reanalysis" not in job["job_type"]:
+            continue
+        status = "completed" if job["status"] == "completed" else "failed" if job["status"] in {"failed", "cancelled"} else "running"
+        entries.append(
+            AnalysisRunHistoryEntry(
+                run_id=job["job_id"], run_type=job["job_type"], status=status,
+                started_at=(job["started_at"] or job["queued_at"]).isoformat(),
+                finished_at=job["finished_at"].isoformat() if job["finished_at"] else None,
+                error_reason=job["error_detail"],
+            )
+        )
+        if len(entries) >= min(max(limit, 1), 50):
+            break
+    return AnalysisRunHistoryResponse(runs=entries)
 
 
 @app.get('/auth/validate', response_model=AuthValidateResponse, responses={401: {"model": ErrorResponse}})
@@ -1674,88 +1560,163 @@ async def auth_validate(_: str = Depends(require_auth)) -> AuthValidateResponse:
 
 @app.get('/settings/runtime', response_model=RuntimeSettingsResponse, responses={401: {"model": ErrorResponse}})
 async def get_runtime_settings(request: Request, _: str = Depends(require_auth)) -> RuntimeSettingsResponse:
-    if SETTINGS.data_backend != "postgres":
-        raise api_error(503, "POSTGRES_REQUIRED", "Runtime settings require PostgreSQL.")
     payload = await _load_postgres_runtime_settings(request.app.state.db_pool)
     return RuntimeSettingsResponse.model_validate(payload)
 
 
 @app.put('/settings/runtime', response_model=RuntimeSettingsResponse, responses={401: {"model": ErrorResponse}, 422: {"model": ValidationErrorResponse}})
 async def update_runtime_settings(request: Request, payload: dict[str, Any], _: str = Depends(require_auth)) -> RuntimeSettingsResponse:
-    if SETTINGS.data_backend != "postgres":
-        raise api_error(503, "POSTGRES_REQUIRED", "Runtime settings require PostgreSQL.")
     return await _save_postgres_runtime_settings(request.app.state.db_pool, payload)
 
 
-@app.post('/repertoires/import', response_model=RepertoireImportResponse, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
-async def import_repertoires(file: UploadFile = File(...), _: str = Depends(require_auth)) -> RepertoireImportResponse:
-    if SETTINGS.data_backend != "postgres":
-        raise api_error(503, "POSTGRES_REQUIRED", "Repertoire import requires the PostgreSQL runtime.")
-
+@app.post('/repertoires/import', status_code=202, response_model=RepertoireImportResponse)
+async def import_repertoires(
+    request: Request,
+    file: UploadFile = File(...),
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    _: str = Depends(require_auth),
+) -> RepertoireImportResponse:
     payload = await file.read()
     if not payload:
         raise api_error(400, "EMPTY_UPLOAD", "Uploaded file is empty.")
-
-    upload_hash = hashlib.sha256(payload).hexdigest()
-
-    duplicate_job = next((job for job in REPERTOIRE_IMPORT_JOBS.values() if job.get("upload_hash") == upload_hash), None)
-    if duplicate_job:
-        raise api_error(
-            409,
-            "UPLOAD_ALREADY_IMPORTED",
-            "This exact upload payload was already imported. Please upload a new export.",
-        )
-
-    try:
-        parsed_lines = repertoire_import.parse_repertoire_upload(payload, file.filename or "upload")
-    except ValueError as exc:
-        raise api_error(400, "INVALID_UPLOAD", str(exc)) from exc
-
-    async with app.state.db_pool.acquire() as conn:
+    filename = file.filename or "upload.pgn"
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".pgn":
+        pgn_text = payload.decode("utf-8", errors="replace")
+    elif suffix == ".zip":
+        try:
+            with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                members = [name for name in archive.namelist() if Path(name).suffix.lower() == ".pgn"]
+                if not members:
+                    raise api_error(400, "INVALID_UPLOAD", "No PGN files were found in the archive.")
+                pgn_text = "\n\n".join(
+                    archive.read(name).decode("utf-8", errors="replace") for name in sorted(members)
+                )
+        except zipfile.BadZipFile as exc:
+            raise api_error(400, "INVALID_UPLOAD", "Uploaded zip payload is invalid or corrupted.") from exc
+    else:
+        raise api_error(400, "INVALID_UPLOAD", "Upload a .zip archive of PGNs or a single .pgn file.")
+    upload_hash = hashlib.sha256(pgn_text.encode("utf-8")).hexdigest()
+    async with request.app.state.db_pool.acquire() as conn:
         async with conn.transaction():
-            inserted, duplicates, total = await repertoire_import.ingest_repertoire_lines_postgres(conn, parsed_lines)
-
-    job_id = str(uuid.uuid4())
-    progress = {
-        "message": "Import completed",
-        "done": total,
-        "total": total,
-        "inserted_lines": inserted,
-        "duplicate_lines": duplicates,
-    }
-    REPERTOIRE_IMPORT_JOBS[job_id] = {
-        "id": job_id,
-        "status": "completed",
-        "upload_hash": upload_hash,
-        "progress": progress,
-    }
-
-    detail = (
-        f"Imported {inserted} repertoire lines."
-        if duplicates == 0
-        else f"Imported {inserted} repertoire lines; skipped {duplicates} duplicate line(s)."
-    )
+            artifact_id = await conn.fetchval(
+                """
+                INSERT INTO source_artifacts(
+                    id, workspace_id, source_type, provider, original_name,
+                    content_hash, pgn_text, metadata_json
+                ) VALUES (gen_random_uuid(), $1::uuid, 'repertoire', 'upload', $2, $3, $4, $5::jsonb)
+                ON CONFLICT (workspace_id, source_type, content_hash) DO UPDATE
+                SET updated_at = NOW()
+                RETURNING id
+                """,
+                SETTINGS.workspace_id,
+                filename,
+                upload_hash,
+                pgn_text,
+                json.dumps({"uploaded_filename": filename, "archive": suffix == ".zip"}),
+            )
+            job, step, created = await jobs.create_job(
+                conn,
+                job_type="repertoire-import",
+                workload_class="ingest",
+                step_type="repertoire-import",
+                request_payload={"source_artifact_id": str(artifact_id)},
+                idempotency_key=idempotency_key,
+            )
+    if created:
+        await enqueue_job(request.app.state.redis, "ingest", jobs.redis_message(step, "repertoire-import"))
     return RepertoireImportResponse(
-        job_id=job_id,
-        status="completed",
+        job_id=job["job_id"],
+        status_url=f"/jobs/{job['job_id']}",
+        status=job["status"],
         upload_hash=upload_hash,
-        inserted_lines=inserted,
-        duplicate_lines=duplicates,
-        total_lines=total,
-        detail=detail,
+        detail="Repertoire import queued.",
     )
 
 
 @app.get('/repertoires/import-jobs/{job_id}', response_model=RepertoireImportJobResponse, responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
-async def get_repertoire_import_job(job_id: str, _: str = Depends(require_auth)) -> RepertoireImportJobResponse:
-    job = REPERTOIRE_IMPORT_JOBS.get(job_id)
-    if not job:
+async def get_repertoire_import_job(
+    job_id: str, request: Request, _: str = Depends(require_auth)
+) -> RepertoireImportJobResponse:
+    async with request.app.state.db_pool.acquire() as conn:
+        job = await jobs.get_job(conn, job_id)
+    if not job or job["job_type"] != "repertoire-import":
         raise api_error(404, "IMPORT_JOB_NOT_FOUND", "Repertoire import job was not found.")
-    return RepertoireImportJobResponse(id=job["id"], status=job["status"], progress=job["progress"])
+    return RepertoireImportJobResponse(id=job["job_id"], status=job["status"], progress=job["progress"])
+
+
+@app.post('/games/import', status_code=202, response_model=AnalysisRunResponse)
+async def import_games(
+    request: Request,
+    file: UploadFile = File(...),
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    _: str = Depends(require_auth),
+) -> AnalysisRunResponse:
+    payload = await file.read()
+    if not payload:
+        raise api_error(400, "EMPTY_UPLOAD", "Uploaded file is empty.")
+    filename = file.filename or "games.pgn"
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".pgn":
+        pgn_text = payload.decode("utf-8", errors="replace")
+    elif suffix == ".zip":
+        try:
+            with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                names = [name for name in archive.namelist() if Path(name).suffix.lower() == ".pgn"]
+                if not names:
+                    raise api_error(400, "INVALID_UPLOAD", "No PGN files were found in the archive.")
+                pgn_text = "\n\n".join(
+                    archive.read(name).decode("utf-8", errors="replace") for name in sorted(names)
+                )
+        except zipfile.BadZipFile as exc:
+            raise api_error(400, "INVALID_UPLOAD", "Uploaded zip payload is invalid or corrupted.") from exc
+    else:
+        raise api_error(400, "INVALID_UPLOAD", "Upload a .zip archive of PGNs or a single .pgn file.")
+    content_hash = hashlib.sha256(pgn_text.encode("utf-8")).hexdigest()
+    runtime = await db.fetch_runtime_settings(request.app.state.db_pool) or {}
+    async with request.app.state.db_pool.acquire() as conn:
+        async with conn.transaction():
+            artifact_id = await conn.fetchval(
+                """
+                INSERT INTO source_artifacts(
+                    id, workspace_id, source_type, provider, original_name,
+                    content_hash, pgn_text, metadata_json
+                ) VALUES (gen_random_uuid(), $1::uuid, 'game', 'upload', $2, $3, $4, $5::jsonb)
+                ON CONFLICT (workspace_id, source_type, content_hash) DO UPDATE
+                SET updated_at = NOW()
+                RETURNING id
+                """,
+                SETTINGS.workspace_id,
+                filename,
+                content_hash,
+                pgn_text,
+                json.dumps({"uploaded_filename": filename, "archive": suffix == ".zip"}),
+            )
+            job, step, created = await jobs.create_job(
+                conn,
+                job_type="game-import",
+                workload_class="ingest",
+                step_type="game-import",
+                request_payload={
+                    "source_artifact_id": str(artifact_id),
+                    "player_names": list(dict.fromkeys(
+                        [
+                            str(value) for value in [
+                                runtime.get("player_name"), *(runtime.get("player_names") or [])
+                            ] if value
+                        ]
+                    )),
+                },
+                idempotency_key=idempotency_key,
+            )
+    if created:
+        await enqueue_job(request.app.state.redis, "ingest", jobs.redis_message(step, "game-import"))
+    return _accepted_job_response(job, "Game import queued")
 
 
 @app.post(
     "/sidelines",
+    status_code=202,
     response_model=SidelineResponse,
     responses={
         401: {"model": ErrorResponse, "description": "Unauthorized"},
@@ -1776,34 +1737,36 @@ async def create_sideline(
     serialized_payload = payload.model_dump()
 
     async with request.app.state.db_pool.acquire() as conn:
-        row = await db.insert_sideline_request(
-            conn,
-            request_id=request_id,
-            game_id=payload.game_id,
-            move_ply=payload.move_ply,
-            requested_by=principal,
-            idempotency_key=idempotency_key,
-            payload=serialized_payload,
-        )
-
-        if row is None:
-            existing = await db.fetch_by_idempotency_key(conn, idempotency_key)
-            if existing is None:
-                raise api_error(
-                    status_code=500,
-                    error_code="IDEMPOTENCY_CONFLICT_RESOLUTION_FAILED",
-                    detail="Idempotency key existed but record lookup failed",
+        async with conn.transaction():
+            job, step, created_job = await jobs.create_job(
+                conn,
+                job_type="sideline-analysis",
+                workload_class="engine",
+                step_type="sideline-analysis",
+                request_payload=serialized_payload,
+                idempotency_key=idempotency_key,
+            )
+            if created_job:
+                await db.insert_sideline_request(
+                    conn,
+                    request_id=request_id,
+                    game_id=payload.game_id,
+                    move_ply=payload.move_ply,
+                    requested_by=principal,
+                    job_id=job["job_id"],
+                    payload=serialized_payload,
                 )
-            return to_response(existing)
+            else:
+                existing = await db.fetch_by_idempotency_key(conn, idempotency_key)
+                if existing is None:
+                    raise api_error(
+                        status_code=500,
+                        error_code="IDEMPOTENCY_CONFLICT_RESOLUTION_FAILED",
+                        detail="Idempotency key existed but record lookup failed",
+                    )
+                return to_response(existing)
 
-    await enqueue_job(
-        request.app.state.redis,
-        {
-            "job_id": request_id,
-            "idempotency_key": idempotency_key,
-            "attempt": "0",
-        },
-    )
+    await enqueue_job(request.app.state.redis, "engine", jobs.redis_message(step, "sideline-analysis"))
 
     async with request.app.state.db_pool.acquire() as conn:
         created = await db.fetch_sideline_request(conn, request_id)
@@ -1902,6 +1865,97 @@ async def get_game(game_id: int, _: str = Depends(require_auth)) -> GameDetailRe
     if data is None:
         raise api_error(status_code=404, error_code="NOT_FOUND", detail="Game not found")
     return GameDetailResponse(**data)
+
+
+@app.get("/positions/{pos_id}/games")
+async def get_position_games(
+    pos_id: int,
+    request: Request,
+    uci_move: str | None = None,
+    limit: int = 20,
+    _: str = Depends(require_auth),
+) -> list[dict[str, Any]]:
+    async with request.app.state.db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT game.id AS game_id, game.date, game.white, game.black, game.result,
+                   game.player_color, gp.ply, gp.san_move, gp.uci_move,
+                   match.matched_line_id AS line_id, match.compliance
+            FROM game_positions gp
+            JOIN games game ON game.workspace_id=gp.workspace_id AND game.id=gp.game_id
+            LEFT JOIN workspace_state state ON state.workspace_id=gp.workspace_id
+            LEFT JOIN matches match ON match.workspace_id=gp.workspace_id
+                                   AND match.game_id=gp.game_id
+                                   AND match.analysis_run_id=state.active_analysis_run_id
+            WHERE gp.workspace_id=$1::uuid AND gp.pos_id=$2
+              AND ($3::text IS NULL OR gp.uci_move=$3)
+            ORDER BY game.date DESC NULLS LAST, game.id DESC, gp.ply
+            LIMIT $4
+            """,
+            SETTINGS.workspace_id, pos_id, uci_move, min(max(limit, 1), 200),
+        )
+    return [dict(row) for row in rows]
+
+
+@app.get("/statistics/months")
+async def get_month_statistics(
+    request: Request, _: str = Depends(require_auth)
+) -> list[dict[str, Any]]:
+    async with request.app.state.db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT substring(replace(game.date, '.', '-') FROM 1 FOR 7) AS key,
+                   COUNT(DISTINCT game.id)::int AS total_games,
+                   AVG(gp.time_spent_seconds) FILTER (
+                       WHERE COALESCE(ap.repertoire_class, gp.repertoire_class)
+                             IN ('IN_REPERTOIRE_MAIN','IN_REPERTOIRE_OTHER')
+                   ) AS in_book_avg,
+                   AVG(gp.time_spent_seconds) FILTER (
+                       WHERE COALESCE(ap.repertoire_class, gp.repertoire_class)='OUT_OF_REPERTOIRE'
+                   ) AS out_book_avg,
+                   AVG(gp.time_spent_fraction) FILTER (
+                       WHERE COALESCE(ap.repertoire_class, gp.repertoire_class)
+                             IN ('IN_REPERTOIRE_MAIN','IN_REPERTOIRE_OTHER')
+                   ) AS in_book_frac_avg,
+                   AVG(gp.time_spent_fraction) FILTER (
+                       WHERE COALESCE(ap.repertoire_class, gp.repertoire_class)='OUT_OF_REPERTOIRE'
+                   ) AS out_book_frac_avg
+            FROM games game
+            JOIN game_positions gp ON gp.workspace_id=game.workspace_id AND gp.game_id=game.id
+            LEFT JOIN workspace_state state ON state.workspace_id=gp.workspace_id
+            LEFT JOIN analysis_ply ap ON ap.workspace_id=gp.workspace_id
+                                     AND ap.game_id=gp.game_id AND ap.ply=gp.ply
+                                     AND ap.analysis_run_id=state.active_analysis_run_id
+            WHERE game.workspace_id=$1::uuid AND game.is_daily=0 AND game.date IS NOT NULL
+            GROUP BY substring(replace(game.date, '.', '-') FROM 1 FOR 7)
+            ORDER BY key DESC
+            """,
+            SETTINGS.workspace_id,
+        )
+    return [dict(row) for row in rows]
+
+
+@app.get("/time-patterns/summary")
+async def get_time_pattern_summary(
+    request: Request, _: str = Depends(require_auth)
+) -> dict[str, int]:
+    async with request.app.state.db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT COALESCE(SUM(pattern.slow_in_book), 0)::int AS slow_in_book,
+                   COALESCE(SUM(pattern.instant_out_of_book), 0)::int AS instant_out_of_book,
+                   COALESCE(SUM(pattern.blunder_cluster), 0)::int AS blunder_cluster
+            FROM workspace_state state
+            LEFT JOIN time_patterns pattern
+              ON pattern.workspace_id=state.workspace_id
+             AND pattern.analysis_run_id=state.active_analysis_run_id
+            WHERE state.workspace_id=$1::uuid
+            """,
+            SETTINGS.workspace_id,
+        )
+    return dict(row) if row else {
+        "slow_in_book": 0, "instant_out_of_book": 0, "blunder_cluster": 0,
+    }
 
 
 @app.get("/overview/summary", response_model=dict[str, Any])
@@ -2026,6 +2080,50 @@ async def get_position_intelligence(
     return PositionIntelligenceResponse(**payload)
 
 
+@app.get("/positions/by-fen/lookup")
+async def lookup_position(fen: str, request: Request, _: str = Depends(require_auth)) -> dict[str, int] | None:
+    async with request.app.state.db_pool.acquire() as conn:
+        pos_id = await conn.fetchval("SELECT id FROM positions WHERE fen_norm = $1", fen)
+    return {"pos_id": int(pos_id)} if pos_id is not None else None
+
+
+@app.get("/lines/{line_id}/moves")
+async def get_line_moves_api(
+    line_id: str, request: Request, max_ply: int | None = None,
+    _: str = Depends(require_auth),
+) -> list[dict[str, Any]]:
+    async with request.app.state.db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT ply, pos_id, san_move, uci_move, next_pos_id
+            FROM line_positions
+            WHERE workspace_id = $1::uuid AND line_id = $2
+              AND ($3::int IS NULL OR ply <= $3)
+            ORDER BY ply
+            """,
+            SETTINGS.workspace_id, line_id, max_ply,
+        )
+    return [dict(row) for row in rows]
+
+
+@app.post("/positions/{pos_id}/mainline")
+async def set_mainline_override(
+    pos_id: int, payload: MainlineOverrideRequest, request: Request,
+    _: str = Depends(require_auth),
+) -> dict[str, Any]:
+    async with request.app.state.db_pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO user_mainline_overrides(workspace_id, pos_id, uci_move, next_pos_id, updated_at)
+            VALUES ($1::uuid, $2, $3, $4, NOW())
+            ON CONFLICT (workspace_id, pos_id) DO UPDATE
+            SET uci_move=EXCLUDED.uci_move, next_pos_id=EXCLUDED.next_pos_id, updated_at=NOW()
+            """,
+            SETTINGS.workspace_id, pos_id, payload.uci_move, payload.next_pos_id,
+        )
+    return {"pos_id": pos_id, "uci_move": payload.uci_move, "next_pos_id": payload.next_pos_id}
+
+
 @app.get("/tree/explorer", response_model=TreeCoverageResponse, deprecated=True)
 async def get_tree_explorer_legacy(
     pos_id: int = 1,
@@ -2038,12 +2136,7 @@ async def get_tree_explorer_legacy(
 
 
 def _require_postgres_trainer_sessions() -> None:
-    if SETTINGS.data_backend != "postgres":
-        raise api_error(
-            status_code=501,
-            error_code="NOT_IMPLEMENTED",
-            detail="Trainer sessions API is implemented only for PostgreSQL backend.",
-        )
+    return None
 
 
 def _trainer_player_moves_for_side(line_moves: list[dict[str, Any]], side_to_play: str) -> list[dict[str, Any]]:
@@ -2067,19 +2160,23 @@ def _trainer_difficulty(line_info: dict[str, Any]) -> Literal["easy", "medium", 
 async def _ensure_trainer_state_postgres(conn: asyncpg.Connection) -> None:
     await conn.execute(
         """
-        INSERT INTO trainer_line_state (line_id, side_to_play)
-        SELECT line_id, COALESCE(side_to_play, 'white')
+        INSERT INTO trainer_line_state (workspace_id, line_id, side_to_play)
+        SELECT workspace_id, line_id, COALESCE(side_to_play, 'white')
         FROM repertoire_lines
-        ON CONFLICT (line_id) DO NOTHING
-        """
+        WHERE workspace_id = $1::uuid
+        ON CONFLICT (workspace_id, line_id) DO NOTHING
+        """,
+        SETTINGS.workspace_id,
     )
     await conn.execute(
         """
         UPDATE trainer_line_state tls
         SET side_to_play = COALESCE(rl.side_to_play, 'white')
         FROM repertoire_lines rl
-        WHERE rl.line_id = tls.line_id
-        """
+        WHERE rl.workspace_id = tls.workspace_id AND rl.line_id = tls.line_id
+          AND tls.workspace_id = $1::uuid
+        """,
+        SETTINGS.workspace_id,
     )
 
 
@@ -2090,10 +2187,11 @@ async def _fetch_trainer_line_info_postgres(conn: asyncpg.Connection, line_id: s
                tls.learned, tls.needs_review, tls.correct_streak, tls.priority_override,
                tls.auto_priority_score, tls.focus_max_ply
         FROM repertoire_lines rl
-        JOIN trainer_line_state tls ON rl.line_id = tls.line_id
-        WHERE rl.line_id = $1
+        JOIN trainer_line_state tls ON rl.workspace_id = tls.workspace_id AND rl.line_id = tls.line_id
+        WHERE rl.line_id = $1 AND rl.workspace_id = $2::uuid
         """,
         line_id,
+        SETTINGS.workspace_id,
     )
     return dict(row) if row else None
 
@@ -2104,10 +2202,11 @@ async def _fetch_line_moves_postgres(conn: asyncpg.Connection, line_id: str) -> 
         SELECT lp.ply, lp.san_move, lp.uci_move, lp.pos_id, lp.next_pos_id, COALESCE(p.fen_norm, '') AS fen
         FROM line_positions lp
         LEFT JOIN positions p ON p.id = lp.pos_id
-        WHERE lp.line_id = $1
+        WHERE lp.line_id = $1 AND lp.workspace_id = $2::uuid
         ORDER BY lp.ply
         """,
         line_id,
+        SETTINGS.workspace_id,
     )
     return [dict(row) for row in rows]
 
@@ -2120,7 +2219,9 @@ async def _trainer_queue_snapshot_postgres(conn: asyncpg.Connection) -> TrainerQ
             COUNT(*) FILTER (WHERE learned = 1) AS learned,
             COUNT(*) FILTER (WHERE needs_review = 1) AS needs_review
         FROM trainer_line_state
-        """
+        WHERE workspace_id = $1::uuid
+        """,
+        SETTINGS.workspace_id,
     )
     if not row:
         return TrainerQueueSnapshot(remaining=0, learned=0, needs_review=0)
@@ -2164,11 +2265,13 @@ async def create_trainer_session(payload: TrainerSessionCreateRequest, request: 
                 SELECT rl.line_id
                 FROM repertoire_lines rl
                 JOIN trainer_line_state tls ON rl.line_id = tls.line_id
-                WHERE tls.learned = $1
+                WHERE rl.workspace_id = tls.workspace_id
+                  AND rl.workspace_id = $2::uuid AND tls.learned = $1
                 ORDER BY rl.line_id
                 LIMIT 1
                 """,
                 1 if payload.mode == "review" else 0,
+                SETTINGS.workspace_id,
             )
             if not row:
                 raise api_error(404, "NOT_FOUND", "No trainer lines available for mode")
@@ -2185,13 +2288,14 @@ async def create_trainer_session(payload: TrainerSessionCreateRequest, request: 
         session_id = str(uuid.uuid4())
         session_row = await conn.fetchrow(
             """
-            INSERT INTO trainer_sessions (id, line_id, mode, player_move_index, had_incorrect, completed)
-            VALUES ($1::uuid, $2, $3, 0, 0, 0)
+            INSERT INTO trainer_sessions (id, workspace_id, line_id, mode, player_move_index, had_incorrect, completed)
+            VALUES ($1::uuid, $4::uuid, $2, $3, 0, 0, 0)
             RETURNING id
             """,
             session_id,
             line_id,
             payload.mode,
+            SETTINGS.workspace_id,
         )
         if not session_row:
             raise api_error(500, "INTERNAL_ERROR", "Failed to create trainer session")
@@ -2218,9 +2322,10 @@ async def answer_trainer_session(session_id: str, payload: TrainerSessionAnswerR
             """
             SELECT id, line_id, mode, player_move_index, had_incorrect, completed
             FROM trainer_sessions
-            WHERE id = $1::uuid
+            WHERE id = $1::uuid AND workspace_id = $2::uuid
             """,
             normalized_session_id,
+            SETTINGS.workspace_id,
         )
         if not session:
             raise api_error(404, "NOT_FOUND", "Trainer session not found")
@@ -2258,11 +2363,12 @@ async def answer_trainer_session(session_id: str, payload: TrainerSessionAnswerR
                     correct_streak = CASE WHEN $2 THEN correct_streak + 1 ELSE correct_streak END,
                     times_correct = CASE WHEN $2 THEN times_correct + 1 ELSE times_correct END,
                     last_seen = $3
-                WHERE line_id = $1
+                WHERE line_id = $1 AND workspace_id = $4::uuid
                 """,
                 str(session_data["line_id"]),
                 completed == 1,
                 datetime.now(timezone.utc).isoformat(),
+                SETTINGS.workspace_id,
             )
         else:
             had_incorrect = 1
@@ -2276,10 +2382,11 @@ async def answer_trainer_session(session_id: str, payload: TrainerSessionAnswerR
                     correct_streak = 0,
                     times_incorrect = times_incorrect + 1,
                     last_seen = $2
-                WHERE line_id = $1
+                WHERE line_id = $1 AND workspace_id = $3::uuid
                 """,
                 str(session_data["line_id"]),
                 datetime.now(timezone.utc).isoformat(),
+                SETTINGS.workspace_id,
             )
 
         await conn.execute(
@@ -2289,21 +2396,23 @@ async def answer_trainer_session(session_id: str, payload: TrainerSessionAnswerR
                 had_incorrect = $3,
                 completed = $4,
                 updated_at = NOW()
-            WHERE id = $1::uuid
+            WHERE id = $1::uuid AND workspace_id = $5::uuid
             """,
             normalized_session_id,
             player_idx,
             had_incorrect,
             completed,
+            SETTINGS.workspace_id,
         )
 
         state_row = await conn.fetchrow(
             """
             SELECT learned, needs_review
             FROM trainer_line_state
-            WHERE line_id = $1
+            WHERE line_id = $1 AND workspace_id = $2::uuid
             """,
             str(session_data["line_id"]),
+            SETTINGS.workspace_id,
         )
         if not state_row:
             raise api_error(404, "NOT_FOUND", "Line not found after trainer session answer")
@@ -2337,28 +2446,22 @@ async def get_trainer_queue(
 ) -> TrainerQueueResponse:
     learned_only = mode == "review"
 
-    if SETTINGS.data_backend == "postgres":
-        async with request.app.state.db_pool.acquire() as conn:
-            await _ensure_trainer_state_postgres(conn)
-            rows = await conn.fetch(
-                """
-                SELECT rl.line_id, rl.is_priority, rl.side_to_play,
-                       tls.learned, tls.needs_review, tls.correct_streak, tls.priority_override,
-                       tls.auto_priority_score, tls.focus_max_ply
-                FROM repertoire_lines rl
-                JOIN trainer_line_state tls ON rl.line_id = tls.line_id
-                WHERE tls.learned = $1
-                """,
-                1 if learned_only else 0,
-            )
-        return TrainerQueueResponse(mode=mode, items=[TrainerQueueEntry(**dict(row)) for row in rows])
-
-    def _fetch(conn: sqlite3.Connection):
-        queries.ensure_trainer_state(conn)
-        return queries.fetch_trainer_candidates(conn, learned_only)
-
-    rows = await _with_sqlite(_fetch)
-    return TrainerQueueResponse(mode=mode, items=[TrainerQueueEntry(**row) for row in rows])
+    async with request.app.state.db_pool.acquire() as conn:
+        await _ensure_trainer_state_postgres(conn)
+        rows = await conn.fetch(
+            """
+            SELECT rl.line_id, rl.is_priority, rl.side_to_play,
+                   tls.learned, tls.needs_review, tls.correct_streak, tls.priority_override,
+                   tls.auto_priority_score, tls.focus_max_ply
+            FROM repertoire_lines rl
+            JOIN trainer_line_state tls
+              ON rl.workspace_id = tls.workspace_id AND rl.line_id = tls.line_id
+            WHERE rl.workspace_id = $1::uuid AND tls.learned = $2
+            """,
+            SETTINGS.workspace_id,
+            1 if learned_only else 0,
+        )
+    return TrainerQueueResponse(mode=mode, items=[TrainerQueueEntry(**dict(row)) for row in rows])
 
 
 @app.post("/trainer/outcomes", response_model=TrainerOutcomeResponse)
@@ -2380,17 +2483,16 @@ async def post_trainer_outcome(
     if payload.grade is not None and (payload.grade == "again") != (resolved_is_correct is False):
         raise api_error(400, "INVALID_INPUT", "grade conflicts with resolved correctness")
 
-    if SETTINGS.data_backend == "postgres":
-        async with request.app.state.db_pool.acquire() as conn:
-            await _ensure_trainer_state_postgres(conn)
-            info = await _fetch_trainer_line_info_postgres(conn, payload.line_id)
-            if not info:
-                raise api_error(404, "NOT_FOUND", "Line not found in trainer state")
+    async with request.app.state.db_pool.acquire() as conn:
+        await _ensure_trainer_state_postgres(conn)
+        info = await _fetch_trainer_line_info_postgres(conn, payload.line_id)
+        if not info:
+            raise api_error(404, "NOT_FOUND", "Line not found in trainer state")
 
-            current_streak = int(info.get("correct_streak") or 0)
-            now_iso = datetime.now(timezone.utc).isoformat()
-            if resolved_is_correct:
-                await conn.execute(
+        current_streak = int(info.get("correct_streak") or 0)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if resolved_is_correct:
+            await conn.execute(
                     """
                     UPDATE trainer_line_state
                     SET learned = COALESCE($2, learned),
@@ -2398,82 +2500,41 @@ async def post_trainer_outcome(
                         correct_streak = $3,
                         times_correct = times_correct + 1,
                         last_seen = $4
-                    WHERE line_id = $1
+                    WHERE line_id = $1 AND workspace_id = $5::uuid
                     """,
                     payload.line_id,
                     1 if payload.mode == "learn" else None,
                     current_streak + 1,
                     now_iso,
-                )
-            else:
-                await conn.execute(
+                    SETTINGS.workspace_id,
+            )
+        else:
+            await conn.execute(
                     """
                     UPDATE trainer_line_state
                     SET needs_review = 1,
                         correct_streak = 0,
                         times_incorrect = times_incorrect + 1,
                         last_seen = $2
-                    WHERE line_id = $1
+                    WHERE line_id = $1 AND workspace_id = $3::uuid
                     """,
                     payload.line_id,
                     now_iso,
-                )
+                    SETTINGS.workspace_id,
+            )
 
-            row = await conn.fetchrow(
+        row = await conn.fetchrow(
                 """
                 SELECT line_id, learned, needs_review, correct_streak, times_correct, times_incorrect
                 FROM trainer_line_state
-                WHERE line_id = $1
+                WHERE line_id = $1 AND workspace_id = $2::uuid
                 """,
                 payload.line_id,
-            )
-            if not row:
-                raise api_error(404, "NOT_FOUND", "Line not found after update")
-            return TrainerOutcomeResponse(**dict(row))
-
-    def _update(conn: sqlite3.Connection):
-        info = queries.fetch_trainer_line_info(conn, payload.line_id)
-        if not info:
-            raise ValueError("Line not found in trainer state")
-
-        current_streak = int(info.get("correct_streak") or 0)
-        if resolved_is_correct:
-            queries.update_trainer_state(
-                conn,
-                payload.line_id,
-                learned=1 if payload.mode == "learn" else None,
-                needs_review=0,
-                correct_streak=current_streak + 1,
-                times_correct_delta=1,
-                last_seen=datetime.now(timezone.utc).isoformat(),
-            )
-        else:
-            queries.update_trainer_state(
-                conn,
-                payload.line_id,
-                needs_review=1,
-                correct_streak=0,
-                times_incorrect_delta=1,
-                last_seen=datetime.now(timezone.utc).isoformat(),
-            )
-
-        row = conn.execute(
-            """
-            SELECT line_id, learned, needs_review, correct_streak, times_correct, times_incorrect
-            FROM trainer_line_state
-            WHERE line_id = ?
-            """,
-            (payload.line_id,),
-        ).fetchone()
+                SETTINGS.workspace_id,
+        )
         if not row:
-            raise ValueError("Line not found after update")
-        return dict(row)
-
-    try:
-        result = await _with_sqlite(_update)
-    except ValueError as exc:
-        raise api_error(404, "NOT_FOUND", str(exc)) from exc
-    return TrainerOutcomeResponse(**result)
+            raise api_error(404, "NOT_FOUND", "Line not found after update")
+        return TrainerOutcomeResponse(**dict(row))
 
 
 @app.post("/trainer/priority-override", response_model=TrainerQueueEntry)
@@ -2482,35 +2543,36 @@ async def set_trainer_priority_override(
     request: Request,
     _: str = Depends(require_auth),
 ) -> TrainerQueueEntry:
-    if SETTINGS.data_backend == "postgres":
-        async with request.app.state.db_pool.acquire() as conn:
-            await _ensure_trainer_state_postgres(conn)
-            await conn.execute(
+    async with request.app.state.db_pool.acquire() as conn:
+        await _ensure_trainer_state_postgres(conn)
+        await conn.execute(
                 """
                 UPDATE trainer_line_state
                 SET priority_override = $2
-                WHERE line_id = $1
+                WHERE line_id = $1 AND workspace_id = $3::uuid
                 """,
                 payload.line_id,
                 int(payload.value),
-            )
-            row = await _fetch_trainer_line_info_postgres(conn, payload.line_id)
-            if not row:
-                raise api_error(404, "NOT_FOUND", "Line not found in trainer state")
-            return TrainerQueueEntry(**row)
-
-    def _set(conn: sqlite3.Connection):
-        queries.set_trainer_priority_override(conn, payload.line_id, payload.value)
-        row = queries.fetch_trainer_line_info(conn, payload.line_id)
+                SETTINGS.workspace_id,
+        )
+        row = await _fetch_trainer_line_info_postgres(conn, payload.line_id)
         if not row:
-            raise ValueError("Line not found in trainer state")
-        return row
+            raise api_error(404, "NOT_FOUND", "Line not found in trainer state")
+        return TrainerQueueEntry(**row)
 
-    try:
-        updated = await _with_sqlite(_set)
-    except ValueError as exc:
-        raise api_error(404, "NOT_FOUND", str(exc)) from exc
-    return TrainerQueueEntry(**updated)
+
+@app.delete("/trainer/lines/{line_id}")
+async def discard_trainer_line_api(
+    line_id: str, request: Request, _: str = Depends(require_auth)
+) -> dict[str, Any]:
+    async with request.app.state.db_pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM repertoire_lines WHERE workspace_id=$1::uuid AND line_id=$2",
+            SETTINGS.workspace_id, line_id,
+        )
+    if result.endswith("0"):
+        raise api_error(404, "NOT_FOUND", "Repertoire line was not found.")
+    return {"removed": True, "line_id": line_id}
 
 
 @app.get("/review/actions", response_model=list[ReviewPropositionResponse])

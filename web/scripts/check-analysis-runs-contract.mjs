@@ -34,12 +34,11 @@ const webRoot = path.resolve(__dirname, "..");
 const backendRoot = path.resolve(webRoot, "..");
 
 const backendApi = fs.readFileSync(path.join(backendRoot, "backend/api_service.py"), "utf8");
-const backendReadApi = fs.readFileSync(path.join(backendRoot, "backend/read_api.py"), "utf8");
 const apiClient = fs.readFileSync(path.join(webRoot, "src/lib/api-client.ts"), "utf8");
 
-assert(backendApi.includes("@app.get('/analysis/runs'"), "backend API must expose GET /analysis/runs route");
-assert(backendApi.includes("limit: int = 10"), "GET /analysis/runs route must accept limit query parameter");
-assert(backendReadApi.includes("normalize_analysis_runs"), "read_api must normalize analysis run entries");
-assert(apiClient.includes("/analysis/runs?limit="), "web API client must forward limit for GET /analysis/runs");
+assert(backendApi.includes('@app.get("/jobs"'), "backend API must expose the durable GET /jobs route");
+assert(backendApi.includes("limit: int = 20"), "GET /jobs route must accept a limit query parameter");
+assert(apiClient.includes("/jobs?limit="), "web API client must poll durable jobs");
+assert(apiClient.includes("filter(isAnalysisJob)"), "web must derive the analysis timeline from durable jobs");
 
-console.log("Analysis runs contract verified for route, normalization, and response shape.");
+console.log("Analysis runs contract verified against durable PostgreSQL jobs.");

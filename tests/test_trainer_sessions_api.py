@@ -94,7 +94,7 @@ class _FakeConn:
                 "focus_max_ply": None,
             }
         if "INSERT INTO trainer_sessions" in query:
-            sid, line_id, mode = args
+            sid, line_id, mode, _workspace_id = args
             row = {
                 "id": sid,
                 "line_id": line_id,
@@ -150,7 +150,7 @@ class _Request:
 
 def test_trainer_session_create_and_completion(monkeypatch) -> None:
     class _Settings:
-        data_backend = "postgres"
+        workspace_id = "00000000-0000-0000-0000-000000000001"
 
     monkeypatch.setattr(api_service, "SETTINGS", _Settings())
     conn = _FakeConn()
@@ -195,7 +195,7 @@ def test_trainer_session_create_and_completion(monkeypatch) -> None:
 
 def test_trainer_session_incorrect_marks_review_and_remediation(monkeypatch) -> None:
     class _Settings:
-        data_backend = "postgres"
+        workspace_id = "00000000-0000-0000-0000-000000000001"
 
     monkeypatch.setattr(api_service, "SETTINGS", _Settings())
     conn = _FakeConn()
@@ -230,7 +230,7 @@ def test_trainer_session_incorrect_marks_review_and_remediation(monkeypatch) -> 
 
 def test_trainer_session_invalid_paths(monkeypatch) -> None:
     class _Settings:
-        data_backend = "postgres"
+        workspace_id = "00000000-0000-0000-0000-000000000001"
 
     monkeypatch.setattr(api_service, "SETTINGS", _Settings())
     conn = _FakeConn()
@@ -259,32 +259,9 @@ def test_trainer_session_invalid_paths(monkeypatch) -> None:
         raise AssertionError("Expected payload validation to fail")
 
 
-def test_trainer_sessions_not_implemented_for_sqlite(monkeypatch) -> None:
-    class _Settings:
-        data_backend = "sqlite"
-
-    monkeypatch.setattr(api_service, "SETTINGS", _Settings())
-    conn = _FakeConn()
-    request = _Request(conn)
-
-    try:
-        asyncio.run(
-            api_service.create_trainer_session(
-                api_service.TrainerSessionCreateRequest(mode="review", line_id="line-1"),
-                request=request,
-                _="dev-user",
-            )
-        )
-    except HTTPException as exc:
-        assert exc.status_code == 501
-        assert exc.detail["error_code"] == "NOT_IMPLEMENTED"
-    else:
-        raise AssertionError("Expected NOT_IMPLEMENTED for sqlite backend")
-
-
 def test_trainer_outcomes_legacy_semantics_mapping(monkeypatch) -> None:
     class _Settings:
-        data_backend = "postgres"
+        workspace_id = "00000000-0000-0000-0000-000000000001"
 
     monkeypatch.setattr(api_service, "SETTINGS", _Settings())
     conn = _FakeConn()

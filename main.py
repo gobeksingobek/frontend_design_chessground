@@ -1,12 +1,18 @@
 from __future__ import annotations
 
-import sys
+import io
+import json
 import random
-import sqlite3
-import subprocess
+import sys
 import threading
-from datetime import datetime, timezone
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+import zipfile
 from pathlib import Path
+from typing import Any
 
 BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
@@ -14,696 +20,376 @@ if str(BASE_DIR) not in sys.path:
 
 from PySide6 import QtWidgets
 
-from analysis import statistics
-from analysis import pipeline as analysis_pipeline
-from analysis import game_fetcher
-from analysis import smoke_test as smoke_test_module
-from app_config import ensure_config_values, read_config_file
+from app_config import AppConfig, ensure_config_values, read_config_file
 from gui.main_window import MainWindow
-from storage import database, queries
-
-ALLOWED_FETCH_VARIANTS = {"blitz", "rapid", "daily"}
-
-
-def run_startup_randomizer() -> tuple[bool, str]:
-    repo_root = BASE_DIR.parent
-    script_path = repo_root / "pgn_randomizer.py"
-    if not script_path.exists():
-        return False, f"Startup randomizer not found: {script_path}"
-
-    try:
-        result = subprocess.run(
-            [sys.executable, str(script_path)],
-            cwd=str(repo_root),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except Exception as exc:
-        return False, f"Failed to run startup randomizer: {exc}"
-
-    stdout = (result.stdout or "").strip()
-    stderr = (result.stderr or "").strip()
-    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
-    summary = lines[-1] if lines else "Randomizer finished."
-    if result.returncode != 0:
-        detail = stderr or summary or "Unknown error"
-        return False, (
-            f"Startup randomizer failed (exit {result.returncode}). {detail}"
-        )
-    return True, summary
 
 
 class AppController:
+    """Synchronous desktop facade over the backend HTTP API."""
+
     def __init__(self, config: AppConfig) -> None:
         self.config = config
-        self.conn = database.ensure_db(config.database_path, reset_on_mismatch=True)
         self._analysis_lock = threading.Lock()
         self._analysis_running = False
         self._closing = False
+        try:
+            workspace = self._request("GET", "/settings/runtime")
+            if isinstance(workspace, dict):
+                self.config = config.with_workspace_settings(workspace)
+        except Exception:
+            # The first visible API operation will report the actionable connection error.
+            pass
 
-    def _set_analysis_running(self, running: bool) -> None:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        url = f"{self.config.backend_url}{path}"
+        data = json.dumps(payload).encode("utf-8") if payload is not None else None
+        headers = {"Authorization": f"Bearer {self.config.api_token}", "Accept": "application/json"}
+        if data is not None:
+            headers["Content-Type"] = "application/json"
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        request = urllib.request.Request(url, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                raw = response.read()
+        except urllib.error.HTTPError as exc:
+            raw = exc.read()
+            try:
+                detail = json.loads(raw).get("detail", raw.decode("utf-8", errors="replace"))
+            except Exception:
+                detail = raw.decode("utf-8", errors="replace")
+            raise RuntimeError(f"Backend request failed ({exc.code}): {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"Cannot reach backend at {self.config.backend_url}: {exc.reason}") from exc
+        return json.loads(raw) if raw else None
+
+    def _upload(self, path: str, filename: str, payload: bytes) -> dict[str, Any]:
+        boundary = f"----ChessGround{uuid.uuid4().hex}"
+        body = io.BytesIO()
+        body.write(f"--{boundary}\r\n".encode())
+        body.write(f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode())
+        body.write(b"Content-Type: application/octet-stream\r\n\r\n")
+        body.write(payload)
+        body.write(f"\r\n--{boundary}--\r\n".encode())
+        request = urllib.request.Request(
+            f"{self.config.backend_url}{path}",
+            data=body.getvalue(),
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {self.config.api_token}",
+                "Idempotency-Key": f"desktop-upload-{uuid.uuid4()}",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Accept": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                return json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(exc.read().decode("utf-8", errors="replace")) from exc
+
+    def _archive_pgn_directory(self, directory: str) -> bytes | None:
+        root = Path(directory)
+        files = sorted({*root.rglob("*.pgn"), *root.rglob("*.PGN")}) if root.exists() else []
+        if not files:
+            return None
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+            for source in files:
+                archive.write(source, source.relative_to(root).as_posix())
+        return output.getvalue()
+
+    def _wait_job(self, job_id: str, progress_cb=None) -> dict[str, Any]:
+        while not self._closing:
+            job = self._request("GET", f"/jobs/{job_id}")
+            if progress_cb:
+                progress_cb(dict(job.get("progress") or {}))
+            if job["status"] == "completed":
+                return job
+            if job["status"] in {"failed", "cancelled"}:
+                raise RuntimeError(job.get("error_detail") or f"Job {job['status']}")
+            time.sleep(0.5)
+        raise RuntimeError("Application is shutting down.")
+
+    def _run_job(self, path: str, progress_cb=None) -> dict[str, Any]:
         with self._analysis_lock:
-            self._analysis_running = running
+            if self._closing:
+                raise RuntimeError("Application is shutting down.")
+            if self._analysis_running:
+                raise RuntimeError("Analysis is already running.")
+            self._analysis_running = True
+        try:
+            accepted = self._request(
+                "POST", path, {}, idempotency_key=f"desktop-{path.strip('/').replace('/', '-')}-{uuid.uuid4()}"
+            )
+            return self._wait_job(str(accepted["job_id"]), progress_cb)
+        finally:
+            with self._analysis_lock:
+                self._analysis_running = False
+
+    def _sync_local_sources(self, progress_cb=None) -> None:
+        for directory, endpoint, label in (
+            (self.config.repertoire_dir, "/repertoires/import", "repertoire"),
+            (self.config.games_dir, "/games/import", "games"),
+        ):
+            archive = self._archive_pgn_directory(directory) if directory else None
+            if archive is None:
+                continue
+            if progress_cb:
+                progress_cb({"message": f"Uploading {label} PGNs", "done": 0, "total": 1})
+            accepted = self._upload(endpoint, f"desktop-{label}.zip", archive)
+            self._wait_job(str(accepted["job_id"]), progress_cb)
 
     def is_analysis_running(self) -> bool:
         with self._analysis_lock:
             return self._analysis_running
 
-    def _run_with_analysis_conn(self, action) -> None:
-        with self._analysis_lock:
-            if self._closing:
-                raise RuntimeError("Application is shutting down.")
-            if self._analysis_running:
-                raise RuntimeError("Analysis is already running.")
-            self._analysis_running = True
-        conn = None
-        last_sql: dict[str, str] = {"value": ""}
-        try:
-            conn = database.ensure_db(self.config.database_path, reset_on_mismatch=True)
-            conn.set_trace_callback(lambda sql: last_sql.__setitem__("value", sql))
-            action(conn)
-        except sqlite3.IntegrityError as exc:
-            msg = str(exc)
-            if "FOREIGN KEY constraint failed" in msg:
-                # Snapshot the failing statement before running diagnostics.
-                last_stmt = (last_sql.get("value") or "").strip().replace("\n", " ")
-                fk_rows = []
-                try:
-                    fk_rows = conn.execute("PRAGMA foreign_key_check").fetchmany(5)
-                except sqlite3.Error:
-                    fk_rows = []
-                sql_preview = last_stmt
-                if len(sql_preview) > 240:
-                    sql_preview = sql_preview[:240] + "..."
-                detail = (
-                    "Foreign key constraint failed during analysis. "
-                    f"Last SQL: {sql_preview or '<none>'}. "
-                    f"foreign_key_check (first rows): {fk_rows}"
-                )
-                raise RuntimeError(detail) from exc
-            raise
-        except sqlite3.OperationalError as exc:
-            msg = str(exc)
-            if "readonly" in msg.lower() or "disk i/o" in msg.lower():
-                raise RuntimeError(
-                    "Database path is not writable for SQLite journaling: "
-                    f"{self.config.database_path}. "
-                    "Choose a user-writable path (for example "
-                    "C:\\Users\\<you>\\AppData\\Local\\Temp\\repertoire_analysis.db)."
-                ) from exc
-            raise
-        finally:
-            if conn is not None:
-                conn.set_trace_callback(None)
-                conn.close()
-            self._set_analysis_running(False)
-
-    def _run_with_analysis_lock(self, action):
-        with self._analysis_lock:
-            if self._closing:
-                raise RuntimeError("Application is shutting down.")
-            if self._analysis_running:
-                raise RuntimeError("Analysis is already running.")
-            self._analysis_running = True
-        try:
-            return action()
-        finally:
-            self._set_analysis_running(False)
-
-    def run_analysis(
-        self,
-        reset_db: bool = False,
-        progress_cb=None,
-    ) -> None:
-        self._run_with_analysis_conn(
-            lambda conn: analysis_pipeline.run_analysis(
-                conn, self.config, reset_db=reset_db, progress_cb=progress_cb
-            )
-        )
+    def run_analysis(self, reset_db: bool = False, progress_cb=None) -> None:
+        self._sync_local_sources(progress_cb)
+        self._run_job("/analysis/run/full" if reset_db else "/analysis/run/incremental", progress_cb)
 
     def run_engine_analysis_only(self, progress_cb=None) -> None:
-        self._run_with_analysis_conn(
-            lambda conn: analysis_pipeline.run_engine_analysis_only(
-                conn, self.config, progress_cb=progress_cb
-            )
-        )
+        self._run_job("/analysis/run/engine-only", progress_cb)
 
     def run_line_matching_reanalysis(self, progress_cb=None) -> None:
-        self._run_with_analysis_conn(
-            lambda conn: analysis_pipeline.run_line_matching_reanalysis(
-                conn, self.config, progress_cb=progress_cb
-            )
-        )
+        self._run_job("/analysis/run/line-matching", progress_cb)
 
     def run_game_details_reanalysis(self, progress_cb=None) -> None:
-        self._run_with_analysis_conn(
-            lambda conn: analysis_pipeline.run_game_details_reanalysis(
-                conn, self.config, progress_cb=progress_cb
-            )
-        )
+        self._run_job("/analysis/run/game-details", progress_cb)
 
-    def run_smoke_test(self, progress_cb=None) -> dict:
-        return self._run_with_analysis_lock(
-            lambda: smoke_test_module.run_smoke_test(
-                self.config,
-                BASE_DIR.parent,
-                progress_cb=progress_cb,
-            )
-        )
+    def run_smoke_test(self, progress_cb=None) -> dict[str, Any]:
+        return self._run_job("/analysis/run/smoke-test", progress_cb)
 
     def get_path_summary(self) -> str:
-        player_names = ", ".join(self.config.player_names) or self.config.player_name
-        chesscom_users = ", ".join(self.config.chesscom_usernames)
-        lichess_users = ", ".join(self.config.lichess_usernames)
         return (
-            f"Repertoire dir: {self.config.repertoire_dir}\n"
-            f"Games dir: {self.config.games_dir}\n"
-            f"Database: {self.config.database_path}\n"
-            f"Stockfish: {self.config.stockfish_path}\n"
-            f"Pieces: {self.config.piece_dir}\n"
-            f"Player(s): {player_names}\n"
-            f"Chess.com fetch: {chesscom_users or 'N/A'}\n"
-            f"Lichess fetch: {lichess_users or 'N/A'}"
+            f"Backend: {self.config.backend_url}\n"
+            f"Repertoire upload directory: {self.config.repertoire_dir or 'Not configured'}\n"
+            f"Game upload directory: {self.config.games_dir or 'Not configured'}\n"
+            f"Pieces: {self.config.piece_dir}"
         )
 
     def get_overview_summary(self) -> str:
-        lines = self.conn.execute("SELECT COUNT(*) AS count FROM repertoire_lines").fetchone()[0]
-        games = self.conn.execute("SELECT COUNT(*) AS count FROM games").fetchone()[0]
-        matches = self.conn.execute("SELECT COUNT(*) AS count FROM matches").fetchone()[0]
-        compliant = self.conn.execute(
-            "SELECT COUNT(*) AS count FROM matches WHERE compliance = 'FULLY_COMPLIANT'"
-        ).fetchone()[0]
-        manual_priority = self.conn.execute(
-            "SELECT COUNT(*) AS count FROM repertoire_lines WHERE is_priority = 1"
-        ).fetchone()[0]
-        auto_priority = self.conn.execute(
-            "SELECT COUNT(*) AS count FROM trainer_line_state WHERE auto_priority_score > 0"
-        ).fetchone()[0]
+        row = self._request("GET", "/overview/summary")
         return (
-            f"Lines: {lines} | Manual priority: {manual_priority} | "
-            f"Auto-priority: {auto_priority} | Games: {games} | "
-            f"Matched: {matches} | Fully compliant: {compliant}"
+            f"Lines: {row['lines']} | Manual priority: {row['manual_priority']} | "
+            f"Auto-priority: {row['auto_priority']} | Games: {row['games']} | "
+            f"Matched: {row['matched']} | Fully compliant: {row['fully_compliant']}"
         )
 
-    def get_game_overview(self) -> list[dict]:
-        return queries.fetch_game_overview(self.conn)
+    def get_game_overview(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/games?limit=200")
 
-    def get_game_summaries(self) -> list[dict]:
-        return queries.fetch_game_summaries(self.conn)
+    get_game_summaries = get_game_overview
+    get_games_list = get_game_overview
 
-    def get_games_list(self) -> list[dict]:
-        return queries.fetch_games_list(self.conn)
+    def _game_detail(self, game_id: int) -> dict[str, Any] | None:
+        try:
+            return self._request("GET", f"/games/{game_id}")
+        except RuntimeError as exc:
+            if "404" in str(exc):
+                return None
+            raise
 
-    def get_game_header(self, game_id: int) -> dict | None:
-        return queries.fetch_game_header(self.conn, game_id)
+    def get_game_header(self, game_id: int) -> dict[str, Any] | None:
+        detail = self._game_detail(game_id)
+        return detail.get("header") if detail else None
 
-    def get_game_moves(self, game_id: int) -> list[dict]:
-        return queries.fetch_game_moves(self.conn, game_id)
+    def get_game_moves(self, game_id: int) -> list[dict[str, Any]]:
+        detail = self._game_detail(game_id)
+        return list(detail.get("moves") or []) if detail else []
 
-    def get_line_moves(self, line_id: str, max_ply: int | None = None) -> list[dict]:
-        return queries.fetch_line_moves(self.conn, line_id, max_ply)
+    def get_line_moves(self, line_id: str, max_ply: int | None = None) -> list[dict[str, Any]]:
+        query = "" if max_ply is None else f"?max_ply={int(max_ply)}"
+        return self._request("GET", f"/lines/{urllib.parse.quote(line_id, safe='')}/moves{query}")
 
-    def get_line_edge(self, line_id: str, ply: int) -> dict | None:
-        return queries.fetch_line_edge(self.conn, line_id, ply)
+    def get_line_edge(self, line_id: str, ply: int) -> dict[str, Any] | None:
+        return next((row for row in self.get_line_moves(line_id, ply) if int(row.get("ply") or 0) == ply), None)
 
     def get_position_id_by_fen(self, fen_norm: str) -> int | None:
-        return queries.fetch_position_id_by_fen(self.conn, fen_norm)
+        row = self._request("GET", f"/positions/by-fen/lookup?fen={urllib.parse.quote(fen_norm)}")
+        return int(row["pos_id"]) if row else None
 
-    def get_tree_repertoire_children(
-        self,
-        pos_id: int,
-        my_side_only: bool = True,
-    ) -> list[dict]:
-        return queries.fetch_tree_repertoire_children(
-            self.conn,
-            pos_id,
-            my_side_only=my_side_only,
-        )
+    def _tree(self, pos_id: int, my_side_only: bool) -> dict[str, Any]:
+        return self._request("GET", f"/lines/tree/browse?pos_id={pos_id}&my_side_only={str(my_side_only).lower()}")
 
-    def get_tree_game_children(
-        self,
-        pos_id: int,
-        *,
-        my_side_only: bool = True,
-        date_from: str | None = None,
-        date_to: str | None = None,
-        time_class: str = "all",
-        opp_elo_min: int | None = None,
-        opp_elo_max: int | None = None,
-    ) -> list[dict]:
-        return queries.fetch_tree_game_children(
-            self.conn,
-            pos_id,
-            my_side_only=my_side_only,
-            date_from=date_from,
-            date_to=date_to,
-            time_class=time_class,
-            opp_elo_min=opp_elo_min,
-            opp_elo_max=opp_elo_max,
-        )
+    def get_tree_repertoire_children(self, pos_id: int, my_side_only: bool = True) -> list[dict[str, Any]]:
+        return list(self._tree(pos_id, my_side_only).get("repertoire_children") or [])
 
-    def get_tree_position_games(
-        self,
-        pos_id: int,
-        uci_move: str,
-        limit: int = 20,
-    ) -> list[dict]:
-        return queries.fetch_tree_position_games(
-            self.conn,
-            pos_id,
-            uci_move,
-            limit=limit,
-        )
+    def get_tree_game_children(self, pos_id: int, *, my_side_only: bool = True, **_filters) -> list[dict[str, Any]]:
+        return list(self._tree(pos_id, my_side_only).get("game_children") or [])
+
+    def get_tree_position_games(self, pos_id: int, uci_move: str, limit: int = 20) -> list[dict[str, Any]]:
+        query = urllib.parse.urlencode({"uci_move": uci_move, "limit": int(limit)})
+        return self._request("GET", f"/positions/{int(pos_id)}/games?{query}")
 
     def set_user_mainline(self, pos_id: int, uci_move: str, next_pos_id: int) -> None:
-        queries.set_user_mainline(self.conn, pos_id, uci_move, next_pos_id)
+        self._request("POST", f"/positions/{pos_id}/mainline", {"uci_move": uci_move, "next_pos_id": next_pos_id})
 
     def reanalyze_game(self, game_id: int) -> None:
-        with self._analysis_lock:
-            if self._closing:
-                raise RuntimeError("Application is shutting down.")
-        if self.is_analysis_running():
-            raise RuntimeError(
-                "Cannot reanalyze a single game while analysis is running."
-            )
-        conn = database.ensure_db(self.config.database_path, reset_on_mismatch=True)
+        self._run_job(f"/games/{int(game_id)}/reanalyze")
+
+    def compute_deviation_rep_cpl(self, game_id: int, ply: int) -> dict[str, Any]:
         try:
-            analysis_pipeline.reanalyze_game(conn, self.config, game_id)
-        finally:
-            conn.close()
+            self.reanalyze_game(game_id)
+            move = next((row for row in self.get_game_moves(game_id) if int(row.get("ply") or 0) == ply), None)
+            return {"success": True, "rep_cpl": move.get("rep_cpl") if move else None, "message": "Server reanalysis completed."}
+        except Exception as exc:
+            return {"success": False, "rep_cpl": None, "message": str(exc)}
 
-    def compute_deviation_rep_cpl(self, game_id: int, ply: int) -> dict[str, object]:
-        with self._analysis_lock:
-            if self._closing:
-                return {
-                    "success": False,
-                    "rep_cpl": None,
-                    "message": "Application is shutting down.",
-                }
-        if self.is_analysis_running():
-            return {
-                "success": False,
-                "rep_cpl": None,
-                "message": "Cannot compute Rep CPL while analysis is running.",
-            }
-        conn = database.ensure_db(self.config.database_path, reset_on_mismatch=True)
+    def get_line_stats(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/lines/stats")
+
+    def get_month_stats(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/statistics/months")
+
+    def get_rating_band_stats(self, band_size: int) -> list[dict[str, Any]]:
+        return list(self._request("GET", f"/rating-bands/stats?band_size={band_size}").get("buckets") or [])
+
+    def get_time_pattern_summary(self) -> dict[str, int]:
+        return self._request("GET", "/time-patterns/summary")
+
+    def get_review_items(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/review/items")
+
+    def get_review_propositions(self, status_filter: str = "pending") -> list[dict[str, Any]]:
+        return self._request("GET", f"/review/actions?status={urllib.parse.quote(status_filter)}")
+
+    def get_review_proposition_detail(self, proposition_id: int) -> dict[str, Any] | None:
+        return self._request("GET", f"/review/actions/{proposition_id}")
+
+    def _review_action(self, proposition_id: int, action: str) -> tuple[bool, str]:
         try:
-            rep_cpl, error = analysis_pipeline.compute_deviation_rep_cpl(
-                conn,
-                self.config,
-                int(game_id),
-                int(ply),
-            )
-            if error:
-                return {
-                    "success": False,
-                    "rep_cpl": None,
-                    "message": error,
-                }
-            return {
-                "success": True,
-                "rep_cpl": rep_cpl,
-                "message": "Rep CPL updated." if rep_cpl is not None else "Rep CPL unavailable.",
-            }
-        except Exception as exc:  # pylint: disable=broad-except
-            return {
-                "success": False,
-                "rep_cpl": None,
-                "message": str(exc),
-            }
-        finally:
-            conn.close()
-
-    def get_line_stats(self) -> list[dict]:
-        return statistics.aggregate_by_line(self.conn)
-
-    def get_month_stats(self) -> list[dict]:
-        return statistics.aggregate_by_month(self.conn)
-
-    def get_rating_band_stats(self, band_size: int) -> list[dict]:
-        return statistics.aggregate_by_rating_band(self.conn, band_size)
-
-    def get_time_pattern_summary(self) -> dict:
-        row = self.conn.execute(
-            """
-            SELECT SUM(slow_in_book) AS slow_in_book,
-                   SUM(instant_out_of_book) AS instant_out_of_book,
-                   SUM(blunder_cluster) AS blunder_cluster
-            FROM time_patterns
-            """
-        ).fetchone()
-        if not row:
-            return {}
-        return {
-            "slow_in_book": row["slow_in_book"] or 0,
-            "instant_out_of_book": row["instant_out_of_book"] or 0,
-            "blunder_cluster": row["blunder_cluster"] or 0,
-        }
-
-    def get_review_items(self) -> list[dict]:
-        return queries.fetch_review_items(self.conn)
-
-    def get_review_propositions(self, status_filter: str = "pending") -> list[dict]:
-        return queries.fetch_review_propositions(self.conn, status_filter=status_filter)
-
-    def get_review_proposition_detail(self, proposition_id: int) -> dict | None:
-        return queries.fetch_review_proposition_detail(self.conn, proposition_id)
+            result = self._request("POST", "/review/actions", {"proposition_id": proposition_id, "action": action})
+            return bool(result.get("success")), str(result.get("message") or "")
+        except RuntimeError as exc:
+            return False, str(exc)
 
     def approve_review_proposition(self, proposition_id: int) -> tuple[bool, str]:
-        with self._analysis_lock:
-            if self._closing:
-                return False, "Application is shutting down."
-            if self._analysis_running:
-                return False, "Analysis is running. Try again after completion."
-        return queries.approve_review_proposition(self.conn, proposition_id)
+        return self._review_action(proposition_id, "done")
 
     def disapprove_review_proposition(self, proposition_id: int) -> tuple[bool, str]:
-        with self._analysis_lock:
-            if self._closing:
-                return False, "Application is shutting down."
-            if self._analysis_running:
-                return False, "Analysis is running. Try again after completion."
-        return queries.disapprove_review_proposition(self.conn, proposition_id)
+        return self._review_action(proposition_id, "defer")
 
-
-    def request_sideline_for_game_deviation(self, game_id: int) -> tuple[bool, str, dict | None]:
-        requester = self.config.player_names[0] if self.config.player_names else None
-        return queries.request_sideline_for_game_deviation(
-            self.conn,
-            int(game_id),
-            requested_by_user_id=requester,
+    def request_sideline_for_game_deviation(self, game_id: int) -> tuple[bool, str, dict[str, Any] | None]:
+        detail = self._game_detail(game_id)
+        if not detail:
+            return False, "Game not found.", None
+        header = detail.get("header") or {}
+        deviation_ply = header.get("deviation_ply_you") or header.get("deviation_ply_opp")
+        if deviation_ply is None:
+            return False, "This game has no recorded repertoire deviation.", None
+        move = next(
+            (row for row in detail.get("moves") or [] if int(row.get("ply") or 0) == int(deviation_ply)),
+            None,
         )
+        if not move or not move.get("fen") or not move.get("uci_move"):
+            return False, "The deviation does not have enough persisted move data for analysis.", None
+        try:
+            item = self._request(
+                "POST",
+                "/sidelines",
+                {
+                    "game_id": str(game_id),
+                    "move_ply": int(deviation_ply),
+                    "fen": str(move["fen"]),
+                    "branch_moves": [str(move["uci_move"])],
+                },
+                idempotency_key=f"desktop-sideline-{game_id}-{deviation_ply}-{move['uci_move']}",
+            )
+            item = {**item, "request_count": 1, "queue_key": item.get("id")}
+            return True, "Server sideline analysis queued.", item
+        except RuntimeError as exc:
+            return False, str(exc), None
 
-    def update_sideline_queue_status(
-        self,
-        queue_key: str,
-        status: str,
-        warning_reason: str | None = None,
-        eval_cp_delta: int | None = None,
-        cpl_estimate: float | None = None,
-        next_pos_id: int | None = None,
-    ) -> tuple[bool, str]:
-        return queries.update_sideline_queue_status(
-            self.conn,
-            queue_key,
-            status,
-            warning_reason=warning_reason,
-            eval_cp_delta=eval_cp_delta,
-            cpl_estimate=cpl_estimate,
-            next_pos_id=next_pos_id,
-        )
-
-    def get_insights(self) -> list[dict]:
-        return queries.fetch_insights(self.conn)
+    def get_insights(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/insights")
 
     def ensure_trainer_sync(self) -> None:
-        conn = database.ensure_db(self.config.database_path, reset_on_mismatch=True)
-        try:
-            analysis_pipeline.sync_repertoire_only(conn, self.config)
-        finally:
-            conn.close()
+        if self.config.repertoire_dir:
+            archive = self._archive_pgn_directory(self.config.repertoire_dir)
+            if archive:
+                accepted = self._upload("/repertoires/import", "desktop-repertoire.zip", archive)
+                self._wait_job(str(accepted["job_id"]))
 
-    def get_trainer_line(self, line_id: str) -> dict | None:
-        info = queries.fetch_trainer_line_info(self.conn, line_id)
-        if not info:
-            return None
-        moves = queries.fetch_line_moves(self.conn, line_id)
-        info["moves"] = moves
-        return info
+    def _trainer_queue(self, mode: str) -> list[dict[str, Any]]:
+        return list(self._request("GET", f"/trainer/queue?mode={urllib.parse.quote(mode)}").get("items") or [])
+
+    def get_trainer_line(self, line_id: str) -> dict[str, Any] | None:
+        row = next((item for item in self._trainer_queue("review") + self._trainer_queue("learn") if item.get("line_id") == line_id), None)
+        if row:
+            row = {**row, "moves": self.get_line_moves(line_id)}
+        return row
 
     def select_next_trainer_line(self, mode: str) -> str | None:
-        learned_only = mode == "review"
-        candidates = queries.fetch_trainer_candidates(self.conn, learned_only)
-        if not candidates:
+        rows = self._trainer_queue(mode)
+        if not rows:
             return None
+        rows.sort(key=lambda row: (-int(row.get("auto_priority_score") or 0), int(row.get("correct_streak") or 0)))
+        tied = [row for row in rows if (row.get("auto_priority_score"), row.get("correct_streak")) == (rows[0].get("auto_priority_score"), rows[0].get("correct_streak"))]
+        return str(random.choice(tied)["line_id"])
 
-        def tier(entry: dict) -> int:
-            override = entry.get("priority_override")
-            auto_score = int(entry.get("auto_priority_score") or 0)
-            needs_review = bool(entry.get("needs_review"))
-            adaptive_focus = entry.get("focus_max_ply") is not None
-
-            if override == -1:
-                manual_priority_effective = False
-                auto_marked_effective = False
-                adaptive_effective = False
-            elif override == 1:
-                manual_priority_effective = True
-                auto_marked_effective = auto_score > 0
-                adaptive_effective = adaptive_focus
-            else:
-                manual_priority_effective = bool(entry.get("is_priority"))
-                auto_marked_effective = auto_score > 0
-                adaptive_effective = adaptive_focus
-
-            # Learn mode prioritizes adaptive-focus lines first.
-            if not learned_only:
-                # Learn ignores needs_review and selects by:
-                # 1) adaptive focus
-                # 2) auto-marked
-                # 3) manual priority
-                # 4) normal
-                if adaptive_effective:
-                    return 0
-                if auto_marked_effective:
-                    return 1
-                if manual_priority_effective:
-                    return 2
-                return 3
-
-            # Review mode order remains unchanged.
-            # 1) auto + needs_review
-            # 2) manual + needs_review
-            # 3) auto
-            # 4) manual
-            # 5) needs_review
-            # 6) normal
-            if auto_marked_effective and needs_review:
-                return 0
-            if manual_priority_effective and needs_review:
-                return 1
-            if auto_marked_effective:
-                return 2
-            if manual_priority_effective:
-                return 3
-            if needs_review:
-                return 4
-            return 5
-
-        best_tier = min(tier(entry) for entry in candidates)
-        pool = [entry for entry in candidates if tier(entry) == best_tier]
-
-        # Deterministic precedence inside tier:
-        # 1) highest auto score first
-        # 2) lower streak first
-        # 3) random among exact ties
-        def sort_key(entry: dict) -> tuple[int, int]:
-            auto_score = int(entry.get("auto_priority_score") or 0)
-            streak = int(entry.get("correct_streak") or 0)
-            return (-auto_score, streak)
-
-        pool.sort(key=sort_key)
-        best_key = sort_key(pool[0])
-        tied = [entry for entry in pool if sort_key(entry) == best_key]
-        chosen = random.choice(tied)
-        return chosen.get("line_id")
-
-    def update_trainer_state(
-        self,
-        line_id: str,
-        learned: int | None = None,
-        needs_review: int | None = None,
-        correct_streak: int | None = None,
-        times_correct_delta: int = 0,
-        times_incorrect_delta: int = 0,
-    ) -> None:
-        queries.update_trainer_state(
-            self.conn,
-            line_id,
-            learned=learned,
-            needs_review=needs_review,
-            correct_streak=correct_streak,
-            times_correct_delta=times_correct_delta,
-            times_incorrect_delta=times_incorrect_delta,
-            last_seen=datetime.now(timezone.utc).isoformat(),
-        )
+    def update_trainer_state(self, line_id: str, learned: int | None = None, needs_review: int | None = None, correct_streak: int | None = None, times_correct_delta: int = 0, times_incorrect_delta: int = 0) -> None:
+        correct = times_incorrect_delta == 0 and (times_correct_delta > 0 or needs_review == 0)
+        self._request("POST", "/trainer/outcomes", {"line_id": line_id, "is_correct": correct, "mode": "learn" if learned else "review"})
 
     def toggle_trainer_priority(self, line_id: str) -> int:
-        return queries.toggle_trainer_priority(self.conn, line_id)
+        row = self.get_trainer_line(line_id) or {}
+        value = -1 if int(row.get("priority_override") or 0) == 1 else 1
+        self.set_trainer_priority_override(line_id, value)
+        return value
 
     def set_trainer_priority_override(self, line_id: str, value: int) -> None:
-        queries.set_trainer_priority_override(self.conn, line_id, value)
+        self._request("POST", "/trainer/priority-override", {"line_id": line_id, "value": value})
 
     def discard_trainer_line(self, line_id: str, discard_path: Path) -> tuple[bool, str]:
-        return analysis_pipeline.discard_repertoire_line(
-            self.conn, line_id, discard_path
-        )
-
-    def fetch_games(self, variants: list[str]) -> dict[str, object]:
-        with self._analysis_lock:
-            if self._closing:
-                return {
-                    "success": False,
-                    "message": "Application is shutting down.",
-                    "total_new_games": 0,
-                    "total_seen_games": 0,
-                    "had_source_errors": True,
-                }
-        input_variants = [str(v).strip().lower() for v in (variants or []) if str(v).strip()]
-        variants = []
-        seen = set()
-        for variant in input_variants:
-            if variant not in ALLOWED_FETCH_VARIANTS:
-                continue
-            if variant in seen:
-                continue
-            seen.add(variant)
-            variants.append(variant)
-        bullet_ignored = "bullet" in input_variants
-        if not variants:
-            message = "No supported variants selected (supported: blitz, rapid, daily)."
-            if bullet_ignored:
-                message = f"{message} Bullet is disabled and was ignored."
-            return {
-                "success": False,
-                "message": message,
-                "total_new_games": 0,
-                "total_seen_games": 0,
-                "had_source_errors": False,
-            }
-
-        games_root = Path(self.config.games_dir)
-        state_path = Path(self.config.database_path).parent / "fetch_state.json"
-        fetch_conn = database.ensure_db(
-            self.config.database_path, reset_on_mismatch=True
-        )
         try:
-            existing_rows = fetch_conn.execute("SELECT pgn_hash FROM games").fetchall()
-            existing_hashes = {
-                (row["pgn_hash"] if isinstance(row, sqlite3.Row) else row[0])
-                for row in existing_rows
-                if (row["pgn_hash"] if isinstance(row, sqlite3.Row) else row[0])
-            }
-        finally:
-            fetch_conn.close()
-        summaries = game_fetcher.fetch_games(
-            games_dir=games_root,
-            chesscom_usernames=self.config.chesscom_usernames,
-            lichess_usernames=self.config.lichess_usernames,
-            variants=variants,
-            days_back=self.config.fetch_days_back,
-            state_path=state_path,
-            existing_pgn_hashes=existing_hashes,
-        )
-        if not summaries:
-            return {
-                "success": False,
-                "message": "No fetch configured.",
-                "total_new_games": 0,
-                "total_seen_games": 0,
-                "had_source_errors": False,
-            }
-        lines = []
-        total_new_games = 0
-        total_seen_games = 0
-        had_source_errors = False
-        for summary in summaries:
-            if summary.source == "all":
-                lines.append(summary.message)
-                continue
-            total_new_games += int(summary.games_written or 0)
-            total_seen_games += int(summary.games_seen or 0)
-            lines.append(
-                f"{summary.source}:{summary.username} "
-                f"files {summary.fetched_files} "
-                f"skipped {summary.skipped_files} "
-                f"seen {summary.games_seen} "
-                f"new {summary.games_written} "
-                f"db-skipped {summary.games_skipped_in_db}"
-            )
-            if summary.message:
-                lines.append(f"{summary.source}:{summary.username} {summary.message}")
-                msg = summary.message.lower()
-                if (
-                    "fetch failed" in msg
-                    or "username not found" in msg
-                    or "rate limited" in msg
-                ):
-                    had_source_errors = True
-        message_text = " | ".join(lines)
-        if bullet_ignored:
-            message_text = f"{message_text} | Bullet is disabled and was ignored."
-        return {
-            "success": True,
-            "message": message_text,
-            "total_new_games": total_new_games,
-            "total_seen_games": total_seen_games,
-            "had_source_errors": had_source_errors,
-        }
+            self._request("DELETE", f"/trainer/lines/{urllib.parse.quote(line_id, safe='')}")
+            return True, "Line removed from the workspace repertoire."
+        except RuntimeError as exc:
+            return False, str(exc)
+
+    def fetch_games(self, variants: list[str]) -> dict[str, Any]:
+        try:
+            if variants:
+                self._request("PUT", "/settings/runtime", {"variants": variants})
+            job = self._run_job("/analysis/run/fetch-games")
+            result = job.get("result") or {}
+            return {"success": True, "message": "Fetch completed.", "total_new_games": int(result.get("games_inserted") or 0), "total_seen_games": int(result.get("games_parsed") or 0), "had_source_errors": False}
+        except Exception as exc:
+            return {"success": False, "message": str(exc), "total_new_games": 0, "total_seen_games": 0, "had_source_errors": True}
 
     def apply_config(self, config: AppConfig) -> None:
-        with self._analysis_lock:
-            if self._closing:
-                raise RuntimeError("Application is shutting down.")
-        if config.database_path != self.config.database_path:
-            db_parent = Path(config.database_path).parent
-            db_parent.mkdir(parents=True, exist_ok=True)
-            self.conn.close()
-            self.conn = database.ensure_db(config.database_path, reset_on_mismatch=True)
+        if self._closing:
+            raise RuntimeError("Application is shutting down.")
         self.config = config
+        workspace = self._request(
+            "PUT",
+            "/settings/runtime",
+            {
+                "rating_band_size": int(config.rating_band_size),
+                "variants": list(config.fetch_variants or []),
+            },
+        )
+        if isinstance(workspace, dict):
+            self.config = config.with_workspace_settings(workspace)
 
     def close(self) -> None:
-        with self._analysis_lock:
-            if self._closing and self.conn is None:
-                return
-            self._closing = True
-            conn = self.conn
-            self.conn = None
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception:
-                pass
+        self._closing = True
 
 
 def main() -> int:
-    base_dir = BASE_DIR
-    settings_path = base_dir / "config" / "settings.ini"
-
-    config = read_config_file(settings_path)
-
+    settings_path = BASE_DIR / "config" / "settings.ini"
+    config = ensure_config_values(read_config_file(settings_path), BASE_DIR)
     app = QtWidgets.QApplication(sys.argv)
-    app.setStyleSheet(
-        """
-        QMainWindow { background: #1c1f24; color: #e6e6e6; }
-        QLabel { color: #e6e6e6; }
-        QTabWidget::pane { border: 1px solid #2b2f36; background: #22262d; }
-        QTabBar::tab { padding: 6px 12px; margin: 2px; background: #2a2f37; color: #e6e6e6; border-radius: 4px; }
-        QTabBar::tab:selected { background: #2f3540; border: 1px solid #3a404b; }
-        QPushButton { background: #2f6f6f; color: #f0f4f4; border-radius: 4px; padding: 4px 10px; }
-        QPushButton:disabled { background: #465c5c; color: #c7c7c7; }
-        QLineEdit, QPlainTextEdit, QComboBox, QSpinBox { background: #1f232a; color: #e6e6e6; border: 1px solid #3a404b; }
-        QTableWidget { background: #1f232a; color: #e6e6e6; gridline-color: #343a45; }
-        QHeaderView::section { background: #2a2f37; color: #e6e6e6; padding: 4px; border: 1px solid #343a45; }
-        QGroupBox { border: 1px solid #343a45; border-radius: 4px; margin-top: 6px; }
-        QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 6px; color: #e6e6e6; }
-        """
-    )
-    app_config = ensure_config_values(config, base_dir)
-
-    randomizer_ok, randomizer_msg = run_startup_randomizer()
-    if randomizer_ok:
-        print(f"[startup randomizer] {randomizer_msg}")
-    else:
-        print(f"[startup randomizer] {randomizer_msg}")
-        QtWidgets.QMessageBox.warning(
-            None,
-            "Startup Randomizer Warning",
-            randomizer_msg,
-        )
-
-    controller = AppController(app_config)
+    app.setStyle("Fusion")
+    controller = AppController(config)
     window = MainWindow(controller, settings_path)
     app.aboutToQuit.connect(window.on_app_about_to_quit)
     window.show()

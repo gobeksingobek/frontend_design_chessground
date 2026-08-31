@@ -2,28 +2,19 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from pathlib import Path
 
 import asyncpg
 
 from backend import db
+from backend.migrations import apply_pending_migrations, require_current_schema
 from backend.settings import SETTINGS
 
 
-def _analysis_schema_sql_path() -> Path:
-    return Path(__file__).resolve().parents[1] / "storage" / "postgres" / "analysis_schema.sql"
-
-
 async def bootstrap_schema(postgres_dsn: str) -> None:
-    sql_path = _analysis_schema_sql_path()
-    if not sql_path.exists():
-        raise RuntimeError(f"Schema file not found: {sql_path}")
-
-    sql_text = sql_path.read_text(encoding="utf-8")
     conn = await asyncpg.connect(postgres_dsn)
     try:
-        await conn.execute(sql_text)
-        await conn.execute(db.CREATE_TABLE_SQL)
+        await apply_pending_migrations(conn)
+        await require_current_schema(conn)
         missing = await db.missing_tables(conn, db.REQUIRED_ANALYSIS_TABLES)
         if missing:
             missing_csv = ", ".join(missing)
@@ -35,6 +26,7 @@ async def bootstrap_schema(postgres_dsn: str) -> None:
 async def validate_schema(postgres_dsn: str) -> None:
     conn = await asyncpg.connect(postgres_dsn)
     try:
+        await require_current_schema(conn)
         required = db.REQUIRED_ANALYSIS_TABLES + ("sideline_requests",)
         missing = await db.missing_tables(conn, required)
         if missing:
@@ -46,7 +38,7 @@ async def validate_schema(postgres_dsn: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Create/validate PostgreSQL schema for API + web reads."
+        description="Apply or validate the versioned PostgreSQL runtime schema."
     )
     parser.add_argument(
         "--dsn",

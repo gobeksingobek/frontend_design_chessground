@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 
 import asyncpg
 
 from backend.settings import SETTINGS
+from backend.migrations import require_current_schema
 
 REQUIRED_ANALYSIS_TABLES = (
+    "workspaces",
+    "source_artifacts",
     "positions",
     "games",
     "game_positions",
@@ -19,34 +21,10 @@ REQUIRED_ANALYSIS_TABLES = (
     "repertoire_compact",
     "trainer_line_state",
     "trainer_sessions",
-    "fetched_game_sources",
+    "analysis_jobs",
+    "analysis_job_steps",
+    "workspace_state",
 )
-
-
-CREATE_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS sideline_requests (
-    id UUID PRIMARY KEY,
-    game_id TEXT NOT NULL,
-    move_ply INTEGER NOT NULL,
-    requested_by TEXT NOT NULL,
-    status TEXT NOT NULL,
-    idempotency_key TEXT NOT NULL UNIQUE,
-    payload JSONB NOT NULL,
-    result JSONB,
-    error TEXT,
-    attempts INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS runtime_settings (
-    scope TEXT PRIMARY KEY,
-    payload JSONB NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-"""
-
-RUNTIME_SETTINGS_SCOPE = "default"
 
 
 async def create_pool() -> asyncpg.Pool:
@@ -55,7 +33,7 @@ async def create_pool() -> asyncpg.Pool:
 
 async def ensure_schema(pool: asyncpg.Pool) -> None:
     async with pool.acquire() as conn:
-        await conn.execute(CREATE_TABLE_SQL)
+        await require_current_schema(conn)
 
 
 async def missing_tables(conn: asyncpg.Connection, table_names: tuple[str, ...]) -> list[str]:
@@ -77,22 +55,11 @@ async def ensure_analysis_schema_exists(pool: asyncpg.Pool) -> list[str]:
         return await missing_tables(conn, REQUIRED_ANALYSIS_TABLES)
 
 
-def _analysis_schema_sql_path() -> Path:
-    return Path(__file__).resolve().parents[1] / "storage" / "postgres" / "analysis_schema.sql"
-
-
-async def apply_analysis_schema(conn: asyncpg.Connection) -> None:
-    sql_path = _analysis_schema_sql_path()
-    if not sql_path.exists():
-        raise RuntimeError(f"Schema file not found: {sql_path}")
-    await conn.execute(sql_path.read_text(encoding="utf-8"))
-
-
 async def fetch_runtime_settings(pool: asyncpg.Pool) -> dict[str, Any] | None:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT payload FROM runtime_settings WHERE scope = $1",
-            RUNTIME_SETTINGS_SCOPE,
+            "SELECT payload FROM runtime_settings WHERE workspace_id = $1::uuid",
+            SETTINGS.workspace_id,
         )
     return _decode_runtime_settings_payload(row["payload"]) if row is not None else None
 
@@ -117,12 +84,12 @@ async def save_runtime_settings(pool: asyncpg.Pool, payload: dict[str, Any]) -> 
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO runtime_settings(scope, payload, updated_at)
-            VALUES ($1, $2::jsonb, NOW())
-            ON CONFLICT (scope) DO UPDATE
+            INSERT INTO runtime_settings(workspace_id, payload, updated_at)
+            VALUES ($1::uuid, $2::jsonb, NOW())
+            ON CONFLICT (workspace_id) DO UPDATE
             SET payload = EXCLUDED.payload, updated_at = NOW()
             """,
-            RUNTIME_SETTINGS_SCOPE,
+            SETTINGS.workspace_id,
             json.dumps(payload),
         )
     return payload
@@ -134,33 +101,65 @@ async def insert_sideline_request(
     game_id: str,
     move_ply: int,
     requested_by: str,
-    idempotency_key: str,
+    job_id: str,
     payload: dict[str, Any],
 ) -> asyncpg.Record | None:
     return await conn.fetchrow(
         """
         INSERT INTO sideline_requests(
-            id, game_id, move_ply, requested_by, status, idempotency_key, payload
-        ) VALUES($1::uuid, $2, $3, $4, 'queued', $5, $6::jsonb)
-        ON CONFLICT (idempotency_key) DO NOTHING
+            id, workspace_id, job_id, game_id, move_ply, requested_by, payload
+        ) VALUES($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7::jsonb)
+        ON CONFLICT (job_id) DO NOTHING
         RETURNING *;
         """,
         request_id,
+        SETTINGS.workspace_id,
+        job_id,
         game_id,
         move_ply,
         requested_by,
-        idempotency_key,
         json.dumps(payload),
     )
 
 
 async def fetch_by_idempotency_key(conn: asyncpg.Connection, idempotency_key: str) -> asyncpg.Record | None:
-    return await conn.fetchrow("SELECT * FROM sideline_requests WHERE idempotency_key = $1", idempotency_key)
+    return await conn.fetchrow(
+        """
+        SELECT request.*, job.status, job.result_json AS result, job.error_detail AS error,
+               job.idempotency_key, job.attempts
+        FROM sideline_requests request
+        JOIN analysis_jobs job ON job.id = request.job_id
+        WHERE job.workspace_id = $1::uuid AND job.idempotency_key = $2
+        """,
+        SETTINGS.workspace_id,
+        idempotency_key,
+    )
 
 
 async def fetch_sideline_request(conn: asyncpg.Connection, request_id: str) -> asyncpg.Record | None:
-    return await conn.fetchrow("SELECT * FROM sideline_requests WHERE id = $1::uuid", request_id)
+    return await conn.fetchrow(
+        """
+        SELECT request.*, job.status, job.result_json AS result, job.error_detail AS error,
+               job.idempotency_key, job.attempts
+        FROM sideline_requests request
+        JOIN analysis_jobs job ON job.id = request.job_id
+        WHERE request.id = $1::uuid AND request.workspace_id = $2::uuid
+        """,
+        request_id,
+        SETTINGS.workspace_id,
+    )
 
 
 async def list_sideline_requests(conn: asyncpg.Connection, limit: int) -> list[asyncpg.Record]:
-    return await conn.fetch("SELECT * FROM sideline_requests ORDER BY created_at DESC LIMIT $1", limit)
+    return await conn.fetch(
+        """
+        SELECT request.*, job.status, job.result_json AS result, job.error_detail AS error,
+               job.idempotency_key, job.attempts
+        FROM sideline_requests request
+        JOIN analysis_jobs job ON job.id = request.job_id
+        WHERE request.workspace_id = $1::uuid
+        ORDER BY request.created_at DESC LIMIT $2
+        """,
+        SETTINGS.workspace_id,
+        limit,
+    )

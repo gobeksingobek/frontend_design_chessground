@@ -6,9 +6,9 @@ import { mapBackendFieldErrors, SECTIONS } from "./settings-form.ts";
 test("settings page defines grouped section order", () => {
   assert.deepEqual(
     SECTIONS.map((section) => section.title),
-    ["Paths", "Engine", "Profile", "Fetch"],
+    ["Analysis", "Profile", "Fetch"],
   );
-  assert.ok(SECTIONS.find((section) => section.title === "Engine")?.fields.includes("engineProfile"));
+  assert.ok(SECTIONS.find((section) => section.title === "Analysis")?.fields.includes("engineDepth"));
   assert.ok(SECTIONS.find((section) => section.title === "Profile")?.fields.includes("ratingBandSize"));
 });
 

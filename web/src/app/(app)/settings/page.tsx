@@ -24,23 +24,10 @@ export default function SettingsPage() {
         chesscomUsernames: s.chesscom_usernames.join(", "),
         lichessUsernames: s.lichess_usernames.join(", "),
         variants: s.variants.join(", "),
-        gamesDir: s.games_dir ?? "",
-        databasePath: s.database_path ?? "",
-        repertoireDir: s.repertoire_dir ?? "",
-        stockfishPath: s.stockfish_path ?? "",
-        pieceDir: s.piece_dir ?? "",
         engineDepth: String(s.engine_depth ?? 20),
         maxPlies: String(s.max_plies ?? 30),
-        engineThreads: String(s.engine_threads ?? 1),
-        engineHashMb: String(s.engine_hash_mb ?? 0),
-        engineMaxTimeMs: String(s.engine_max_time_ms ?? 300),
-        engineWorkers: String(s.engine_workers ?? 0),
-        engineWorkerCap: String(s.engine_worker_cap ?? 4),
-        engineMode: s.engine_mode ?? "adaptive",
-        engineProfile: s.engine_profile ?? "aggressive",
         enableEngineCache: String(Boolean(s.enable_engine_cache)),
         incrementalAnalysis: String(Boolean(s.incremental_analysis)),
-        engineCachePruneNonActive: String(Boolean(s.engine_cache_prune_non_active)),
         reviewTopN: String(s.review_top_n ?? 25),
         tabiyaTopN: String(s.tabiya_top_n ?? 10),
         matchingMode: s.matching_mode ?? "STRICT",
@@ -62,23 +49,10 @@ export default function SettingsPage() {
         chesscom_usernames: toList(form.chesscomUsernames),
         lichess_usernames: toList(form.lichessUsernames),
         variants: toList(form.variants),
-        games_dir: form.gamesDir,
-        database_path: form.databasePath,
-        repertoire_dir: form.repertoireDir,
-        stockfish_path: form.stockfishPath,
-        piece_dir: form.pieceDir,
         engine_depth: Number(form.engineDepth),
         max_plies: Number(form.maxPlies),
-        engine_threads: Number(form.engineThreads),
-        engine_hash_mb: Number(form.engineHashMb),
-        engine_max_time_ms: Number(form.engineMaxTimeMs),
-        engine_workers: Number(form.engineWorkers),
-        engine_worker_cap: Number(form.engineWorkerCap),
-        engine_mode: form.engineMode,
-        engine_profile: form.engineProfile,
         enable_engine_cache: form.enableEngineCache === "true",
         incremental_analysis: form.incrementalAnalysis === "true",
-        engine_cache_prune_non_active: form.engineCachePruneNonActive === "true",
         review_top_n: Number(form.reviewTopN),
         tabiya_top_n: Number(form.tabiyaTopN),
         matching_mode: form.matchingMode,
@@ -99,9 +73,9 @@ export default function SettingsPage() {
   }
 
   return (
-    <PageContainer title="Settings" description="Manage runtime fetch, engine, path, and player profile configuration.">
+    <PageContainer title="Settings" description="Manage workspace analysis, fetch, and player profile configuration.">
       <PageSection>
-        <SectionHeader title="Settings" description="Runtime configuration for fetching, engine behavior, and profile metadata." />
+        <SectionHeader title="Settings" description="Workspace settings are stored by the backend and shared by every client." />
         <form onSubmit={onSave} className="grid gap-4">
           {SECTIONS.map((section) => (
             <Card key={section.title} className="grid gap-3 p-4">

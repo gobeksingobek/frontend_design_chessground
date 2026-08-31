@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:ui-regression": "node ./scripts/run-ui-regression-tests.mjs",
+    "check:contracts": "node ./scripts/run-contract-checks.mjs",
     "check:stats-pages-client": "node scripts/check-stats-pages-client.mjs",
     "check:trainer-contract": "node scripts/check-trainer-contract.mjs",
     "check:review-contract": "node scripts/check-review-contract.mjs",

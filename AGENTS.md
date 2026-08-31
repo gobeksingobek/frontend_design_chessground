@@ -1,62 +1,58 @@
 # AGENTS.md
 
 ## Purpose
-This repository contains a chess repertoire analysis system with desktop, backend, storage, and web surfaces. Use this file as the default operating guide for implementation work in this repo.
+This repository contains a chess repertoire analysis system with desktop, backend, PostgreSQL storage, Redis-backed workers, and a Next.js web client.
 
-## Default working style
-- Prefer the smallest safe change that satisfies the user request.
-- Treat long-form planning docs as guidance unless the task is explicitly about parity, release readiness, or a larger architecture change.
-- Preserve existing behavior unless the task clearly asks to extend or replace it.
+## Target architecture and hard invariants
+- PostgreSQL is the only runtime source of truth for persisted application, analysis, configuration, job, and result data.
+- Do not introduce SQLite code, local database files, or alternate runtime persistence backends.
+- Desktop and web clients access persisted data through the backend API; they do not connect directly to PostgreSQL.
+- Redis Streams are the execution backbone for server-side analysis, import/fetch, reanalysis, and other long-running work.
+- PostgreSQL is authoritative for job lifecycle, idempotency, progress, retries, errors, and results. Redis messages are transient delivery signals and must be safe to replay.
+- Canonical or persisted Stockfish analysis runs on Redis-backed server workers.
+- Browser Stockfish/WASM is limited to bounded advisory quick evaluation. Persisted results must be recomputed or validated by server workers.
+- Repertoire and game source PGNs required for reproducible analysis are stored in PostgreSQL, not only referenced by local filesystem paths.
+- Keep heavy computation in workers. API, desktop, and web request work and display persisted results.
 
-## Hard invariants
-- PostgreSQL is the source of truth for persisted analysis data.
-- Runtime features that depend on stored analysis should continue to work from persisted data, not only transient in-memory state.
-- Keep heavy computation in the analysis/backend path when practical; GUI and web surfaces should primarily read and display persisted results.
-- Repertoire import through the current web/API path accepts `.zip` archives containing PGNs or single `.pgn` files; `.db` and `.sql` snapshots are not accepted there.
-- Redis Streams are used as transient queue transport for sideline/background job workflows; request state and results belong in Postgres.
+## Job and data contracts
+- Use capability streams `chessground:jobs:orchestration`, `chessground:jobs:engine`, and `chessground:jobs:ingest`; each has its own consumer group and dead-letter stream.
+- Redis messages contain identifiers and attempt metadata only. Durable payloads belong in `analysis_job_steps`.
+- Workers claim PostgreSQL steps conditionally, acknowledge Redis only after result state commits, heartbeat leases, and tolerate duplicate delivery.
+- Scope user-owned data and idempotency to `workspace_id`. The API derives the current workspace; clients do not select arbitrary workspaces.
+- Keep globally reusable positions and engine cache entries deduplicated. Scope repertoire, games, trainer/review state, settings, jobs, source artifacts, and derived user data by workspace.
+- Readers must use `workspace_state.active_analysis_run_id` so an incomplete replacement run never displaces the last completed result set.
 
-## Repo map
-- `backend/`: API and worker-oriented backend services.
-- `analysis/`, `matching/`, `parsing/`, `storage/`: core analysis, matching, parsing, and persistence logic.
-- `gui/`: desktop application UI.
-- `web/`: Next.js web frontend.
-- `config/`: runtime configuration, including `config/settings.ini`.
-- `docs/`: parity, release, and implementation guidance.
-- `tests/`: automated tests.
+## Repository map
+- `backend/api_service.py`: authenticated FastAPI contracts and durable job enqueueing.
+- `backend/worker_service.py`: capability-specific Redis consumer and durable claim/retry/ack logic.
+- `backend/orchestration.py`, `backend/analysis_results.py`, `backend/ingest_workflows.py`: server-side analysis orchestration, finalization, and ingest.
+- `backend/jobs.py`, `backend/worker_repository.py`, `backend/migrations.py`, `backend/db.py`: durable job access, synchronous worker persistence, schema migrations, and API database access.
+- `storage/postgres/migrations/`: ordered canonical PostgreSQL migrations. Do not add runtime bootstrap SQL elsewhere.
+- `analysis/`, `matching/`, `parsing/`: computation and parsing without persistence ownership.
+- `main.py`, `gui/`, `app_config.py`: API-backed desktop client and local client-only configuration.
+- `web/`: Next.js frontend; follow `web/README.md` for its established component and layout conventions.
+- `tests/`: unit and contract tests plus service-backed integration tests.
 
-## Architecture guidance
-- The desktop app loads runtime settings from `config/settings.ini`.
-- Repertoire and game PGNs are parsed by the analysis pipeline.
-- Parsed data, matches, and derived analysis are stored in PostgreSQL.
-- The desktop GUI and web surfaces should primarily read precomputed data rather than recomputing heavy analysis inline.
-- Prefer incremental or additive schema/UI changes over disruptive rewrites.
+## Import and configuration rules
+- Repertoire and game upload endpoints accept a single `.pgn` or a `.zip` containing PGNs. Database dumps are not import formats.
+- Uploaded and fetched PGN text is persisted in `source_artifacts` before asynchronous ingest.
+- `config/settings.ini` contains desktop client settings only: backend URL, API token reference, piece assets, and optional local upload directories.
+- Workspace analysis and fetch settings live in PostgreSQL `runtime_settings`.
+- Stockfish executable paths and worker CPU/process tuning are deployment configuration, never desktop or web runtime settings.
 
-## Frontend guidance
-When working in `web/`, also follow `web/README.md`:
-- use shared UI primitives and layout conventions;
-- prefer Tailwind-first styling;
-- support dark mode and responsive layouts;
-- avoid ad hoc page-specific styling when a shared primitive or variant can be reused.
+## Validation commands
+- Python unit/contract tests: `python -m pytest -q`
+- Apply PostgreSQL migrations: `python -m backend.bootstrap_postgres_schema`
+- Validate migrations without applying: `python -m backend.bootstrap_postgres_schema --validate-only`
+- Service-backed tests: set `RUN_INTEGRATION_TESTS=1`, `POSTGRES_DSN`, and `REDIS_URL`, then run `python -m pytest -q -m integration`
+- Web UI regression tests: `npm --prefix web run test:ui-regression`
+- All frontend/API contract checks: `npm --prefix web run check:contracts`
+- Web lint: `npm --prefix web run lint`
+- Web type check: `npm --prefix web run typecheck`
+- Web production build: `npm --prefix web run build`
 
-## Release-time guidance references
-These documents are important, but they are not universal blockers for every small task unless the user explicitly asks for that scope:
-- `docs/web_desktop_parity_checklist.md`
-- `docs/release_cutover_checklist.md`
-- `suggestions.txt`
-
-## Validation expectations
-- Run the smallest relevant tests/checks for the area you changed.
-- Prefer targeted verification before broad suites when making narrow changes.
-- If you change the web UI, use the documented web test commands when feasible.
-
-## Change safety
-- Do not casually change config formats, persistence contracts, or import behavior.
-- Do not move heavy computation into UI layers without an explicit reason.
-- Do not treat aspirational design guidance as a hard requirement for unrelated bug fixes.
-
-## Handoff notes
-In summaries and PRs, explain:
-- what changed;
-- why the approach is intentionally scoped;
-- what checks were run;
-- any follow-up work that remains out of scope.
+## Change safety and handoff
+- Prefer the smallest safe change, but do not preserve behavior by reintroducing client-side persistence or in-process long-running jobs.
+- Do not edit an applied migration; add a new ordered migration.
+- For persistence, job, or cutover changes, run real PostgreSQL/Redis integration coverage in addition to unit fakes.
+- Summaries and PRs should state what changed, why, checks run, migration/deployment impact, and any explicit follow-up.

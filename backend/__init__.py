@@ -1,1 +1,1 @@
-"""Backend services for async sideline analysis."""
+"""PostgreSQL API and Redis Streams worker services."""

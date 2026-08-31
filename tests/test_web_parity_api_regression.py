@@ -68,29 +68,3 @@ def test_list_games_forwards_filters_and_sort(monkeypatch) -> None:
     assert calls[0]["sort_by"] == "compliance"
     assert calls[0]["sort_dir"] == "asc"
     assert calls[0]["line_id"] == "line-1"
-
-
-def test_get_analysis_runs_uses_runtime_limit() -> None:
-    manager = api_service.AnalysisRuntimeManager()
-    manager._runs = [
-        api_service.AnalysisRunHistoryEntry(
-            job_id="j1",
-            run_type="full-analysis",
-            state="completed",
-            started_at="2024-01-01T00:00:00+00:00",
-            finished_at="2024-01-01T00:01:00+00:00",
-            error=None,
-        ),
-        api_service.AnalysisRunHistoryEntry(
-            job_id="j2",
-            run_type="fetch-games",
-            state="failed",
-            started_at="2024-01-02T00:00:00+00:00",
-            finished_at="2024-01-02T00:01:00+00:00",
-            error="boom",
-        ),
-    ]
-
-    result = manager.runs(limit=1)
-    assert len(result.runs) == 1
-    assert result.runs[0].job_id == "j1"

@@ -8,6 +8,7 @@ dependencies = [
   "fastapi==0.141.1",
   "python-chess==1.999",
   "python-multipart==0.0.32",
+  "psycopg[binary]==3.2.10",
   "redis==8.1.0",
   "uvicorn==0.52.4",
 ]
@@ -27,3 +28,4 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["integration: requires real PostgreSQL and Redis services"]
