@@ -35,9 +35,9 @@ export default function OverviewPage() {
   const queryClient = useQueryClient();
   const [actionMessage, setActionMessage] = useState<string>("");
   const { data, isLoading, error } = useQuery({ queryKey: ["overview-summary"], queryFn: getOverviewSummary });
-  const { data: status } = useQuery({ queryKey: ["analysis-status"], queryFn: getAnalysisStatus, refetchInterval: 2000 });
-  const { data: progress } = useQuery({ queryKey: ["analysis-progress"], queryFn: getAnalysisProgress, refetchInterval: 2000 });
-  const { data: runs } = useQuery({ queryKey: ["analysis-runs", 10], queryFn: () => getAnalysisRuns(10), refetchInterval: 2000 });
+  const { data: status } = useQuery({ queryKey: ["analysis-status"], queryFn: getAnalysisStatus });
+  const { data: progress } = useQuery({ queryKey: ["analysis-progress"], queryFn: getAnalysisProgress });
+  const { data: runs } = useQuery({ queryKey: ["analysis-runs", 10], queryFn: () => getAnalysisRuns(10) });
   const isRunning = status?.state === "running";
 
   const refreshStatus = () => {

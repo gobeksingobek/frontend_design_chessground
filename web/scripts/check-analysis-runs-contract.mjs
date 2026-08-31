@@ -35,10 +35,16 @@ const backendRoot = path.resolve(webRoot, "..");
 
 const backendApi = fs.readFileSync(path.join(backendRoot, "backend/api_service.py"), "utf8");
 const apiClient = fs.readFileSync(path.join(webRoot, "src/lib/api-client.ts"), "utf8");
+const overviewPage = fs.readFileSync(path.join(webRoot, "src/app/(app)/overview/page.tsx"), "utf8");
 
 assert(backendApi.includes('@app.get("/jobs"'), "backend API must expose the durable GET /jobs route");
 assert(backendApi.includes("limit: int = 20"), "GET /jobs route must accept a limit query parameter");
 assert(apiClient.includes("/jobs?limit="), "web API client must poll durable jobs");
 assert(apiClient.includes("filter(isAnalysisJob)"), "web must derive the analysis timeline from durable jobs");
+assert(!overviewPage.includes("refetchInterval"), "overview status must refresh explicitly, not on an automatic interval");
+assert(overviewPage.includes("refreshStatus"), "overview must expose its explicit status refresh mechanism");
+assert(overviewPage.includes('invalidateQueries({ queryKey: ["analysis-status"] })'), "refresh must invalidate analysis status");
+assert(overviewPage.includes('invalidateQueries({ queryKey: ["analysis-progress"] })'), "refresh must invalidate analysis progress");
+assert(overviewPage.includes('invalidateQueries({ queryKey: ["analysis-runs", 10] })'), "refresh must invalidate analysis history");
 
 console.log("Analysis runs contract verified against durable PostgreSQL jobs.");
