@@ -1,5 +1,12 @@
 # ChessGround Web
 
+## Backend connection
+
+The browser opens directly to the dashboard and sends API requests through the
+same-origin `/api/backend` proxy. Configure the web service with `API_BASE_URL`
+and the same server-only `API_AUTH_TOKEN` used by the backend API. In local
+development, the proxy defaults to the backend's `dev-token` default.
+
 ## UI regression tests
 
 Run the canonical UI regression suite with:

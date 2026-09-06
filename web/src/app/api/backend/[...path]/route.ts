@@ -5,7 +5,6 @@ export const dynamic = "force-dynamic";
 
 const FORWARDED_REQUEST_HEADERS = [
   "accept",
-  "authorization",
   "content-type",
   "idempotency-key",
 ] as const;
@@ -50,11 +49,17 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Re
     return proxyError("The web service is missing its server-side API_BASE_URL configuration.", 503);
   }
 
+  const apiToken = process.env.API_AUTH_TOKEN?.trim();
+  if (!apiToken && process.env.NODE_ENV === "production") {
+    return proxyError("The web service is missing its server-side API_AUTH_TOKEN configuration.", 503);
+  }
+
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
+  headers.set("authorization", `Bearer ${apiToken || "dev-token"}`);
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   let upstream: Response;

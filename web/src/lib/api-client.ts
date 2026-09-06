@@ -1,4 +1,3 @@
-import { getWebToken, setWebAuth } from "@/lib/auth";
 import type {
   AnalysisProgressResponse,
   AnalysisRunHistoryResponse,
@@ -42,60 +41,9 @@ import type {
 } from "@/lib/types";
 
 const API_BASE_URL = "/api/backend";
-const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN ?? "";
-const DEFAULT_API_TOKENS = new Set(["dev-token", "changeme", "change-me", "default-token", "your-token-here", "example-token"]);
-const MAX_CONSECUTIVE_401S = 2;
-
-let consecutiveUnauthorizedCount = 0;
-
-function isProductionBuild(): boolean {
-  return process.env.NODE_ENV === "production";
-}
-
-function isDefaultTokenValue(token: string): boolean {
-  return DEFAULT_API_TOKENS.has(token.trim().toLowerCase());
-}
-
-function resolveApiToken(): string {
-  const fromStorage = getWebToken();
-  if (fromStorage && fromStorage.trim()) {
-    return fromStorage.trim();
-  }
-
-  const fromEnv = API_TOKEN.trim();
-  if (isProductionBuild() && (!fromEnv || isDefaultTokenValue(fromEnv))) {
-    throw new Error(
-      "Missing valid API token. Open /login and enter the backend API token for this workspace.",
-    );
-  }
-  return fromEnv;
-}
-
-function currentToken(): string {
-  return resolveApiToken();
-}
-
-export function getAuthDiagnostics() {
-  const fromStorage = getWebToken();
-  return {
-    apiBaseUrl: API_BASE_URL,
-    tokenSource: fromStorage && fromStorage.trim() ? "localStorage (cg_web_api_token)" : "NEXT_PUBLIC_API_TOKEN env",
-    hasStoredToken: Boolean(fromStorage && fromStorage.trim()),
-  };
-}
-
-function redirectToLoginForUnauthorized() {
-  if (typeof window === "undefined") {
-    return;
-  }
-  setWebAuth(null);
-  const reason = consecutiveUnauthorizedCount >= MAX_CONSECUTIVE_401S ? "unauthorized_repeated" : "unauthorized";
-  window.location.assign(`/login?reason=${reason}`);
-}
 
 function headers(extra: Record<string, string> = {}): HeadersInit {
   return {
-    Authorization: `Bearer ${currentToken()}`,
     "Content-Type": "application/json",
     ...extra,
   };
@@ -114,28 +62,14 @@ async function unwrap<T>(response: Response): Promise<T> {
     }
 
     if (response.status === 401) {
-      consecutiveUnauthorizedCount += 1;
-      if (consecutiveUnauthorizedCount >= MAX_CONSECUTIVE_401S) {
-        redirectToLoginForUnauthorized();
-      }
       throw new Error(
-        "Unauthorized: your bearer token is missing/invalid. Open /login and set a valid backend API token.",
+        "The web service could not authenticate with the ChessGround backend. Check its server-side API_AUTH_TOKEN configuration.",
       );
     }
 
     throw new Error(parsedDetail || text || `Request failed with status ${response.status}`);
   }
-  consecutiveUnauthorizedCount = 0;
   return (await response.json()) as T;
-}
-
-export async function validateApiToken(): Promise<{ ok: true; detail: string }> {
-  const response = await apiFetch(`${API_BASE_URL}/auth/validate`, {
-    method: "GET",
-    headers: headers(),
-    cache: "no-store",
-  });
-  return unwrap<{ ok: true; detail: string }>(response);
 }
 
 async function getStats<T = StatsRow>(path: string): Promise<T[]> {
@@ -501,7 +435,6 @@ export async function importRepertoire(file: File): Promise<RepertoireImportResp
   const response = await apiFetch(`${API_BASE_URL}/repertoires/import`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${currentToken()}`,
       "Idempotency-Key": crypto.randomUUID(),
     },
     body: formData,

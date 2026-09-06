@@ -7,7 +7,6 @@ import { useTheme } from "@/components/theme-provider";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import { setWebAuth } from "@/lib/auth";
 
 type NavItem = {
   href: string;
@@ -131,11 +130,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     setHydrated(true);
   }, []);
 
-  function onLogout() {
-    setWebAuth(null);
-  }
-
-  // The shell owns browser-only auth, theme, and navigation state. Rendering a
+  // The shell owns browser-only theme and navigation state. Rendering a
   // stable placeholder until hydration prevents those values from invalidating
   // the server markup and, critically, leaves native sidebar links usable.
   if (!hydrated) {
@@ -161,7 +156,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             description={resolvedPage.description}
             actions={resolvedPage.actions}
             onMobileMenuToggle={() => setMobileMenuOpen((current) => !current)}
-            onLogout={onLogout}
           />
           <main className="min-w-0 px-3 py-4 sm:px-5 md:px-6 lg:py-6 xl:px-8">
             <div className="mx-auto flex w-full max-w-[100rem] flex-col gap-page-gap">{children}</div>
@@ -297,13 +291,11 @@ export function DashboardHeader({
   description,
   actions,
   onMobileMenuToggle,
-  onLogout,
 }: {
   title?: string;
   description?: string;
   actions?: ReactNode;
   onMobileMenuToggle: () => void;
-  onLogout: () => void;
 }) {
   return (
     <header className="sticky top-0 z-40 border-b border-border/30 bg-glass/82 backdrop-blur-xl">
@@ -326,9 +318,6 @@ export function DashboardHeader({
           <div className="flex shrink-0 items-center justify-end gap-2">
             {actions}
             <ThemeToggle />
-            <a href="/login" onClick={onLogout}>
-              <Button variant="ghost" size="sm" className="border border-border/35 bg-card/75">Log out</Button>
-            </a>
           </div>
         </div>
       </div>
