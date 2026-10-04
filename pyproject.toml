@@ -10,7 +10,7 @@ dependencies = [
   "python-multipart==0.0.32",
   "psycopg[binary]==3.2.10",
   "redis==8.1.0",
-  "uvicorn==0.52.4",
+  "uvicorn==0.54.0",
 ]
 
 [project.optional-dependencies]
